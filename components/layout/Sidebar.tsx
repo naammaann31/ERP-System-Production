@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useSidebar } from "@/components/providers/SidebarProvider";
 import { 
     LayoutDashboard, 
     Users, 
@@ -14,11 +15,13 @@ import {
     UserPlus, 
     FileText, 
     BarChart3, 
-    Settings 
+    Settings,
+    Briefcase
 } from "lucide-react";
 
 const NAV_LINKS = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["Admin", "HR", "Employee"] },
+    { name: "Operations", href: "/dashboard/operations", icon: Briefcase, roles: ["Admin", "HR", "Employee"], department: "Sales" },
     { name: "Employees", href: "/dashboard/employees", icon: Users, roles: ["Admin", "HR"] },
     { name: "Departments", href: "/dashboard/departments", icon: Building2, roles: ["Admin"] },
     { name: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck, roles: ["Admin", "HR", "Employee"] },
@@ -33,6 +36,7 @@ const NAV_LINKS = [
 export default function Sidebar() {
     const pathname = usePathname();
     const { profile } = useAuth();
+    const { isOpen } = useSidebar();
     
     // Default to 'Employee' if profile isn't loaded yet to avoid flickering restricted links
     const rawRole = profile?.role || "Employee";
@@ -41,8 +45,11 @@ export default function Sidebar() {
                    : "Employee";
 
     return (
-        <aside className="w-64 bg-white border-r border-slate-200/60 flex flex-col h-screen sticky top-0 hidden md:flex">
-            <div className="h-16 flex items-center justify-center border-b border-slate-200/60 shrink-0">
+        <aside className={`bg-white border-slate-200/60 flex flex-col h-screen sticky top-0 hidden md:flex transition-all duration-300 ease-in-out z-40 overflow-hidden ${
+            isOpen ? "w-64 border-r opacity-100" : "w-0 border-r-0 opacity-0"
+        }`}>
+            <div className="w-64 flex flex-col h-full shrink-0">
+                <div className="h-16 flex items-center justify-center border-b border-slate-200/60 shrink-0">
                 <div className="w-8 h-8 flex items-center justify-center mt-1">
                     <Image 
                         src="/updated_logo.png" 
@@ -55,7 +62,15 @@ export default function Sidebar() {
             </div>
             
             <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 custom-scrollbar">
-                {NAV_LINKS.filter(link => link.roles.includes(userRole)).map((link) => {
+                {NAV_LINKS.filter(link => {
+                    if (link.department) {
+                        const userDept = profile?.department?.toLowerCase() || "";
+                        const userRoleStr = profile?.role?.toLowerCase() || "";
+                        const targetDept = link.department.toLowerCase();
+                        if (userDept !== targetDept && !userRoleStr.includes(targetDept)) return false;
+                    }
+                    return link.roles.includes(userRole);
+                }).map((link) => {
                     const isActive = pathname === link.href;
                     const Icon = link.icon;
                     
@@ -87,6 +102,7 @@ export default function Sidebar() {
                         <span className="text-sm font-medium text-slate-700">Operational</span>
                     </div>
                 </div>
+            </div>
             </div>
         </aside>
     );
