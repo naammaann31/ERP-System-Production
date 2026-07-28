@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { logoutUser } from "@/lib/auth";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Menu, ChevronLeft } from "lucide-react";
+import { LogOut, User, Menu, ChevronLeft, Bell } from "lucide-react";
 import { useSidebar } from "@/components/providers/SidebarProvider";
+import {
+  Notification,
+  listenToUserNotifications,
+  markAsRead,
+  markAllAsRead,
+} from "@/lib/notifications";
+
+const formatRelativeTime = (ts: any) => {
+  if (!ts || !ts.toDate) return "";
+  const diff = Date.now() - ts.toDate().getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function Navbar() {
     const { profile } = useAuth();
@@ -14,10 +32,33 @@ export default function Navbar() {
     const router = useRouter();
 
     const [showProfile, setShowProfile] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+
+    useEffect(() => {
+        if (!profile?.uid) return;
+        const unsubscribe = listenToUserNotifications(profile.uid, (notifs) => {
+            setNotifications(notifs);
+        });
+        return () => unsubscribe();
+    }, [profile]);
+
+    const unreadCount = notifications.filter((n) => !n.read).length;
 
     const handleLogout = async () => {
         await logoutUser();
         router.push("/login");
+    };
+
+    const handleMarkAllRead = async () => {
+        if (!profile?.uid) return;
+        await markAllAsRead(profile.uid);
+    };
+
+    const handleNotifClick = async (notif: Notification) => {
+        if (!notif.read && notif.id) {
+            await markAsRead(notif.id);
+        }
     };
 
     const initials = profile?.fullName
@@ -48,6 +89,58 @@ export default function Navbar() {
             </div>
             
             <div className="flex items-center gap-4 ml-auto relative">
+                {/* Notification Bell */}
+                <div className="relative">
+                    <button
+                        onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false); }}
+                        className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                    >
+                        <Bell className="h-5 w-5" />
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1 shadow-sm">
+                                {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {showNotifications && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                            <div className="absolute top-12 right-0 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+                                    {unreadCount > 0 && (
+                                        <button onClick={handleMarkAllRead} className="text-[10px] font-semibold text-blue-600 hover:text-blue-800">
+                                            Mark all read
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                                    {notifications.length === 0 ? (
+                                        <div className="px-4 py-8 text-center text-sm text-slate-400">No notifications</div>
+                                    ) : (
+                                        notifications.slice(0, 15).map((notif) => (
+                                            <button
+                                                key={notif.id}
+                                                onClick={() => handleNotifClick(notif)}
+                                                className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!notif.read ? "bg-blue-50/50" : ""}`}
+                                            >
+                                                <div className="flex items-start gap-2">
+                                                    {!notif.read && <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-xs ${!notif.read ? "font-bold text-slate-800" : "font-medium text-slate-600"}`}>{notif.message}</p>
+                                                        <p className="text-[10px] text-slate-400 mt-1">{formatRelativeTime(notif.createdAt)}</p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
                 <div className="hidden sm:flex flex-col items-end mr-1">
                     <span className="text-sm font-bold text-slate-800 tracking-tight">
                         {profile?.fullName || "Loading..."}
@@ -59,44 +152,47 @@ export default function Navbar() {
                 
                 <div className="relative">
                     <button 
-                        onClick={() => setShowProfile(!showProfile)}
+                        onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
                         className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white border border-slate-100 hover:ring-blue-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     >
                         {initials}
                     </button>
                     
                     {showProfile && (
-                        <div className="absolute top-14 right-0 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 text-left z-50 animate-in fade-in slide-in-from-top-2 cursor-default">
-                            <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 mb-4">
-                                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-2xl shadow-md mb-3">
-                                    {initials}
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
+                            <div className="absolute top-14 right-0 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 text-left z-50 animate-in fade-in slide-in-from-top-2 cursor-default">
+                                <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 mb-4">
+                                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-2xl shadow-md mb-3">
+                                        {initials}
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 text-lg tracking-tight">{profile?.fullName}</h3>
+                                    <p className="text-xs font-semibold text-slate-500 mb-2">{profile?.email}</p>
+                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        {profile?.role || "Employee"}
+                                    </span>
                                 </div>
-                                <h3 className="font-bold text-slate-800 text-lg tracking-tight">{profile?.fullName}</h3>
-                                <p className="text-xs font-semibold text-slate-500 mb-2">{profile?.email}</p>
-                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                    {profile?.role || "Employee"}
-                                </span>
+                                
+                                <div className="space-y-3 mb-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Department</p>
+                                        <p className="text-sm font-semibold text-slate-700">{profile?.department || "General"}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Employee ID</p>
+                                        <p className="text-sm font-semibold text-slate-700">{profile?.employeeId || "N/A"}</p>
+                                    </div>
+                                </div>
+                                
+                                <button 
+                                    onClick={handleLogout}
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl transition-colors"
+                                >
+                                    <LogOut className="h-4 w-4" />
+                                    Logout
+                                </button>
                             </div>
-                            
-                            <div className="space-y-3 mb-4">
-                                <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Department</p>
-                                    <p className="text-sm font-semibold text-slate-700">{profile?.department || "General"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Employee ID</p>
-                                    <p className="text-sm font-semibold text-slate-700">{profile?.employeeId || "N/A"}</p>
-                                </div>
-                            </div>
-                            
-                            <button 
-                                onClick={handleLogout}
-                                className="w-full flex items-center justify-center gap-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl transition-colors"
-                            >
-                                <LogOut className="h-4 w-4" />
-                                Logout
-                            </button>
-                        </div>
+                        </>
                     )}
                 </div>
                 

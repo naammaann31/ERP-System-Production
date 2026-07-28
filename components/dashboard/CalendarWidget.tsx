@@ -75,32 +75,32 @@ export default function CalendarWidget() {
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   return (
-    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col h-full">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold text-slate-800 text-sm">Calendar</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-800">{monthNames[currentMonth]} {currentYear}</span>
-          <div className="flex gap-1">
-            <button onClick={handlePrevMonth} className="p-1 hover:bg-slate-100 rounded text-slate-500 transition-colors"><ChevronLeft className="h-3 w-3" /></button>
-            <button onClick={handleNextMonth} className="p-1 hover:bg-slate-100 rounded text-slate-500 transition-colors"><ChevronRight className="h-3 w-3" /></button>
+    <div className="bg-white rounded-2xl p-6 border border-slate-200/60 shadow-md flex flex-col h-full">
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="font-black text-slate-800 text-lg">Calendar</h3>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-slate-700">{monthNames[currentMonth]} {currentYear}</span>
+          <div className="flex gap-1.5">
+            <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"><ChevronLeft className="h-4 w-4" /></button>
+            <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-y-1 mb-2 flex-1 items-start">
+      <div className="grid grid-cols-7 gap-y-2 mb-4 flex-1 items-start">
         {days.map((d, i) => (
-          <div key={i} className="text-center text-[10px] font-semibold text-slate-500 mb-1">{d}</div>
+          <div key={i} className="text-center text-xs font-bold text-slate-400 mb-2">{d}</div>
         ))}
         {dates.map((d, i) => (
           <div key={i} className="flex justify-center items-center">
             <div className={`
-              w-6 h-6 flex items-center justify-center rounded-full text-[11px] relative transition-all duration-200
+              w-8 h-8 flex items-center justify-center rounded-xl text-xs font-semibold relative transition-all duration-200
               ${!d.currentMonth ? 'text-slate-300' : 'text-slate-700'}
-              ${d.isToday ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/30' : 'hover:bg-slate-100 cursor-pointer'}
+              ${d.isToday ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30' : 'hover:bg-slate-50 cursor-pointer'}
             `}>
               {d.date}
               {d.event && !d.isToday && (
-                <div className={`absolute bottom-0.5 w-1 h-1 rounded-full ${
+                <div className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
                   d.event === 'meeting' ? 'bg-purple-500' :
                   d.event === 'leave' ? 'bg-green-500' :
                   d.event === 'holiday' ? 'bg-red-500' : ''
@@ -111,11 +111,11 @@ export default function CalendarWidget() {
         ))}
       </div>
 
-      <div className="mt-auto flex items-center justify-between px-1 pt-3 border-t border-slate-100">
-        <div className="flex items-center gap-1.5 text-[9px] text-slate-500 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-blue-600" /> Today</div>
-        <div className="flex items-center gap-1.5 text-[9px] text-slate-500 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Meeting</div>
-        <div className="flex items-center gap-1.5 text-[9px] text-slate-500 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Leave</div>
-        <div className="flex items-center gap-1.5 text-[9px] text-slate-500 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Holiday</div>
+      <div className="mt-auto flex items-center justify-between px-2 pt-4 border-t border-slate-100">
+        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-blue-600" /> Today</div>
+        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-purple-500" /> Meeting</div>
+        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-green-500" /> Leave</div>
+        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-red-500" /> Holiday</div>
       </div>
     </div>
   );

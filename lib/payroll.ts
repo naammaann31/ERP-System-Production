@@ -28,6 +28,9 @@ export interface PayrollRecord {
   employeeId?: string;
   designation?: string;
   department?: string;
+  dateOfJoining?: string;
+  bankName?: string;
+  division?: string;
   daysWorked?: number;
   month: number;
   year: number;
@@ -39,19 +42,25 @@ export interface PayrollRecord {
   travelAllowance: number;
   specialAllowance: number;
   otherAllowances: number;
+  incentives: number;
   
   totalEarnings: number;
   
   // Deductions
   lopDays: number;
   lopDeduction: number;
-  taxDeduction: number;
+  taxDeduction: number; // Professional Tax
+  incomeTax: number;
+  providentFund: number;
   otherDeductions: number;
   
   totalDeductions: number;
   
   // Final
   netSalary: number;
+  
+  paymentDate?: string;
+  modeOfPayment?: string;
   
   generatedAt: Timestamp;
   status: "Paid" | "Pending";
@@ -81,17 +90,17 @@ export const getSalaryStructure = async (userId: string): Promise<SalaryStructur
 };
 
 // Pure calculation logic
-export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: number, daysInMonth: number, otherDeds = 0, otherAlls = 0) => {
+export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: number, daysInMonth: number, otherDeds = 0, otherAlls = 0, incentives = 0, professionalTax = 200, incomeTax = 0, providentFund = 0) => {
   const basic = gross * 0.5;
   const hra = gross * 0.2;
   const specialAllowance = Math.max(0, gross - basic - hra - travel);
   
-  const totalEarnings = gross + otherAlls;
+  const totalEarnings = gross + otherAlls + incentives;
   
   const perDaySalary = gross / daysInMonth; // Per Day Salary = Gross Salary ÷ Total Days
   const lopDeduction = Number((perDaySalary * lopDays).toFixed(2));
   
-  const totalDeductions = lopDeduction + FIXED_TAX + otherDeds;
+  const totalDeductions = lopDeduction + professionalTax + incomeTax + providentFund + otherDeds;
   const netSalary = totalEarnings - totalDeductions;
   
   return {
@@ -101,10 +110,13 @@ export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: n
     travelAllowance: travel,
     specialAllowance,
     otherAllowances: otherAlls,
+    incentives,
     totalEarnings,
     lopDays,
     lopDeduction,
-    taxDeduction: FIXED_TAX,
+    taxDeduction: professionalTax,
+    incomeTax,
+    providentFund,
     otherDeductions: otherDeds,
     totalDeductions: Number(totalDeductions.toFixed(2)),
     netSalary: Number(netSalary.toFixed(2))
@@ -120,7 +132,16 @@ export const generatePayroll = async (
   daysInMonth: number,
   employeeId?: string,
   designation?: string,
-  department?: string
+  department?: string,
+  dateOfJoining?: string,
+  bankName?: string,
+  division?: string,
+  professionalTax: number = 200,
+  incomeTax: number = 0,
+  providentFund: number = 0,
+  incentives: number = 0,
+  paymentDate?: string,
+  modeOfPayment?: string
 ): Promise<PayrollRecord> => {
   const structure = await getSalaryStructure(userId);
   if (!structure) {
@@ -133,7 +154,11 @@ export const generatePayroll = async (
     lopDays, 
     daysInMonth,
     structure.otherDeductions,
-    structure.otherAllowances
+    structure.otherAllowances,
+    incentives,
+    professionalTax,
+    incomeTax,
+    providentFund
   );
 
   const daysWorked = daysInMonth - lopDays;
@@ -147,10 +172,15 @@ export const generatePayroll = async (
     employeeId: employeeId || "",
     designation: designation || "",
     department: department || "",
+    dateOfJoining: dateOfJoining || "",
+    bankName: bankName || "",
+    division: division || "",
     daysWorked,
     month,
     year,
     ...breakup,
+    paymentDate: paymentDate || "",
+    modeOfPayment: modeOfPayment || "Bank Transfer",
     generatedAt: Timestamp.now(),
     status: "Pending"
   };

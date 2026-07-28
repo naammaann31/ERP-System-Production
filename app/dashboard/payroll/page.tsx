@@ -80,6 +80,16 @@ function HRPayrollDashboard() {
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   
+  const [dateOfJoining, setDateOfJoining] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [division, setDivision] = useState("");
+  const [incentives, setIncentives] = useState<number>(0);
+  const [professionalTax, setProfessionalTax] = useState<number>(200);
+  const [incomeTax, setIncomeTax] = useState<number>(0);
+  const [providentFund, setProvidentFund] = useState<number>(0);
+  const [paymentDate, setPaymentDate] = useState("");
+  const [modeOfPayment, setModeOfPayment] = useState("Bank Transfer");
+  
   const [allPayrolls, setAllPayrolls] = useState<PayrollRecord[]>([]);
 
   useEffect(() => {
@@ -238,6 +248,15 @@ function HRPayrollDashboard() {
     }
     setSalaryStructure(struct);
     setDaysInMonth(30);
+    setDateOfJoining("");
+    setBankName("");
+    setDivision("");
+    setIncentives(0);
+    setProfessionalTax(200);
+    setIncomeTax(0);
+    setProvidentFund(0);
+    setPaymentDate("");
+    setModeOfPayment("Bank Transfer");
     setIsGenerateModalOpen(true);
   };
 
@@ -253,7 +272,16 @@ function HRPayrollDashboard() {
         daysInMonth,
         selectedEmployee.id,
         selectedEmployee.designation,
-        selectedEmployee.department
+        selectedEmployee.department,
+        dateOfJoining,
+        bankName,
+        division,
+        professionalTax,
+        incomeTax,
+        providentFund,
+        incentives,
+        paymentDate,
+        modeOfPayment
       );
       setIsGenerateModalOpen(false);
       alert("Payroll generated successfully!");
@@ -264,7 +292,7 @@ function HRPayrollDashboard() {
   };
 
   // Preview calculations
-  const preview = calculateSalaryBreakup(grossSalary, travelAllowance, lopDays, daysInMonth, otherDeductions, otherAllowances);
+  const preview = calculateSalaryBreakup(grossSalary, travelAllowance, lopDays, daysInMonth, otherDeductions, otherAllowances, incentives, professionalTax, incomeTax, providentFund);
 
   return (
     <div className="space-y-6">
@@ -419,7 +447,7 @@ function HRPayrollDashboard() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col"
           >
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div>
@@ -431,7 +459,7 @@ function HRPayrollDashboard() {
               </button>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-6 overflow-y-auto space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Month</label>
@@ -455,9 +483,54 @@ function HRPayrollDashboard() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Date of Joining</label>
+                  <input type="date" value={dateOfJoining} onChange={(e) => setDateOfJoining(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Bank Name</label>
+                  <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. Bank of Baroda" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Division</label>
+                  <input type="text" value={division} onChange={(e) => setDivision(e.target.value)} placeholder="e.g. Vectra Staffing" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Incentives</label>
+                  <input type="number" value={incentives} onChange={(e) => setIncentives(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Prof. Tax</label>
+                  <input type="number" value={professionalTax} onChange={(e) => setProfessionalTax(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Income Tax</label>
+                  <input type="number" value={incomeTax} onChange={(e) => setIncomeTax(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">PF</label>
+                  <input type="number" value={providentFund} onChange={(e) => setProvidentFund(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Payment Date</label>
+                  <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Mode of Payment</label>
+                  <input type="text" value={modeOfPayment} onChange={(e) => setModeOfPayment(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+              </div>
+
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mt-4">
                 <p className="text-xs font-medium text-amber-700 flex justify-between"><span>LOP Deduction:</span> <span>₹{preview.lopDeduction.toLocaleString()}</span></p>
-                <p className="text-xs font-medium text-amber-700 flex justify-between mt-1"><span>Tax:</span> <span>₹200</span></p>
+                <p className="text-xs font-medium text-amber-700 flex justify-between mt-1"><span>Tax (PT + TDS):</span> <span>₹{(preview.taxDeduction + preview.incomeTax).toLocaleString()}</span></p>
                 <p className="text-xs font-medium text-amber-700 flex justify-between mt-1"><span>Total Deductions:</span> <span className="font-bold">₹{preview.totalDeductions.toLocaleString()}</span></p>
                 <div className="border-t border-amber-200 my-2 pt-2 flex justify-between">
                   <span className="font-bold text-amber-900 text-sm">Net Payable:</span>
