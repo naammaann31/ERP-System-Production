@@ -58,10 +58,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 4. Main Dashboard Grid - Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <motion.div variants={itemVariants}>
-          <TodaySchedule />
-        </motion.div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <motion.div variants={itemVariants}>
           <TeamStatusWidget />
         </motion.div>

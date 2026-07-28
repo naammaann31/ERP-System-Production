@@ -136,26 +136,21 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
             position: 'relative', 
             backgroundColor: '#ffffff',
             color: '#000000',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
           }}
         >
-          {/* Top Header Bar */}
+          {/* Black Header Bar */}
           <div style={{ 
-            background: 'linear-gradient(to right, #888888, #aaaaaa, #888888)', 
-            padding: '14px 40px', 
+            width: '100%', 
+            padding: '16px 0', 
+            background: 'linear-gradient(to bottom, #000000, #3a3a3a)', 
             display: 'flex', 
             justifyContent: 'center', 
             alignItems: 'center' 
           }}>
-            <div style={{ textAlign: 'center', color: '#ffffff' }}>
-              {/* Small V icon */}
-              <svg viewBox="0 0 60 60" style={{ width: '28px', height: '28px', display: 'block', margin: '0 auto 2px auto' }}>
-                <polygon points="30,5 55,50 5,50" fill="none" stroke="#ffffff" strokeWidth="4" />
-                <polyline points="18,28 28,45 42,18" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '3px', color: '#ffffff' }}>VECTRA</div>
-              <div style={{ fontSize: '7px', fontWeight: 600, letterSpacing: '2px', color: '#eeeeee' }}>GROUP</div>
-            </div>
+             <img src="/updated_logo.png" alt="Vectra Group" style={{ width: 'auto', height: '40px', filter: 'invert(1) brightness(2)' }} crossOrigin="anonymous" />
           </div>
 
           {/* Center Watermark */}
@@ -168,146 +163,139 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
             opacity: 0.08,
             pointerEvents: 'none'
           }}>
-            <WatermarkLogo />
+            <img src="/updated_logo.png" alt="Watermark" style={{ width: '360px', height: 'auto', display: 'block' }} crossOrigin="anonymous" />
           </div>
 
           {/* Main Content */}
-          <div style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column' }}>
             {/* Company Details Section */}
-            <div style={{ padding: '28px 40px 0 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ padding: '40px 40px 0 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                {/* Logo V */}
-                <svg viewBox="0 0 80 80" style={{ width: '60px', height: '60px', display: 'block', marginBottom: '4px' }}>
-                  <polygon points="40,8 72,65 8,65" fill="none" stroke="#1a1a2e" strokeWidth="5" />
-                  <polyline points="22,35 36,58 56,22" fill="none" stroke="#1a1a2e" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <div style={{ fontSize: '18px', fontWeight: 900, color: '#1a1a2e', letterSpacing: '2px' }}>VECTRA</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: '#666666', letterSpacing: '4px' }}>GROUP</div>
+                <img src="/updated_logo.png" alt="Vectra Group" style={{ width: '120px', height: 'auto', display: 'block' }} crossOrigin="anonymous" />
               </div>
-              <div style={{ textAlign: 'right', fontSize: '12px', color: '#333333', lineHeight: '1.8' }}>
-                <div style={{ fontWeight: 700, color: '#000000' }}>Vectra Group</div>
-                <div>Operational Office: Ahmedabad, Gujarat</div>
-                <div>Email: info@vectragroup.in</div>
-                <div>Website: www.vectragroup.in</div>
+              <div style={{ textAlign: 'right', fontSize: '13px', color: '#000000', lineHeight: '1.6' }}>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>Vectra Group</div>
+                <div style={{ fontWeight: 700 }}>Operational Office: Ahmedabad, Gujarat</div>
+                <div style={{ fontWeight: 700 }}>Email: damini@vectragroup.in</div>
+                <div style={{ fontWeight: 700 }}>Website: www.vectragroup.in</div>
               </div>
             </div>
 
+            <hr style={{ border: 'none', borderTop: '2px solid #333333', margin: '20px 40px 30px 40px' }} />
+
             {/* Payslip Title */}
-            <div style={{ padding: '28px 40px 18px 40px', textAlign: 'center' }}>
-              <div style={{ fontSize: '15px', fontWeight: 800, textDecoration: 'underline', color: '#000000', letterSpacing: '0.5px' }}>
+            <div style={{ padding: '0 40px 20px 40px', textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 700, textDecoration: 'underline', color: '#000000', letterSpacing: '0.5px' }}>
                 PAYSLIP FOR THE MONTH OF {monthName} {payroll.year}
               </div>
             </div>
 
             {/* Employee Details Table */}
-            <div style={{ padding: '0 40px', marginBottom: '20px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <div style={{ padding: '0 40px', marginBottom: '24px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <tbody>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, width: '25%', backgroundColor: '#f5f5f5', color: '#000000' }}>Employee Name</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', width: '25%', color: '#000000' }}>{payroll.employeeName}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, width: '25%', backgroundColor: '#f5f5f5', color: '#000000' }}>Designation</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', width: '25%', color: '#000000' }}>{payroll.designation || "N/A"}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', backgroundColor: '#f2f2f2' }}>Employee Name</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', width: '25%', color: '#000000' }}>{payroll.employeeName}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', backgroundColor: '#f2f2f2' }}>Designation</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', width: '25%', color: '#000000' }}>{payroll.designation || ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Employee ID</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.employeeId || "N/A"}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Department</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.department || "N/A"}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Employee ID</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.employeeId || ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Department</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.department || ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Date of Joining</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{new Date(0, payroll.month - 1).toLocaleString('default', { month: 'long' })} {payroll.year}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Location</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>India</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Date of Joining</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.dateOfJoining || ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Division</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.division || "Vectra Staffing"}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Bank Name</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>Bank of Baroda</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', color: '#000000' }}>Days Worked</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{daysWorked}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Bank Name</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.bankName || ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Days Worked</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{daysWorked}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Spacer */}
-            <div style={{ height: '8px' }}></div>
-
             {/* Earnings & Deductions Table */}
-            <div style={{ padding: '0 40px', marginBottom: '20px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <div style={{ padding: '0 40px', marginBottom: '24px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', width: '25%', textDecoration: 'underline', color: '#000000' }}>Earnings</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', width: '25%', textDecoration: 'underline', color: '#000000' }}>Amount (₹)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', width: '25%', textDecoration: 'underline', color: '#000000' }}>Deductions</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, backgroundColor: '#f5f5f5', width: '25%', textDecoration: 'underline', color: '#000000' }}>Amount (₹)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, backgroundColor: '#e0e0e0', width: '25%', color: '#000000' }}>Earnings</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, backgroundColor: '#e0e0e0', width: '25%', color: '#000000' }}>Amount (₹)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, backgroundColor: '#e0e0e0', width: '25%', color: '#000000' }}>Deductions</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, backgroundColor: '#e0e0e0', width: '25%', color: '#000000' }}>Amount (₹)</td>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Basic Salary (Prorated)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.basic.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Professional Tax</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.taxDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Basic Salary (Prorated)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.basic ? payroll.basic.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Professional Tax</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.taxDeduction ? payroll.taxDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>House Rent Allowance (Prorated)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.hra.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Income Tax (TDS)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>0.00</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>House Rent Allowance (Prorated)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.hra ? payroll.hra.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Income Tax (TDS)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.incomeTax ? payroll.incomeTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Special Allowance (Prorated)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.specialAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Provident Fund</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>0.00</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Special Allowance (Prorated)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.specialAllowance ? payroll.specialAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Provident Fund</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.providentFund ? payroll.providentFund.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>Travel Allowance (Prorated)</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.travelAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, color: '#000000' }}>LOP</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', color: '#000000' }}>{payroll.lopDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Travel Allowance</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.travelAllowance ? payroll.travelAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>LOP (Loss of Pay)</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.lopDeduction ? payroll.lopDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                   </tr>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, textDecoration: 'underline', color: '#000000' }}>Total Earnings</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, textDecoration: 'underline', color: '#000000' }}>{payroll.totalEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, textDecoration: 'underline', color: '#000000' }}>Total Deductions</td>
-                    <td style={{ border: '1px solid #333333', padding: '7px 10px', fontWeight: 700, textDecoration: 'underline', color: '#000000' }}>{payroll.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Incentives</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}>{payroll.incentives ? payroll.incentives.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}></td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', color: '#000000' }}></td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Total Earnings</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>{payroll.totalEarnings ? payroll.totalEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>Total Deductions</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000' }}>{payroll.totalDeductions ? payroll.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Spacer */}
-            <div style={{ height: '8px' }}></div>
-
             {/* Net Salary Payable */}
-            <div style={{ padding: '0 40px', marginBottom: '20px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <div style={{ padding: '0 40px', marginBottom: '24px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <tbody>
                   <tr>
-                    <td style={{ border: '1px solid #333333', padding: '9px 10px', fontWeight: 700, color: '#000000' }}>
-                      Net Salary Payable: {payroll.netSalary.toLocaleString('en-IN')} ({numberToWords(payroll.netSalary)})
+                    <td style={{ border: '1px solid #000000', padding: '8px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#e5e5e5' }}>
+                      Net Salary Payable: {payroll.netSalary ? payroll.netSalary.toLocaleString('en-IN') : ""} 
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Spacer */}
-            <div style={{ height: '8px' }}></div>
-
             {/* Payment Disbursement Details */}
-            <div style={{ padding: '0 40px', marginBottom: '36px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <div style={{ padding: '0 40px', marginBottom: '40px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <tbody>
                   <tr>
-                    <td style={{ border: '1px dashed #555555', padding: '9px 10px', color: '#000000' }}>
-                      <div style={{ fontWeight: 700, marginBottom: '4px' }}>Payment Disbursement Details:</div>
-                      <div>• Payment Date: {paymentDate}</div>
-                      <div>• Mode of Payment: Bank Transfer</div>
+                    <td style={{ border: '1px dashed #000000', padding: '10px', color: '#000000' }}>
+                      <div style={{ fontWeight: 700, marginBottom: '6px' }}>Payment Disbursement Details:</div>
+                      <div style={{ fontWeight: 700 }}>• Payment Date: <span style={{ fontWeight: 400 }}>{payroll.paymentDate || ""}</span></div>
+                      <div style={{ fontWeight: 700 }}>• Mode of Payment: <span style={{ fontWeight: 400 }}>{payroll.modeOfPayment || "Bank Transfer"}</span></div>
                     </td>
                   </tr>
                 </tbody>
@@ -316,41 +304,26 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
 
             {/* Authorized Signatory */}
             <div style={{ padding: '0 40px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#000000', marginBottom: '36px' }}>Authorized Signatory</div>
-              <div style={{ fontSize: '11px', lineHeight: '1.8', color: '#000000' }}>
-                <div>{signatoryName}</div>
-                <div>Global HR, Vectra Group</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#000000', marginBottom: '40px' }}>Authorized Signatory</div>
+              <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#000000' }}>
+                <div style={{ fontWeight: 700 }}>Damini Mallick</div>
+                <div>Senior Executive Human Resources – Vectra Group</div>
               </div>
             </div>
           </div>
 
           {/* Bottom Footer Bar */}
           <div style={{ 
-            position: 'absolute', 
-            bottom: 0, 
-            left: 0, 
-            right: 0, 
-            background: 'linear-gradient(to right, #555555, #888888, #555555)', 
-            padding: '14px 40px', 
+            marginTop: 'auto',
+            background: '#2b2b2b', 
+            padding: '12px 0', 
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: '100%'
           }}>
-            {/* Small footer logo */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <svg viewBox="0 0 60 60" style={{ width: '30px', height: '30px' }}>
-                <polygon points="30,5 55,50 5,50" fill="none" stroke="#ffffff" strokeWidth="4" />
-                <polyline points="18,28 28,45 42,18" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '2px', color: '#ffffff' }}>VECTRA</div>
-                <div style={{ fontSize: '6px', fontWeight: 600, letterSpacing: '2px', color: '#dddddd' }}>GROUP</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', fontSize: '10px', color: '#ffffff', lineHeight: '1.6' }}>
-              <div><span style={{ fontWeight: 700, fontStyle: 'italic' }}>Operational Office:</span> Ahmedabad, Gujarat</div>
-              <div><span style={{ fontWeight: 700 }}>Phone:</span> +91 92747 02334 | <span style={{ fontWeight: 700 }}>Email:</span> info@vectragroup.in</div>
-              <div><span style={{ fontWeight: 700 }}>Website:</span> www.vectragroup.in</div>
+            <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: 400 }}>
+              This is a system-generated document.
             </div>
           </div>
         </div>

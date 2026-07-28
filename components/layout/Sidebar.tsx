@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -11,10 +12,11 @@ import {
     CalendarCheck, 
     CalendarOff, 
     CircleDollarSign, 
-    UserPlus, 
     FileText, 
-    BarChart3, 
-    Settings 
+    Activity, 
+    Settings,
+    Megaphone,
+    ClipboardCheck,
 } from "lucide-react";
 
 const NAV_LINKS = [
@@ -24,15 +26,49 @@ const NAV_LINKS = [
     { name: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck, roles: ["Admin", "HR", "Employee"] },
     { name: "Leave", href: "/dashboard/leave", icon: CalendarOff, roles: ["Admin", "HR", "Employee"] },
     { name: "Payroll", href: "/dashboard/payroll", icon: CircleDollarSign, roles: ["Admin", "HR", "Employee"] },
-    { name: "Recruitment", href: "/dashboard/recruitment", icon: UserPlus, roles: ["Admin", "HR"] },
+    { name: "Announcements", href: "/dashboard/announcements", icon: Megaphone, roles: ["Admin", "HR", "Employee"] },
+    { name: "Onboarding", href: "/dashboard/onboarding", icon: ClipboardCheck, roles: ["Admin", "Employee"] },
     { name: "Documents", href: "/dashboard/documents", icon: FileText, roles: ["Admin", "HR", "Employee"] },
-    { name: "Reports", href: "/dashboard/reports", icon: BarChart3, roles: ["Admin", "HR"] },
+    { name: "Activity Log", href: "/dashboard/activity", icon: Activity, roles: ["Admin"] },
     { name: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["Admin", "HR", "Employee"] },
 ];
 
 export default function Sidebar() {
     const pathname = usePathname();
     const { profile } = useAuth();
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        let isInitial = true;
+        let lastCount = 0;
+        
+        import("@/lib/announcements").then(({ listenToAnnouncements }) => {
+            const unsubscribe = listenToAnnouncements((records) => {
+                if (isInitial) {
+                    isInitial = false;
+                    lastCount = records.length;
+                } else {
+                    if (records.length > lastCount) {
+                        const newAnnouncement = records[0];
+                        import("sonner").then(({ toast }) => {
+                            toast.success("New Announcement", {
+                                description: newAnnouncement?.title || "Check the announcements tab.",
+                            });
+                        });
+                        setUnreadCount(prev => prev + (records.length - lastCount));
+                        lastCount = records.length;
+                    }
+                }
+            });
+            return () => unsubscribe();
+        });
+    }, []);
+
+    useEffect(() => {
+        if (pathname === '/dashboard/announcements') {
+            setUnreadCount(0);
+        }
+    }, [pathname]);
     
     // Default to 'Employee' if profile isn't loaded yet to avoid flickering restricted links
     const rawRole = profile?.role || "Employee";
@@ -69,8 +105,13 @@ export default function Sidebar() {
                                 : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                             }`}
                         >
-                            <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-slate-400"}`} />
-                            {link.name}
+                            <Icon className={`h-5 w-5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
+                            <span className="flex-1 truncate">{link.name}</span>
+                            {link.name === "Announcements" && unreadCount > 0 && (
+                                <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
+                                    {unreadCount}
+                                </span>
+                            )}
                         </Link>
                     );
                 })}
