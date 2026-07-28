@@ -5,13 +5,14 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { logoutUser } from "@/lib/auth";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, Bell } from "lucide-react";
+import { LogOut, Bell, User, Menu, ChevronLeft } from "lucide-react";
 import {
   Notification,
   listenToUserNotifications,
   markAsRead,
   markAllAsRead,
 } from "@/lib/notifications";
+import { useSidebar } from "@/components/providers/SidebarProvider";
 
 const formatRelativeTime = (ts: any) => {
   if (!ts || !ts.toDate) return "";
@@ -27,6 +28,7 @@ const formatRelativeTime = (ts: any) => {
 
 export default function Navbar() {
     const { profile } = useAuth();
+    const { isOpen, toggleSidebar } = useSidebar();
     const router = useRouter();
 
     const [showProfile, setShowProfile] = useState(false);
@@ -66,6 +68,13 @@ export default function Navbar() {
     return (
         <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 flex items-center justify-between px-6 sticky top-0 z-50">
             <div className="flex items-center gap-4">
+                <button 
+                    onClick={toggleSidebar}
+                    className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors md:flex"
+                    aria-label="Toggle Sidebar"
+                >
+                    {isOpen ? <ChevronLeft className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
                 <div className="md:hidden flex items-center gap-2">
                     <div className="w-6 h-6 flex items-center justify-center mt-0.5">
                         <Image 
