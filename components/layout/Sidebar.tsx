@@ -31,7 +31,6 @@ const NAV_LINKS = [
     { name: "Leave", href: "/dashboard/leave", icon: CalendarOff, roles: ["Admin", "HR", "Employee"] },
     { name: "Payroll", href: "/dashboard/payroll", icon: CircleDollarSign, roles: ["Admin", "HR", "Employee"] },
     { name: "Announcements", href: "/dashboard/announcements", icon: Megaphone, roles: ["Admin", "HR", "Employee"] },
-    { name: "Onboarding", href: "/dashboard/onboarding", icon: ClipboardCheck, roles: ["Admin", "Employee"] },
     { name: "Documents", href: "/dashboard/documents", icon: FileText, roles: ["Admin", "HR", "Employee"] },
     { name: "Activity Log", href: "/dashboard/activity", icon: Activity, roles: ["Admin"] },
     { name: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["Admin", "HR", "Employee"] },

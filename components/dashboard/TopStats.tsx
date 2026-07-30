@@ -19,18 +19,34 @@ export default function TopStats() {
   const [leaveBalance, setLeaveBalance] = useState("-");
 
   useEffect(() => {
+    if (!profile || !isAdminOrHR) return;
+
     // Count total employees
-    const unsub1 = onSnapshot(collection(db, "users"), (snap1) => {
-      onSnapshot(collection(db, "Users"), (snap2) => {
-        const uids = new Set<string>();
-        snap1.forEach((d) => uids.add(d.id));
-        snap2.forEach((d) => uids.add(d.id));
-        setTotalEmployees(uids.size);
-      });
+    let snap1Docs: any[] = [];
+    let snap2Docs: any[] = [];
+    
+    const updateCount = () => {
+      const uids = new Set<string>();
+      snap1Docs.forEach((d) => uids.add(d.id));
+      snap2Docs.forEach((d) => uids.add(d.id));
+      setTotalEmployees(uids.size);
+    };
+
+    const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
+      snap1Docs = snap.docs;
+      updateCount();
     });
 
-    return () => unsub1();
-  }, []);
+    const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
+      snap2Docs = snap.docs;
+      updateCount();
+    });
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [profile, isAdminOrHR]);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -52,7 +68,7 @@ export default function TopStats() {
       const plUsed = leaves.filter((l) => l.leaveType === "Paid Leave (PL)" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const clUsed = leaves.filter((l) => l.leaveType === "Casual Leave" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const totalUsed = plUsed + clUsed;
-      const totalAvailable = 18 - totalUsed; // 12 PL + 6 CL = 18 total
+      const totalAvailable = 24 - totalUsed; // 12 PL + 12 CL = 24 total
       setLeaveBalance(totalAvailable.toString());
     });
   }, [profile]);

@@ -75,6 +75,8 @@ export default function EmployeesPage() {
   };
 
   useEffect(() => {
+    if (!profile) return;
+
     let emps1: any[] = [];
     let emps2: any[] = [];
     let loaded1 = false;
@@ -127,7 +129,7 @@ export default function EmployeesPage() {
       unsubscribe1();
       unsubscribe2();
     };
-  }, []);
+  }, [profile]);
 
   const departments = useMemo(() => {
     const deps = new Set(employees.map(e => e.department));

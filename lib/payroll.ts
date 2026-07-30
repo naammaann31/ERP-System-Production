@@ -1,12 +1,12 @@
 import { db } from "./firebase";
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
   deleteDoc,
-  query, 
-  where, 
+  query,
+  where,
   getDocs,
   Timestamp,
   orderBy
@@ -34,7 +34,7 @@ export interface PayrollRecord {
   daysWorked?: number;
   month: number;
   year: number;
-  
+
   // Breakup
   grossSalary: number;
   basic: number;
@@ -43,9 +43,9 @@ export interface PayrollRecord {
   specialAllowance: number;
   otherAllowances: number;
   incentives: number;
-  
+
   totalEarnings: number;
-  
+
   // Deductions
   lopDays: number;
   lopDeduction: number;
@@ -53,15 +53,15 @@ export interface PayrollRecord {
   incomeTax: number;
   providentFund: number;
   otherDeductions: number;
-  
+
   totalDeductions: number;
-  
+
   // Final
   netSalary: number;
-  
+
   paymentDate?: string;
   modeOfPayment?: string;
-  
+
   generatedAt: Timestamp;
   status: "Paid" | "Pending";
 }
@@ -82,7 +82,7 @@ export const saveSalaryStructure = async (userId: string, data: Omit<SalaryStruc
 export const getSalaryStructure = async (userId: string): Promise<SalaryStructure | null> => {
   const docRef = doc(db, "salary_structures", userId);
   const docSnap = await getDoc(docRef);
-  
+
   if (docSnap.exists()) {
     return docSnap.data() as SalaryStructure;
   }
@@ -94,15 +94,15 @@ export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: n
   const basic = gross * 0.5;
   const hra = gross * 0.2;
   const specialAllowance = Math.max(0, gross - basic - hra - travel);
-  
+
   const totalEarnings = gross + otherAlls + incentives;
-  
+
   const perDaySalary = gross / daysInMonth; // Per Day Salary = Gross Salary ÷ Total Days
   const lopDeduction = Number((perDaySalary * lopDays).toFixed(2));
-  
+
   const totalDeductions = lopDeduction + professionalTax + incomeTax + providentFund + otherDeds;
   const netSalary = totalEarnings - totalDeductions;
-  
+
   return {
     grossSalary: gross,
     basic,
@@ -124,11 +124,11 @@ export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: n
 };
 
 export const generatePayroll = async (
-  userId: string, 
-  employeeName: string, 
-  month: number, 
-  year: number, 
-  lopDays: number, 
+  userId: string,
+  employeeName: string,
+  month: number,
+  year: number,
+  lopDays: number,
   daysInMonth: number,
   employeeId?: string,
   designation?: string,
@@ -149,9 +149,9 @@ export const generatePayroll = async (
   }
 
   const breakup = calculateSalaryBreakup(
-    structure.grossSalary, 
-    structure.travelAllowance, 
-    lopDays, 
+    structure.grossSalary,
+    structure.travelAllowance,
+    lopDays,
     daysInMonth,
     structure.otherDeductions,
     structure.otherAllowances,
@@ -165,7 +165,7 @@ export const generatePayroll = async (
 
   const docId = `${userId}_${year}_${month}`;
   const docRef = doc(db, "payrolls", docId);
-  
+
   const record: PayrollRecord = {
     userId,
     employeeName,
@@ -189,38 +189,41 @@ export const generatePayroll = async (
   return { id: docId, ...record };
 };
 
-export const getEmployeePayrolls = async (userId: string): Promise<PayrollRecord[]> => {
-  const q = query(
-    collection(db, "payrolls"), 
-    where("userId", "==", userId)
-  );
-  
+export const getEmployeePayrolls = async (userId: string, fullName?: string, employeeId?: string): Promise<PayrollRecord[]> => {
+  const q = collection(db, "payrolls");
   const querySnapshot = await getDocs(q);
   const records: PayrollRecord[] = [];
-  
+
   querySnapshot.forEach((doc) => {
-    records.push({ id: doc.id, ...doc.data() } as PayrollRecord);
+    const data = doc.data() as PayrollRecord;
+    const matchUser = data.userId === userId ||
+      (fullName && data.employeeName?.toLowerCase() === fullName.toLowerCase()) ||
+      (employeeId && data.employeeId === employeeId);
+
+    if (matchUser) {
+      records.push({ id: doc.id, ...data });
+    }
   });
-  
+
   // Sort in JS to avoid Firebase Index errors
   records.sort((a, b) => b.year - a.year || b.month - a.month);
-  
+
   return records;
 };
 
 export const getAllPayrolls = async (): Promise<PayrollRecord[]> => {
   const q = query(collection(db, "payrolls"));
-  
+
   const querySnapshot = await getDocs(q);
   const records: PayrollRecord[] = [];
-  
+
   querySnapshot.forEach((doc) => {
     records.push({ id: doc.id, ...doc.data() } as PayrollRecord);
   });
-  
+
   // Sort in JS to avoid Firebase Index errors
   records.sort((a, b) => b.year - a.year || b.month - a.month);
-  
+
   return records;
 };
 

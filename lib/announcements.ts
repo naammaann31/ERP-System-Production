@@ -79,5 +79,5 @@ export const listenToAnnouncements = (
     });
 
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };

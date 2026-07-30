@@ -104,5 +104,5 @@ export const listenToDocuments = (
     });
 
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };

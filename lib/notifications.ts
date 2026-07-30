@@ -81,5 +81,5 @@ export const listenToUserNotifications = (
     });
 
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };
