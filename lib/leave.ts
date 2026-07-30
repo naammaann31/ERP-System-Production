@@ -148,7 +148,7 @@ export const listenToPendingLeaves = (callback: (leaves: LeaveRequest[]) => void
       return bTime - aTime;
     });
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };
 
 export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) => {
@@ -165,5 +165,5 @@ export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) =>
       return bTime - aTime;
     });
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };

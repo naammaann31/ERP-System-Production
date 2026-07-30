@@ -26,6 +26,14 @@ export interface AttendanceRecord {
 
 const getLocalDateString = () => {
   const now = new Date();
+  
+  // The shift starts at 7:30 PM (19:30).
+  // Any time before 7:30 PM belongs to the previous calendar day's shift.
+  // This ensures the shift resets exactly at 7:30 PM every day.
+  if (now.getHours() < 19 || (now.getHours() === 19 && now.getMinutes() < 30)) {
+    now.setDate(now.getDate() - 1);
+  }
+  
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
@@ -88,6 +96,18 @@ export const getTodayAttendance = async (userId: string) => {
 
 export const getAllTodayAttendance = async () => {
   const dateStr = getLocalDateString();
+  const q = query(collection(db, "attendance"), where("date", "==", dateStr));
+  const querySnapshot = await getDocs(q);
+  
+  const records: AttendanceRecord[] = [];
+  querySnapshot.forEach((doc) => {
+    records.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+  });
+  
+  return records;
+};
+
+export const getAttendanceByDate = async (dateStr: string) => {
   const q = query(collection(db, "attendance"), where("date", "==", dateStr));
   const querySnapshot = await getDocs(q);
   

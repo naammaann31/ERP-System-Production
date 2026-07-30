@@ -1,16 +1,92 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { CalendarCheck, Clock, Palmtree, ClipboardList, Users, Wallet } from "lucide-react";
-
-const stats = [
-  { title: "Attendance", value: "-", subtitle: "No data", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
-  { title: "Working Hours", value: "-", subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
-  { title: "Leave Balance", value: "-", subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
-  { title: "Salary Status", value: "Pending", subtitle: "July 2026", icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
-];
+import { CalendarCheck, Clock, Palmtree, Users, Wallet } from "lucide-react";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { getTodayAttendance } from "@/lib/attendance";
+import { getUserLeaves } from "@/lib/leave";
 
 export default function TopStats() {
+  const { profile } = useAuth();
+  const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
+
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [attendanceStatus, setAttendanceStatus] = useState("-");
+  const [workingHrs, setWorkingHrs] = useState("-");
+  const [leaveBalance, setLeaveBalance] = useState("-");
+
+  useEffect(() => {
+    if (!profile || !isAdminOrHR) return;
+
+    let usersData: any[] = [];
+    let UsersData: any[] = [];
+
+    const updateCount = () => {
+      const uids = new Set<string>();
+      usersData.forEach((d) => uids.add(d.id));
+      UsersData.forEach((d) => uids.add(d.id));
+      setTotalEmployees(uids.size);
+    };
+
+    // Count total employees from both collections side-by-side to avoid leaks
+    const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
+      usersData = snap.docs;
+      updateCount();
+    });
+
+    const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
+      UsersData = snap.docs;
+      updateCount();
+    });
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [profile, isAdminOrHR]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+
+    // Get today's attendance
+    getTodayAttendance(profile.uid).then((record) => {
+      if (record) {
+        setAttendanceStatus(record.status === "Present" ? "Present" : record.status === "Checked In" ? "Clocked In" : record.status);
+        if (record.workingSeconds > 0) {
+          const hrs = Math.floor(record.workingSeconds / 3600);
+          const mins = Math.floor((record.workingSeconds % 3600) / 60);
+          setWorkingHrs(`${hrs}h ${mins}m`);
+        }
+      }
+    });
+
+    // Get leave balance
+    getUserLeaves(profile.uid).then((leaves) => {
+      const plUsed = leaves.filter((l) => l.leaveType === "Paid Leave (PL)" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
+      const clUsed = leaves.filter((l) => l.leaveType === "Casual Leave" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
+      const totalUsed = plUsed + clUsed;
+      const totalAvailable = 18 - totalUsed; // 12 PL + 6 CL = 18 total
+      setLeaveBalance(totalAvailable.toString());
+    });
+  }, [profile]);
+
+  const stats = isAdminOrHR
+    ? [
+        { title: "Total Employees", value: totalEmployees.toString(), subtitle: "Active", icon: Users, color: "text-blue-600", bg: "bg-blue-100/50", accent: "bg-blue-500" },
+        { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
+        { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
+        { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
+      ]
+    : [
+        { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
+        { title: "Working Hours", value: workingHrs, subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
+        { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
+        { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
+      ];
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
       {stats.map((stat, i) => (

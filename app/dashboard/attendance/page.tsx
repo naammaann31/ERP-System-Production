@@ -18,12 +18,20 @@ import {
   Users,
   UserCheck,
   UserX,
-  UserMinus
+  UserMinus,
+  Play,
+  Square,
+  Timer
 } from "lucide-react";
-import { 
-  getUserAttendanceForMonth, 
-  getAllTodayAttendance, 
-  AttendanceRecord 
+import {
+  getUserAttendanceForMonth,
+  getAllTodayAttendance,
+  getAttendanceByDate,
+  getTodayAttendance,
+  checkIn,
+  checkOut,
+  updateWorkingSeconds,
+  AttendanceRecord
 } from "@/lib/attendance";
 
 // --- Helpers ---
@@ -73,9 +81,80 @@ function EmployeeAttendanceDashboard() {
   const [selectedMonth, setSelectedMonth] = useState("July 2026");
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Clock-in/out state
+  const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
+  const [clockLoading, setClockLoading] = useState(false);
+  const [liveSeconds, setLiveSeconds] = useState(0);
+
+  // Clock status
+  const isNotClockedIn = !todayRecord;
+  const isClockedIn = todayRecord?.status === "Checked In";
+  const isClockedOut = todayRecord?.status === "Present";
+
+  // Fetch today's attendance
+  useEffect(() => {
+    if (!profile?.uid) return;
+    getTodayAttendance(profile.uid).then((rec) => {
+      setTodayRecord(rec);
+      if (rec && rec.status === "Checked In" && rec.checkInTime) {
+        const checkInMs = rec.checkInTime.toDate().getTime();
+        const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
+        setLiveSeconds(elapsed);
+      } else if (rec) {
+        setLiveSeconds(rec.workingSeconds || 0);
+      }
+    });
+  }, [profile]);
+
+  // Live timer
+  useEffect(() => {
+    if (!isClockedIn) return;
+    const interval = setInterval(() => {
+      if (todayRecord?.checkInTime) {
+        const checkInMs = todayRecord.checkInTime.toDate().getTime();
+        const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
+        setLiveSeconds(elapsed);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isClockedIn, todayRecord]);
+
+  // Update Firestore working seconds every 30 seconds
+  useEffect(() => {
+    if (!isClockedIn || !todayRecord?.id) return;
+    const interval = setInterval(() => {
+      updateWorkingSeconds(todayRecord.id!, liveSeconds);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isClockedIn, todayRecord, liveSeconds]);
+
+  const handleClockIn = async () => {
+    if (!profile?.uid) return;
+    setClockLoading(true);
+    const rec = await checkIn(profile.uid, profile.fullName, profile.role);
+    setTodayRecord(rec);
+    setLiveSeconds(0);
+    setClockLoading(false);
+  };
+
+  const handleClockOut = async () => {
+    if (!profile?.uid || !todayRecord?.id) return;
+    setClockLoading(true);
+    await checkOut(todayRecord.id, liveSeconds);
+    setTodayRecord({ ...todayRecord, status: "Present", workingSeconds: liveSeconds });
+    setClockLoading(false);
+  };
+
+  const formatLiveTimer = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -91,7 +170,7 @@ function EmployeeAttendanceDashboard() {
     const fetchRecords = async () => {
       if (!profile?.uid) return;
       setLoading(true);
-      
+
       const monthMap: Record<string, string> = {
         "May 2026": "2026-05",
         "June 2026": "2026-06",
@@ -100,7 +179,7 @@ function EmployeeAttendanceDashboard() {
         "September 2026": "2026-09",
       };
       const yearMonth = monthMap[selectedMonth] || "2026-07";
-      
+
       const fetched = await getUserAttendanceForMonth(profile.uid, yearMonth);
       setRecords(fetched);
       setLoading(false);
@@ -109,12 +188,12 @@ function EmployeeAttendanceDashboard() {
     fetchRecords();
   }, [profile, selectedMonth]);
 
-  const displayRecords = records.filter(r => 
+  const displayRecords = records.filter(r =>
     r.date.includes(searchTerm) || r.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-4 pb-4">
+    <div className="max-w-[1400px] mx-auto space-y-6 pb-6">
       {/* Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -123,16 +202,16 @@ function EmployeeAttendanceDashboard() {
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative w-full md:w-auto" ref={dropdownRef}>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
               className="w-full bg-white text-slate-700 rounded-xl shadow-sm hover:bg-slate-50 hover:text-slate-900 border-slate-200"
             >
-              <CalendarDays className="h-4 w-4 mr-2 text-slate-500" /> 
+              <CalendarDays className="h-4 w-4 mr-2 text-slate-500" />
               {selectedMonth}
               <ChevronDown className={`h-4 w-4 ml-2 text-slate-400 transition-transform ${isMonthDropdownOpen ? 'rotate-180' : ''}`} />
             </Button>
-            
+
             {isMonthDropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-200/50 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-200">
                 {months.map((m) => (
@@ -277,30 +356,55 @@ const hrStats = [
 function HRAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const selectedDate = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchRecords = async () => {
       setLoading(true);
-      const fetched = await getAllTodayAttendance();
+      const fetched = await getAttendanceByDate(selectedDate);
       setRecords(fetched);
       setLoading(false);
     };
 
     fetchRecords();
-  }, []);
+  }, [selectedDate]);
 
   const filteredEmployees = records.filter(emp => {
-    // If the current user is HR, they should only see Employees, not Admin or HR.
-    if (profile?.role === "HR" && (emp.role === "HR" || emp.role === "Admin")) {
-      return false;
-    }
     return emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           emp.status.toLowerCase().includes(searchTerm.toLowerCase());
+      emp.status.toLowerCase().includes(searchTerm.toLowerCase());
   });
+
+  const exportToCSV = () => {
+    if (filteredEmployees.length === 0) return;
+    const headers = ["Employee", "Date", "Clock In", "Clock Out", "Status"];
+    const csvRows = [headers.join(",")];
+    
+    filteredEmployees.forEach(emp => {
+      const row = [
+        `"${emp.fullName}"`,
+        `="${emp.date}"`, // Force Excel to treat as text to prevent ########
+        `"${formatTime(emp.checkInTime)}"`,
+        `"${formatTime(emp.checkOutTime)}"`,
+        `"${emp.status}"`
+      ];
+      csvRows.push(row.join(","));
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Attendance_${selectedDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4 pb-4">
@@ -311,11 +415,16 @@ function HRAttendanceDashboard() {
           <p className="text-slate-500 mt-1 text-sm font-medium">Monitor daily company-wide attendance and shifts.</p>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <Button variant="outline" className="bg-white text-slate-700 rounded-xl shadow-sm hover:bg-slate-50 hover:text-slate-900 border-slate-200 py-2 h-auto text-sm">
-            <CalendarDays className="h-4 w-4 mr-2 text-slate-500" /> 
-            {selectedDate}
-          </Button>
-          <Button className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 h-9">
+          <div className="relative flex-1 md:flex-none">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 h-9 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            />
+            <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+          </div>
+          <Button onClick={exportToCSV} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 h-9">
             <Download className="h-4 w-4 mr-2" /> Export Report
           </Button>
         </div>
@@ -441,8 +550,11 @@ function HRAttendanceDashboard() {
 
 export default function AttendancePage() {
   const { profile } = useAuth();
-  
-  if (profile?.role === "HR" || profile?.role === "Admin") {
+
+  const role = profile?.role?.toUpperCase();
+  const isAdminOrHR = role === "ADMIN" || role === "HR" || role === "OPS_HR";
+
+  if (isAdminOrHR) {
     return <HRAttendanceDashboard />;
   }
 
