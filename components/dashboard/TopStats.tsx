@@ -19,17 +19,31 @@ export default function TopStats() {
   const [leaveBalance, setLeaveBalance] = useState("-");
 
   useEffect(() => {
-    // Count total employees
-    const unsub1 = onSnapshot(collection(db, "users"), (snap1) => {
-      onSnapshot(collection(db, "Users"), (snap2) => {
-        const uids = new Set<string>();
-        snap1.forEach((d) => uids.add(d.id));
-        snap2.forEach((d) => uids.add(d.id));
-        setTotalEmployees(uids.size);
-      });
+    let usersData: any[] = [];
+    let UsersData: any[] = [];
+
+    const updateCount = () => {
+      const uids = new Set<string>();
+      usersData.forEach((d) => uids.add(d.id));
+      UsersData.forEach((d) => uids.add(d.id));
+      setTotalEmployees(uids.size);
+    };
+
+    // Count total employees from both collections side-by-side to avoid leaks
+    const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
+      usersData = snap.docs;
+      updateCount();
     });
 
-    return () => unsub1();
+    const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
+      UsersData = snap.docs;
+      updateCount();
+    });
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
   }, []);
 
   useEffect(() => {
@@ -59,17 +73,17 @@ export default function TopStats() {
 
   const stats = isAdminOrHR
     ? [
-        { title: "Total Employees", value: totalEmployees.toString(), subtitle: "Active", icon: Users, color: "text-blue-600", bg: "bg-blue-100/50", accent: "bg-blue-500" },
-        { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
-        { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
-        { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
-      ]
+      { title: "Total Employees", value: totalEmployees.toString(), subtitle: "Active", icon: Users, color: "text-blue-600", bg: "bg-blue-100/50", accent: "bg-blue-500" },
+      { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
+      { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
+      { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
+    ]
     : [
-        { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
-        { title: "Working Hours", value: workingHrs, subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
-        { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
-        { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
-      ];
+      { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
+      { title: "Working Hours", value: workingHrs, subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
+      { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
+      { title: "Salary Status", value: "Pending", subtitle: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }), icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
+    ];
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">

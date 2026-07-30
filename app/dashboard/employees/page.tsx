@@ -66,7 +66,7 @@ export default function EmployeesPage() {
 
   const handleExportCSV = () => {
     const rows = filteredEmployees.filter((e: any) => selectedIds.size === 0 || selectedIds.has(e.uid));
-    const csv = ["Name,Employee ID,Department,Designation", ...rows.map((e: any) => `"${e.name}","${e.id}","${e.department}","${e.designation}"`)].join("\n");
+    const csv = ["Name,Employee ID,Department,Job Role,Designation", ...rows.map((e: any) => `"${e.name}","${e.id}","${e.department}","${e.jobRole}","${e.designation}"`)].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -97,7 +97,8 @@ export default function EmployeesPage() {
           id: data.employeeId || "N/A",
           name: data.fullName || "Unnamed",
           department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          designation: data.designation || "N/A",
+          jobRole: data.jobRole || "N/A",
+          designation: data.designation || "Employee",
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
         });
       });
@@ -115,7 +116,8 @@ export default function EmployeesPage() {
           id: data.employeeId || "N/A",
           name: data.fullName || "Unnamed",
           department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          designation: data.designation || "N/A",
+          jobRole: data.jobRole || "N/A",
+          designation: data.designation || "Employee",
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
         });
       });
@@ -139,7 +141,7 @@ export default function EmployeesPage() {
       const matchesSearch = 
         employee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         employee.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        employee.designation.toLowerCase().includes(searchQuery.toLowerCase());
+        employee.jobRole.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesDepartment = selectedDepartment === "All" || employee.department === selectedDepartment;
       
@@ -262,6 +264,7 @@ export default function EmployeesPage() {
                   <th className="px-6 py-4 font-medium">Employee Name</th>
                   <th className="px-6 py-4 font-medium">Employee ID</th>
                   <th className="px-6 py-4 font-medium">Department</th>
+                  <th className="px-6 py-4 font-medium">Job Role</th>
                   <th className="px-6 py-4 font-medium">Designation</th>
                   {isAdminOrHR && <th className="px-6 py-4 font-medium text-right">Actions</th>}
                 </tr>
@@ -309,6 +312,9 @@ export default function EmployeesPage() {
                         <Badge variant={getDepartmentColor(employee.department) as any} className="font-medium px-2.5 py-0.5">
                           {employee.department}
                         </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {employee.jobRole}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                         {employee.designation}

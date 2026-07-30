@@ -8,22 +8,22 @@ import { useRouter } from "next/navigation";
 import { LogOut, User, Menu, ChevronLeft, Bell } from "lucide-react";
 import { useSidebar } from "@/components/providers/SidebarProvider";
 import {
-  Notification,
-  listenToUserNotifications,
-  markAsRead,
-  markAllAsRead,
+    Notification,
+    listenToUserNotifications,
+    markAsRead,
+    markAllAsRead,
 } from "@/lib/notifications";
 
 const formatRelativeTime = (ts: any) => {
-  if (!ts || !ts.toDate) return "";
-  const diff = Date.now() - ts.toDate().getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+    if (!ts || !ts.toDate) return "";
+    const diff = Date.now() - ts.toDate().getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
 };
 
 export default function Navbar() {
@@ -68,7 +68,7 @@ export default function Navbar() {
     return (
         <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 flex items-center justify-between px-6 sticky top-0 z-50">
             <div className="flex items-center gap-4">
-                <button 
+                <button
                     onClick={toggleSidebar}
                     className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors md:flex"
                     aria-label="Toggle Sidebar"
@@ -77,17 +77,17 @@ export default function Navbar() {
                 </button>
                 <div className="md:hidden flex items-center gap-2">
                     <div className="w-6 h-6 flex items-center justify-center mt-0.5">
-                        <Image 
-                            src="/updated_logo.png" 
-                            alt="Vectra Logo" 
-                            width={48} 
-                            height={48} 
-                            className="object-contain scale-[2.5]" 
+                        <Image
+                            src="/updated_logo.png"
+                            alt="Vectra Logo"
+                            width={48}
+                            height={48}
+                            className="object-contain scale-[2.5]"
                         />
                     </div>
                 </div>
             </div>
-            
+
             <div className="flex items-center gap-4 ml-auto relative">
                 {/* Notification Bell */}
                 <div className="relative">
@@ -149,15 +149,15 @@ export default function Navbar() {
                         {profile?.role || "Employee"}
                     </span>
                 </div>
-                
+
                 <div className="relative">
-                    <button 
+                    <button
                         onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
                         className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white border border-slate-100 hover:ring-blue-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     >
                         {initials}
                     </button>
-                    
+
                     {showProfile && (
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
@@ -172,7 +172,7 @@ export default function Navbar() {
                                         {profile?.role || "Employee"}
                                     </span>
                                 </div>
-                                
+
                                 <div className="space-y-3 mb-4">
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Department</p>
@@ -183,8 +183,8 @@ export default function Navbar() {
                                         <p className="text-sm font-semibold text-slate-700">{profile?.employeeId || "N/A"}</p>
                                     </div>
                                 </div>
-                                
-                                <button 
+
+                                <button
                                     onClick={handleLogout}
                                     className="w-full flex items-center justify-center gap-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl transition-colors"
                                 >
@@ -195,10 +195,10 @@ export default function Navbar() {
                         </>
                     )}
                 </div>
-                
+
                 <div className="h-8 w-px bg-slate-200 mx-1 hidden sm:block"></div>
-                
-                <button 
+
+                <button
                     onClick={handleLogout}
                     className="hidden sm:flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-red-600 bg-white border border-slate-200 hover:border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] transition-all"
                 >

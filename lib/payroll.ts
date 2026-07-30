@@ -26,7 +26,7 @@ export interface PayrollRecord {
   userId: string;
   employeeName: string;
   employeeId?: string;
-  designation?: string;
+  jobRole?: string;
   department?: string;
   dateOfJoining?: string;
   bankName?: string;
@@ -131,7 +131,7 @@ export const generatePayroll = async (
   lopDays: number, 
   daysInMonth: number,
   employeeId?: string,
-  designation?: string,
+  jobRole?: string,
   department?: string,
   dateOfJoining?: string,
   bankName?: string,
@@ -170,7 +170,7 @@ export const generatePayroll = async (
     userId,
     employeeName,
     employeeId: employeeId || "",
-    designation: designation || "",
+    jobRole: jobRole || "",
     department: department || "",
     dateOfJoining: dateOfJoining || "",
     bankName: bankName || "",

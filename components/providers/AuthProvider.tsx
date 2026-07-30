@@ -11,9 +11,9 @@ export interface UserProfile {
     email: string;
     role: string;
     status?: string;
-    designation?: string;
+    jobRole?: string;
     employeeId?: string;
-    employmentType?: string;
+    designation?: string;
     department?: string;
 }
 

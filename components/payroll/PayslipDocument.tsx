@@ -197,8 +197,8 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
                   <tr>
                     <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', backgroundColor: '#f2f2f2' }}>Employee Name</td>
                     <td style={{ border: '1px solid #000000', padding: '6px 10px', width: '25%', color: '#000000' }}>{payroll.employeeName}</td>
-                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', backgroundColor: '#f2f2f2' }}>Designation</td>
-                    <td style={{ border: '1px solid #000000', padding: '6px 10px', width: '25%', color: '#000000' }}>{payroll.designation || ""}</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', backgroundColor: '#f2f2f2' }}>Job Role</td>
+                    <td style={{ border: '1px solid #000000', padding: '6px 10px', width: '25%', color: '#000000' }}>{payroll.jobRole || ""}</td>
                   </tr>
                   <tr>
                     <td style={{ border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, color: '#000000', backgroundColor: '#f2f2f2' }}>Employee ID</td>

@@ -32,9 +32,9 @@ interface EmployeeData {
   fullName: string;
   email: string;
   role: string;
-  designation?: string;
+  jobRole?: string;
   employeeId?: string;
-  employmentType?: string;
+  designation?: string;
   department?: string;
   phone?: string;
   status?: string;
@@ -195,8 +195,8 @@ export default function EmployeeProfilePage() {
     { label: "Email", value: employee.email, icon: Mail },
     { label: "Employee ID", value: employee.employeeId || "N/A", icon: Hash },
     { label: "Department", value: employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role || "General"), icon: Building2 },
-    { label: "Designation", value: employee.designation || "N/A", icon: Briefcase },
-    { label: "Employment Type", value: employee.employmentType || "Full-Time", icon: Clock },
+    { label: "Job Role", value: employee.jobRole || "N/A", icon: Briefcase },
+    { label: "Designation", value: employee.designation || "Employee", icon: Clock },
   ];
 
   return (
@@ -223,7 +223,7 @@ export default function EmployeeProfilePage() {
               </div>
               <div className="flex-1">
                 <h1 className="text-2xl font-black text-white tracking-tight">{employee.fullName}</h1>
-                <p className="text-slate-300 text-sm font-medium mt-1">{employee.designation || "Employee"} · {employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role)}</p>
+                <p className="text-slate-300 text-sm font-medium mt-1">{employee.jobRole || "Employee"} · {employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role)}</p>
                 <div className="flex items-center gap-2 mt-3">
                   <Badge className="bg-white/15 text-white border-white/20 backdrop-blur-sm font-semibold text-[10px]">
                     {employee.employeeId || "N/A"}
