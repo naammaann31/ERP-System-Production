@@ -78,7 +78,7 @@ export const listenToEmployeeOnboarding = (
       return aTime - bTime;
     });
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };
 
 export const listenToAllOnboarding = (
@@ -92,5 +92,5 @@ export const listenToAllOnboarding = (
       records.push({ id: d.id, ...d.data() } as OnboardingTask);
     });
     callback(records);
-  });
+  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
 };

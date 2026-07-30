@@ -208,15 +208,15 @@ export default function EmployeeProfilePage() {
     >
       {/* Back button */}
       <motion.div variants={itemVariants}>
-        <Button variant="outline" onClick={() => router.back()} className="gap-2 rounded-xl border-slate-200 hover:bg-slate-50">
+        <button onClick={() => router.push('/dashboard/employees')} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
           <ArrowLeft className="h-4 w-4" /> Back to Employees
-        </Button>
+        </button>
       </motion.div>
 
       {/* Profile Header */}
       <motion.div variants={itemVariants}>
         <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden">
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-8">
+          <div className="bg-gradient-to-br from-indigo-800 via-blue-700 to-violet-800 px-6 py-8">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-5">
               <div className="h-20 w-20 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white font-black text-2xl border border-white/20 shadow-lg">
                 {initials}

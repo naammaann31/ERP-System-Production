@@ -59,6 +59,7 @@ export default function PayrollPage() {
 }
 
 function HRPayrollDashboard() {
+  const { profile } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -82,7 +83,7 @@ function HRPayrollDashboard() {
   
   const [dateOfJoining, setDateOfJoining] = useState("");
   const [bankName, setBankName] = useState("");
-  const [division, setDivision] = useState("");
+  const [division, setDivision] = useState("Vectra Staffing");
   const [incentives, setIncentives] = useState<number>(0);
   const [professionalTax, setProfessionalTax] = useState<number>(200);
   const [incomeTax, setIncomeTax] = useState<number>(0);
@@ -93,6 +94,8 @@ function HRPayrollDashboard() {
   const [allPayrolls, setAllPayrolls] = useState<PayrollRecord[]>([]);
 
   useEffect(() => {
+    if (!profile) return;
+
     let emps1: any[] = [];
     let emps2: any[] = [];
     let loaded1 = false;
@@ -145,7 +148,7 @@ function HRPayrollDashboard() {
       unsubscribe1();
       unsubscribe2();
     };
-  }, []);
+  }, [profile]);
 
   useEffect(() => {
     getAllPayrolls().then(setAllPayrolls);
@@ -171,10 +174,9 @@ function HRPayrollDashboard() {
   
       let lopTotal = 0;
       
-      // Limits based on leave types
       const limits: Record<string, number> = {
           "Paid Leave (PL)": 12,
-          "Casual Leave": 6,
+          "Casual Leave": 12,
           "Sick Leave": 0
       };
   
@@ -232,7 +234,7 @@ function HRPayrollDashboard() {
     await saveSalaryStructure(selectedEmployee.uid, {
       grossSalary,
       travelAllowance,
-      otherAllowances,
+      otherAllowances: 0,
       otherDeductions
     });
     setIsConfigModalOpen(false);
@@ -247,10 +249,11 @@ function HRPayrollDashboard() {
       return;
     }
     setSalaryStructure(struct);
-    setDaysInMonth(30);
+    const days = new Date(year, month, 0).getDate();
+    setDaysInMonth(days);
     setDateOfJoining("");
     setBankName("");
-    setDivision("");
+    setDivision("Vectra Staffing");
     setIncentives(0);
     setProfessionalTax(200);
     setIncomeTax(0);
@@ -310,33 +313,65 @@ function HRPayrollDashboard() {
               {loading ? (
                 <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
               ) : (
-                employees.map(emp => (
-                  <tr key={emp.uid} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-900">
-                      {emp.name}
-                      <span className="block text-xs font-normal text-slate-500">{emp.id}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge variant="secondary" className="font-medium text-[10px]">{emp.department}</Badge>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => openConfigModal(emp)}
-                          className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5"
-                        >
-                          <Edit className="w-3.5 h-3.5 text-slate-500" /> Configure Salary
-                        </button>
-                        <button 
-                          onClick={() => openGenerateModal(emp)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5"
-                        >
-                          <FileText className="w-3.5 h-3.5" /> Generate Payroll
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                (() => {
+                  const currentMonth = new Date().getMonth() + 1;
+                  const currentYear = new Date().getFullYear();
+                  const currentMonthName = new Date().toLocaleString('default', { month: 'short' });
+
+                  return employees.map(emp => {
+                    const hasPayrollThisMonth = allPayrolls.some(
+                      pr => pr.userId === emp.uid && pr.month === currentMonth && pr.year === currentYear
+                    );
+
+                    return (
+                      <tr key={emp.uid} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-slate-900">
+                          <div className="flex items-center gap-2">
+                            <span>{emp.name}</span>
+                            {hasPayrollThisMonth ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold py-0.5">
+                                Paid ({currentMonthName})
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold py-0.5">
+                                Pending
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="block text-xs font-normal text-slate-500">{emp.id}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant="secondary" className="font-medium text-[10px]">{emp.department}</Badge>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => openConfigModal(emp)}
+                              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-slate-500" /> Configure Salary
+                            </button>
+                            {hasPayrollThisMonth ? (
+                              <button 
+                                onClick={() => openGenerateModal(emp)}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-slate-500" /> Regenerate
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => openGenerateModal(emp)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5"
+                              >
+                                <FileText className="w-3.5 h-3.5" /> Generate Payroll
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
               )}
             </tbody>
           </table>
@@ -410,10 +445,6 @@ function HRPayrollDashboard() {
                   <input type="number" value={3000} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 cursor-not-allowed transition-all" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Other Allowances (₹)</label>
-                  <input type="number" value={otherAllowances || ''} onChange={e => setOtherAllowances(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
-                </div>
-                <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Other Deductions (₹)</label>
                   <input type="number" value={otherDeductions || ''} onChange={e => setOtherDeductions(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
                 </div>
@@ -426,7 +457,7 @@ function HRPayrollDashboard() {
                   <div className="flex justify-between text-sm"><span className="text-slate-500">HRA (20%)</span><span className="font-bold text-slate-700">₹{preview.hra.toLocaleString()}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-slate-500">Travel</span><span className="font-bold text-slate-700">₹{preview.travelAllowance.toLocaleString()}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-slate-500">Special</span><span className="font-bold text-slate-700">₹{preview.specialAllowance.toLocaleString()}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">Other All.</span><span className="font-bold text-slate-700">₹{preview.otherAllowances.toLocaleString()}</span></div>
+
                   <div className="border-t border-slate-200 my-2 pt-2 flex justify-between font-bold text-slate-900">
                     <span>Total Earnings</span><span>₹{preview.totalEarnings.toLocaleString()}</span>
                   </div>
@@ -494,7 +525,15 @@ function HRPayrollDashboard() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Division</label>
-                  <input type="text" value={division} onChange={(e) => setDivision(e.target.value)} placeholder="e.g. Vectra Staffing" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all" />
+                  <select 
+                    value={division} 
+                    onChange={(e) => setDivision(e.target.value)} 
+                    className="w-full h-[42px] bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%25234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[size:1.25rem] bg-[position:right_0.75rem_center] bg-no-repeat pr-10"
+                  >
+                    <option value="Vectra Staffing">Vectra Staffing</option>
+                    <option value="Vectra Immigration">Vectra Immigration</option>
+                    <option value="Vectra Group">Vectra Group</option>
+                  </select>
                 </div>
               </div>
 
@@ -556,7 +595,7 @@ function EmployeePayrollDashboard() {
 
   useEffect(() => {
     if (profile?.uid) {
-      getEmployeePayrolls(profile.uid).then(setPayrolls);
+      getEmployeePayrolls(profile.uid, profile.fullName, profile.employeeId).then(setPayrolls);
     }
   }, [profile]);
 

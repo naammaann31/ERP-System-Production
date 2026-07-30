@@ -103,9 +103,9 @@ function LeaveCalendar({ leaves, isHR }: { leaves: LeaveRequest[]; isHR: boolean
               <div
                 key={day}
                 className={`h-20 rounded-lg border p-1.5 transition-colors ${isToday(day) ? "border-slate-900 bg-slate-50" :
-                    hasApproved ? "border-emerald-200 bg-emerald-50/50" :
-                      hasPending ? "border-amber-200 bg-amber-50/50" :
-                        "border-slate-100 hover:bg-slate-50"
+                  hasApproved ? "border-emerald-200 bg-emerald-50/50" :
+                    hasPending ? "border-amber-200 bg-amber-50/50" :
+                      "border-slate-100 hover:bg-slate-50"
                   }`}
               >
                 <div className={`text-xs font-bold mb-1 ${isToday(day) ? "text-slate-900" : "text-slate-600"}`}>{day}</div>
@@ -114,10 +114,10 @@ function LeaveCalendar({ leaves, isHR }: { leaves: LeaveRequest[]; isHR: boolean
                     <div
                       key={idx}
                       className={`text-[8px] font-semibold px-1 py-0.5 rounded truncate ${l.status === "Approved"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : l.status === "Pending"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-600"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : l.status === "Pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-red-100 text-red-600"
                         }`}
                     >
                       {l.name}
@@ -154,17 +154,19 @@ function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: { isOpen: 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [isHalfDay, setIsHalfDay] = useState(false);
 
   const leaveOptions = ["Paid Leave (PL)", "Casual Leave", "Sick Leave"];
-  const days = calcDays(startDate, endDate);
+  const days = isHalfDay ? 0.5 : calcDays(startDate, endDate);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (days <= 0) return;
-    onSubmit({ leaveType, startDate, endDate, days, reason });
+    onSubmit({ leaveType, startDate, endDate: isHalfDay ? startDate : endDate, days, reason });
     setStartDate("");
     setEndDate("");
     setReason("");
+    setIsHalfDay(false);
   };
 
   if (!isOpen) return null;
@@ -212,8 +214,8 @@ function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: { isOpen: 
                         setIsDropdownOpen(false);
                       }}
                       className={`px-4 py-3 text-sm font-semibold cursor-pointer transition-colors ${leaveType === option
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                         }`}
                     >
                       {option}
@@ -231,7 +233,10 @@ function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: { isOpen: 
                 type="date"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all uppercase"
                 value={startDate}
-                onChange={(e) => { setStartDate(e.target.value); if (!endDate || e.target.value > endDate) setEndDate(e.target.value); }}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  if (isHalfDay || !endDate || e.target.value > endDate) setEndDate(e.target.value);
+                }}
                 required
               />
             </div>
@@ -239,13 +244,32 @@ function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: { isOpen: 
               <label className="block text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">End Date</label>
               <input
                 type="date"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all uppercase"
-                value={endDate}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+                value={isHalfDay ? startDate : endDate}
                 min={startDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                required
+                disabled={isHalfDay}
+                required={!isHalfDay}
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="halfDay"
+              checked={isHalfDay}
+              onChange={(e) => {
+                setIsHalfDay(e.target.checked);
+                if (e.target.checked && startDate) {
+                  setEndDate(startDate);
+                }
+              }}
+              className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+            />
+            <label htmlFor="halfDay" className="text-xs font-bold text-slate-600 cursor-pointer select-none">
+              Apply for Half Day
+            </label>
           </div>
 
           {days > 0 && (
@@ -286,7 +310,7 @@ function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: { isOpen: 
 
 const initialLeaveBalances = [
   { type: "Paid Leave (PL)", total: 12, used: 0, pending: 0, icon: Calendar, color: "text-blue-500", bg: "bg-blue-50" },
-  { type: "Casual Leave", total: 6, used: 0, pending: 0, icon: Clock, color: "text-orange-500", bg: "bg-orange-50" },
+  { type: "Casual Leave", total: 12, used: 0, pending: 0, icon: Clock, color: "text-orange-500", bg: "bg-orange-50" },
 ];
 
 function EmployeeLeaveDashboard() {
@@ -487,7 +511,9 @@ function HRLeaveDashboard() {
     setLoading(true);
     const unsubscribe = listenToAllLeaves((fetched) => {
       const filtered = fetched.filter(req => {
-        if (profile?.role === "HR" && (req.role === "HR" || req.role === "Admin")) {
+        const myRole = profile?.role?.toUpperCase();
+        const reqRole = req.role?.toUpperCase();
+        if (myRole === "HR" && (reqRole === "HR" || reqRole === "ADMIN" || reqRole === "OPS_HR")) {
           return false;
         }
         return true;
@@ -677,7 +703,10 @@ function HRLeaveDashboard() {
 export default function LeavePage() {
   const { profile } = useAuth();
 
-  if (profile?.role === "HR" || profile?.role === "Admin") {
+  const role = profile?.role?.toUpperCase();
+  const isAdminOrHR = role === "ADMIN" || role === "HR" || role === "OPS_HR";
+
+  if (isAdminOrHR) {
     return <HRLeaveDashboard />;
   }
 
