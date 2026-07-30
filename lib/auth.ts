@@ -75,8 +75,8 @@ export async function registerEmployee(
     email: string,
     role: string,
     password: string,
-    designation: string,
-    employmentType: string
+    jobRole: string,
+    designation: string
 ): Promise<{ user?: User; error?: string }> {
     try {
         // 1. Create user in Firebase Authentication
@@ -91,8 +91,8 @@ export async function registerEmployee(
             employeeId: employeeId.trim(),
             email: email.trim().toLowerCase(),
             role: role,
-            designation: designation.trim(),
-            employmentType: employmentType,
+            jobRole: jobRole.trim(),
+            designation: designation,
             createdAt: serverTimestamp(),
         });
 
@@ -130,8 +130,8 @@ export async function registerEmployeeByAdmin(
     email: string,
     role: string,
     password: string,
-    designation: string,
-    employmentType: string
+    jobRole: string,
+    designation: string
 ): Promise<{ user?: User; error?: string }> {
     try {
         // Initialize a secondary app so we don't log out the current Admin
@@ -150,8 +150,8 @@ export async function registerEmployeeByAdmin(
             employeeId: employeeId.trim(),
             email: email.trim().toLowerCase(),
             role: role,
-            designation: designation.trim(),
-            employmentType: employmentType,
+            jobRole: jobRole.trim(),
+            designation: designation,
             createdAt: serverTimestamp(),
         });
 

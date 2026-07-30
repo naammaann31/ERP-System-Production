@@ -23,10 +23,10 @@ export default function WelcomeHeader() {
   else if (hour < 17) greeting = "Good afternoon";
 
   // Dynamic and contextual user data
-  const designation = profile?.designation || profile?.role || "Employee";
+  const jobRole = profile?.jobRole || profile?.role || "Employee";
   const employeeId = profile?.employeeId || "EMP-2026-419";
   const currentShift = "US Shift (09:00 AM - 06:00 PM EST)";
-  const employmentStatus = profile?.employmentType || "Full-Time";
+  const employmentStatus = profile?.designation || "Employee";
 
   return (
     <motion.div
@@ -46,7 +46,7 @@ export default function WelcomeHeader() {
             {greeting}, {profile?.fullName?.split(' ')[0] || "Team Member"}! <span className="text-lg">👋</span>
           </h1>
           <p className="text-slate-500 font-medium text-xs">
-            {designation} &middot; {employeeId}
+            {jobRole} &middot; {employeeId}
           </p>
 
         </div>

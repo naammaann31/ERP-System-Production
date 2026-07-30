@@ -28,7 +28,7 @@ interface Employee {
   id: string;
   name: string;
   department: string;
-  designation: string;
+  jobRole: string;
 }
 
 export default function PayrollPage() {
@@ -118,7 +118,7 @@ function HRPayrollDashboard() {
           id: data.employeeId || "N/A",
           name: data.fullName || "Unnamed",
           department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          designation: data.designation || "N/A",
+          jobRole: data.jobRole || "N/A",
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
         });
       });
@@ -136,7 +136,7 @@ function HRPayrollDashboard() {
           id: data.employeeId || "N/A",
           name: data.fullName || "Unnamed",
           department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          designation: data.designation || "N/A",
+          jobRole: data.jobRole || "N/A",
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
         });
       });
@@ -274,7 +274,7 @@ function HRPayrollDashboard() {
         lopDays,
         daysInMonth,
         selectedEmployee.id,
-        selectedEmployee.designation,
+        selectedEmployee.jobRole,
         selectedEmployee.department,
         dateOfJoining,
         bankName,

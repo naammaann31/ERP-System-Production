@@ -43,13 +43,14 @@ export default function AnnouncementsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!profile) return;
     setLoading(true);
     const unsubscribe = listenToAnnouncements((records) => {
       setAnnouncements(records);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [profile]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
