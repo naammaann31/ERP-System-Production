@@ -21,24 +21,24 @@ export default function TopStats() {
   useEffect(() => {
     if (!profile || !isAdminOrHR) return;
 
-    // Count total employees
-    let snap1Docs: any[] = [];
-    let snap2Docs: any[] = [];
-    
+    let usersData: any[] = [];
+    let UsersData: any[] = [];
+
     const updateCount = () => {
       const uids = new Set<string>();
-      snap1Docs.forEach((d) => uids.add(d.id));
-      snap2Docs.forEach((d) => uids.add(d.id));
+      usersData.forEach((d) => uids.add(d.id));
+      UsersData.forEach((d) => uids.add(d.id));
       setTotalEmployees(uids.size);
     };
 
+    // Count total employees from both collections side-by-side to avoid leaks
     const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
-      snap1Docs = snap.docs;
+      usersData = snap.docs;
       updateCount();
     });
 
     const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
-      snap2Docs = snap.docs;
+      UsersData = snap.docs;
       updateCount();
     });
 
@@ -68,7 +68,7 @@ export default function TopStats() {
       const plUsed = leaves.filter((l) => l.leaveType === "Paid Leave (PL)" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const clUsed = leaves.filter((l) => l.leaveType === "Casual Leave" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const totalUsed = plUsed + clUsed;
-      const totalAvailable = 24 - totalUsed; // 12 PL + 12 CL = 24 total
+      const totalAvailable = 18 - totalUsed; // 12 PL + 6 CL = 18 total
       setLeaveBalance(totalAvailable.toString());
     });
   }, [profile]);
