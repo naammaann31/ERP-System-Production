@@ -21,31 +21,11 @@ export default function TopStats() {
   useEffect(() => {
     if (!profile || !isAdminOrHR) return;
 
-    let usersData: any[] = [];
-    let UsersData: any[] = [];
-
-    const updateCount = () => {
-      const uids = new Set<string>();
-      usersData.forEach((d) => uids.add(d.id));
-      UsersData.forEach((d) => uids.add(d.id));
-      setTotalEmployees(uids.size);
-    };
-
-    // Count total employees from both collections side-by-side to avoid leaks
-    const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
-      usersData = snap.docs;
-      updateCount();
+    const unsub = onSnapshot(collection(db, "users"), (snap) => {
+      setTotalEmployees(snap.size);
     });
 
-    const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
-      UsersData = snap.docs;
-      updateCount();
-    });
-
-    return () => {
-      unsub1();
-      unsub2();
-    };
+    return () => unsub();
   }, [profile, isAdminOrHR]);
 
   useEffect(() => {

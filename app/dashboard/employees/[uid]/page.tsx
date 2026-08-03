@@ -87,16 +87,11 @@ export default function EmployeeProfilePage() {
     const fetchAll = async () => {
       setLoading(true);
 
-      // Fetch employee data from both collections
+      // Fetch employee data from 'users' collection
       let empData: EmployeeData | null = null;
-      let docSnap = await getDoc(doc(db, "users", uid));
+      const docSnap = await getDoc(doc(db, "users", uid));
       if (docSnap.exists()) {
         empData = { uid, ...docSnap.data() } as EmployeeData;
-      } else {
-        docSnap = await getDoc(doc(db, "Users", uid));
-        if (docSnap.exists()) {
-          empData = { uid, ...docSnap.data() } as EmployeeData;
-        }
       }
       setEmployee(empData);
 

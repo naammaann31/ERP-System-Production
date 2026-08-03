@@ -45,7 +45,7 @@ export async function registerAdmin(
 
         // 2. Store additional user details in Firestore
         // Document ID is set to the Firebase Auth UID
-        await setDoc(doc(db, "Users", user.uid), {
+        await setDoc(doc(db, "users", user.uid), {
             uid: user.uid,
             fullName: fullName.trim(),
             email: email.trim().toLowerCase(),

@@ -1,18 +1,48 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { toast } from "sonner";
+
+const checkUnauthorized = (pathname: string, role: string = "Employee"): boolean => {
+    const isAdmin = role === "Admin";
+    const isAdminOrHR = isAdmin || role === "HR" || role === "OPS_HR";
+
+    if (pathname.startsWith("/dashboard/employees") && !isAdminOrHR) {
+        return true;
+    }
+    if (pathname.startsWith("/dashboard/departments") && !isAdmin) {
+        return true;
+    }
+    return false;
+};
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const { user, profile, loading } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
+    const hasToastedRef = useRef(false);
+
+    const unauthorized = !loading && !!profile && checkUnauthorized(pathname, profile.role);
 
     useEffect(() => {
         if (!loading && (!user || !profile)) {
             router.push("/login");
+            return;
         }
-    }, [user, profile, loading, router]);
+        if (unauthorized) {
+            if (!hasToastedRef.current) {
+                hasToastedRef.current = true;
+                toast.error("Unauthorized Access", {
+                    description: "You do not have permission to view this page."
+                });
+            }
+            router.replace("/dashboard");
+        } else {
+            hasToastedRef.current = false;
+        }
+    }, [user, profile, loading, router, unauthorized, pathname]);
 
     if (loading) {
         return (
@@ -28,7 +58,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
         );
     }
 
-    if (!user || !profile) {
+    if (!user || !profile || unauthorized) {
         return null;
     }
 

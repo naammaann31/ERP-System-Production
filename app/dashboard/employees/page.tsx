@@ -87,24 +87,12 @@ export default function EmployeesPage() {
   useEffect(() => {
     if (!profile) return;
 
-    let emps1: any[] = [];
-    let emps2: any[] = [];
-    let loaded1 = false;
-    let loaded2 = false;
-
-    const updateEmployees = () => {
-      const combined = [...emps1, ...emps2].filter((v, i, a) => a.findIndex(t => (t.uid === v.uid)) === i);
-      combined.sort((a, b) => b.createdAt - a.createdAt);
-      setEmployees(combined);
-      if (loaded1 && loaded2) setLoading(false);
-    };
-
-    const q1 = collection(db, "users");
-    const unsubscribe1 = onSnapshot(q1, (snapshot) => {
-      emps1 = [];
+    const q = collection(db, "users");
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const emps: any[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        emps1.push({
+        emps.push({
           uid: doc.id,
           id: data.employeeId || "N/A",
           name: data.fullName || "Unnamed",
@@ -114,33 +102,12 @@ export default function EmployeesPage() {
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
         });
       });
-      loaded1 = true;
-      updateEmployees();
-    });
-
-    const q2 = collection(db, "Users");
-    const unsubscribe2 = onSnapshot(q2, (snapshot) => {
-      emps2 = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        emps2.push({
-          uid: doc.id,
-          id: data.employeeId || "N/A",
-          name: data.fullName || "Unnamed",
-          department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          jobRole: data.jobRole || "N/A",
-          designation: data.designation || "Employee",
-          createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
-        });
-      });
-      loaded2 = true;
-      updateEmployees();
+      emps.sort((a, b) => b.createdAt - a.createdAt);
+      setEmployees(emps);
+      setLoading(false);
     });
     
-    return () => {
-      unsubscribe1();
-      unsubscribe2();
-    };
+    return () => unsubscribe();
   }, [profile]);
 
   const departments = useMemo(() => {

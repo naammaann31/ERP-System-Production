@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 export interface UserProfile {
@@ -42,18 +42,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             
             if (firebaseUser) {
                 try {
-                    // Check 'users' collection first (lowercase used by employees)
-                    let docRef = doc(db, "users", firebaseUser.uid);
+                    const docRef = doc(db, "users", firebaseUser.uid);
                     let docSnap = await getDoc(docRef);
 
+                    // If not found in 'users', check legacy 'Users' table and auto-migrate
                     if (!docSnap.exists()) {
-                        // Fallback to 'Users' collection (capitalized used by admins originally)
-                        docRef = doc(db, "Users", firebaseUser.uid);
-                        docSnap = await getDoc(docRef);
+                        const legacyRef = doc(db, "Users", firebaseUser.uid);
+                        const legacySnap = await getDoc(legacyRef);
+                        if (legacySnap.exists()) {
+                            const data = legacySnap.data();
+                            // Copy to standard 'users' collection and remove legacy document
+                            await setDoc(docRef, data);
+                            await deleteDoc(legacyRef).catch(() => {});
+                            docSnap = await getDoc(docRef);
+                        }
                     }
 
                     if (docSnap.exists()) {
-                        setProfile({ uid: firebaseUser.uid, ...docSnap.data() } as UserProfile);
+                        const profileData = { uid: firebaseUser.uid, ...docSnap.data() } as UserProfile;
+                        setProfile(profileData);
+
+                        // If Admin or HR is logged in, perform a background sweep to migrate all remaining legacy docs from 'Users' to 'users'
+                        if (["Admin", "HR", "OPS_HR"].includes(profileData.role)) {
+                            getDocs(collection(db, "Users")).then(async (usersSnap) => {
+                                for (const uDoc of usersSnap.docs) {
+                                    try {
+                                        await setDoc(doc(db, "users", uDoc.id), uDoc.data());
+                                        await deleteDoc(doc(db, "Users", uDoc.id));
+                                    } catch (err) {
+                                        console.error("Auto-migration error for user", uDoc.id, err);
+                                    }
+                                }
+                            }).catch(() => {});
+                        }
                     } else {
                         setProfile(null);
                     }

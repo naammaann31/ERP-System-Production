@@ -51,23 +51,10 @@ export default function DocumentsPage() {
   // Fetch all employees for Admin/HR
   useEffect(() => {
     if (isAdminOrHR) {
-      let emps1: any[] = [];
-      let emps2: any[] = [];
-      
-      const updateEmps = () => {
-        const combined = [...emps1, ...emps2].filter((v, i, a) => a.findIndex(t => (t.uid === v.uid)) === i);
-        setEmployees(combined);
-      };
-      
-      const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
-        emps1 = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-        updateEmps();
+      const unsub = onSnapshot(collection(db, "users"), (snap) => {
+        setEmployees(snap.docs.map(d => ({ uid: d.id, ...d.data() })));
       });
-      const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
-        emps2 = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-        updateEmps();
-      });
-      return () => { unsub1(); unsub2(); };
+      return () => unsub();
     }
   }, [isAdminOrHR]);
 
@@ -83,10 +70,7 @@ export default function DocumentsPage() {
         return;
       }
       try {
-        let docSnap = await getDoc(doc(db, "users", uidToFetch));
-        if (!docSnap.exists()) {
-          docSnap = await getDoc(doc(db, "Users", uidToFetch));
-        }
+        const docSnap = await getDoc(doc(db, "users", uidToFetch));
         if (docSnap.exists()) {
           const data = docSnap.data();
           setAadhar(data.aadhar || "");
@@ -132,11 +116,7 @@ export default function DocumentsPage() {
 
     setSavingDetails(true);
     try {
-      let docRef = doc(db, "users", uidToSave);
-      let docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
-        docRef = doc(db, "Users", uidToSave);
-      }
+      const docRef = doc(db, "users", uidToSave);
       await updateDoc(docRef, {
         aadhar,
         pan,

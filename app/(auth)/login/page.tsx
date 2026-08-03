@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getFirebaseErrorMessage } from "@/lib/auth";
+import { useAuth } from "@/components/providers/AuthProvider";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
@@ -12,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 export default function LoginPage() {
+    const { user, loading: authLoading } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -21,7 +23,14 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const router = useRouter();
 
+    useEffect(() => {
+        if (!authLoading && user) {
+            router.replace("/dashboard");
+        }
+    }, [user, authLoading, router]);
+
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+        if (user && !authLoading) return;
         e.preventDefault();
         setLoading(true);
         setError("");

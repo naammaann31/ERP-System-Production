@@ -60,18 +60,11 @@ function HRDepartmentsDashboard() {
   const [stats, setStats] = useState<Record<string, { count: number, manager: string }>>({});
 
   useEffect(() => {
-    let emps1: any[] = [];
-    let emps2: any[] = [];
-    let loaded1 = false;
-    let loaded2 = false;
-
-    const processData = () => {
-      if (!loaded1 || !loaded2) return;
-      const combined = [...emps1, ...emps2].filter((v, i, a) => a.findIndex(t => (t.uid === v.uid)) === i);
-      
+    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+      const emps = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
       const newStats: Record<string, { count: number, manager: string }> = {};
       
-      combined.forEach(emp => {
+      emps.forEach((emp: any) => {
         const role = emp.role || "Employee";
         if (!newStats[role]) {
           newStats[role] = { count: 0, manager: "Pending Assignment" };
@@ -87,24 +80,9 @@ function HRDepartmentsDashboard() {
       });
       
       setStats(newStats);
-    };
-
-    const unsubscribe1 = onSnapshot(collection(db, "users"), (snapshot) => {
-      emps1 = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-      loaded1 = true;
-      processData();
     });
 
-    const unsubscribe2 = onSnapshot(collection(db, "Users"), (snapshot) => {
-      emps2 = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-      loaded2 = true;
-      processData();
-    });
-
-    return () => {
-      unsubscribe1();
-      unsubscribe2();
-    };
+    return () => unsubscribe();
   }, []);
 
   const departments = baseDepartments.map(dept => {

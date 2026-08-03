@@ -1,9 +1,135 @@
-rules_version='2'
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ─── Helper Functions ───────────────────────────────────────
+    function getUserRole() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : (exists(/databases/$(database)/documents/Users/$(request.auth.uid))
+          ? get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role
+          : 'Employee');
     }
+
+    function isAdmin() {
+      return getUserRole() == 'Admin';
+    }
+
+    function isAdminOrHR() {
+      return getUserRole() in ['Admin', 'HR', 'OPS_HR'];
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+
+    // ─── User Profiles (lowercase collection) ───────────────────
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId) || isAdminOrHR();
+      allow delete: if isAdminOrHR();
+    }
+
+    // ─── User Profiles (capitalized collection — legacy admins) ─
+    match /Users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId) || isAdminOrHR();
+      allow delete: if isAdminOrHR();
+    }
+
+
+    // ─── Attendance ─────────────────────────────────────────────
+    match /attendance/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdminOrHR());
+      allow delete: if isAdminOrHR();
+    }
+
+
+    // ─── Leave Requests ─────────────────────────────────────────
+    match /leave_requests/{leaveId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAdminOrHR();
+      allow delete: if isAdminOrHR();
+    }
+
+
+    // ─── Salary Structures ──────────────────────────────────────
+    match /salary_structures/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrHR();
+    }
+
+
+    // ─── Payroll Records ────────────────────────────────────────
+    match /payrolls/{payrollId} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrHR();
+    }
+
+
+    // ─── Announcements ──────────────────────────────────────────
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrHR();
+    }
+
+
+    // ─── Documents (uploaded files metadata) ────────────────────
+    match /documents/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn()
+        && (resource.data.uploadedBy == request.auth.uid || isAdminOrHR());
+    }
+
+
+    // ─── Notifications ──────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+
+    // ─── Onboarding Tasks ───────────────────────────────────────
+    match /onboarding_tasks/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isAdminOrHR();
+      allow update: if isSignedIn()
+        && (resource.data.employeeUid == request.auth.uid || isAdminOrHR());
+      allow delete: if isAdminOrHR();
+    }
+
+
+    // ─── Audit Logs ─────────────────────────────────────────────
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+
+    // ─── Sales / Operations Data ────────────────────────────────
+    match /sales/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdminOrHR();
+    }
+
   }
 }

@@ -11,20 +11,11 @@ export interface UserSettings {
 }
 
 export const updateUserProfile = async (uid: string, data: UserSettings) => {
-  // Try 'users' first, fallback to 'Users'
-  const docRef1 = doc(db, "users", uid);
-  const snap1 = await getDoc(docRef1);
+  const docRef = doc(db, "users", uid);
+  const snap = await getDoc(docRef);
 
-  if (snap1.exists()) {
-    await updateDoc(docRef1, { ...data });
-    return;
-  }
-
-  const docRef2 = doc(db, "Users", uid);
-  const snap2 = await getDoc(docRef2);
-
-  if (snap2.exists()) {
-    await updateDoc(docRef2, { ...data });
+  if (snap.exists()) {
+    await updateDoc(docRef, { ...data });
     return;
   }
 
@@ -32,13 +23,8 @@ export const updateUserProfile = async (uid: string, data: UserSettings) => {
 };
 
 export const getUserSettings = async (uid: string): Promise<UserSettings> => {
-  let docRef = doc(db, "users", uid);
-  let snap = await getDoc(docRef);
-
-  if (!snap.exists()) {
-    docRef = doc(db, "Users", uid);
-    snap = await getDoc(docRef);
-  }
+  const docRef = doc(db, "users", uid);
+  const snap = await getDoc(docRef);
 
   if (snap.exists()) {
     const data = snap.data();

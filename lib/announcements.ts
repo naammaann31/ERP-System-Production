@@ -51,11 +51,6 @@ export const createAnnouncement = async (
       const uid = d.data().uid || d.id;
       if (uid && uid !== authorUid) uids.add(uid);
     });
-    const UsersSnap = await getDocs(collection(db, "Users"));
-    UsersSnap.forEach((d) => {
-      const uid = d.data().uid || d.id;
-      if (uid && uid !== authorUid) uids.add(uid);
-    });
 
     const notifPromises = Array.from(uids).map((uid) =>
       createNotification(uid, `New Announcement: ${title}`, "announcement")
