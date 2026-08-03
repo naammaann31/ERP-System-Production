@@ -13,7 +13,7 @@ import {
   deleteDocument,
   listenToDocuments,
 } from "@/lib/documents";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const getDocIcon = (status: string) => {
@@ -33,22 +33,56 @@ export default function DocumentsPage() {
   const [uploadScope, setUploadScope] = useState<"personal" | "company">("personal");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
+  // Employees list for Admin/HR
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
   // Text fields for statutory details
   const [aadhar, setAadhar] = useState("");
   const [pan, setPan] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
   const [bankDetails, setBankDetails] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
+  const [isEditing, setIsEditing] = useState(true);
+
+  // Fetch all employees for Admin/HR
+  useEffect(() => {
+    if (isAdminOrHR) {
+      let emps1: any[] = [];
+      let emps2: any[] = [];
+      
+      const updateEmps = () => {
+        const combined = [...emps1, ...emps2].filter((v, i, a) => a.findIndex(t => (t.uid === v.uid)) === i);
+        setEmployees(combined);
+      };
+      
+      const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
+        emps1 = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+        updateEmps();
+      });
+      const unsub2 = onSnapshot(collection(db, "Users"), (snap) => {
+        emps2 = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+        updateEmps();
+      });
+      return () => { unsub1(); unsub2(); };
+    }
+  }, [isAdminOrHR]);
 
   useEffect(() => {
     if (!profile?.uid) return;
     setLoading(true);
 
+    const uidToFetch = isAdminOrHR ? selectedEmployeeId : profile?.uid;
+    
     const fetchUserDetails = async () => {
+      if (!uidToFetch) {
+        setAadhar(""); setPan(""); setBankAccountName(""); setBankDetails("");
+        return;
+      }
       try {
-        let docSnap = await getDoc(doc(db, "users", profile.uid));
+        let docSnap = await getDoc(doc(db, "users", uidToFetch));
         if (!docSnap.exists()) {
-          docSnap = await getDoc(doc(db, "Users", profile.uid));
+          docSnap = await getDoc(doc(db, "Users", uidToFetch));
         }
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -56,6 +90,14 @@ export default function DocumentsPage() {
           setPan(data.pan || "");
           setBankAccountName(data.bankAccountName || "");
           setBankDetails(data.bankDetails || "");
+          
+          if (data.aadhar || data.pan) {
+            setIsEditing(false);
+          } else {
+            setIsEditing(true);
+          }
+        } else {
+          setIsEditing(true);
         }
       } catch (error) {
         console.error("Error fetching user details:", error);
@@ -69,16 +111,28 @@ export default function DocumentsPage() {
     });
 
     return () => unsubscribe();
-  }, [profile, isAdminOrHR]);
+  }, [profile?.uid, isAdminOrHR, selectedEmployeeId]);
 
   const handleSaveDetails = async () => {
-    if (!profile?.uid) return;
+    const uidToSave = isAdminOrHR ? selectedEmployeeId : profile?.uid;
+    if (!uidToSave) return;
+    
+    // Validation
+    if (aadhar && !/^\d{12}$/.test(aadhar.replace(/\s/g, ''))) {
+      alert("Aadhar Number must be exactly 12 digits.");
+      return;
+    }
+    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(pan)) {
+      alert("Invalid PAN Number format. It should be 10 characters (e.g., ABCDE1234F).");
+      return;
+    }
+
     setSavingDetails(true);
     try {
-      let docRef = doc(db, "users", profile.uid);
+      let docRef = doc(db, "users", uidToSave);
       let docSnap = await getDoc(docRef);
       if (!docSnap.exists()) {
-        docRef = doc(db, "Users", profile.uid);
+        docRef = doc(db, "Users", uidToSave);
       }
       await updateDoc(docRef, {
         aadhar,
@@ -86,10 +140,9 @@ export default function DocumentsPage() {
         bankAccountName,
         bankDetails
       });
-      alert("Details saved successfully!");
+      setIsEditing(false);
     } catch (error) {
       console.error("Error saving details:", error);
-      alert("Failed to save details.");
     }
     setSavingDetails(false);
   };
@@ -126,38 +179,103 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Statutory Details Section */}
-      <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden mb-6">
-        <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-800">Statutory & Bank Details</h2>
-          <p className="text-xs text-slate-500">Please provide your Aadhar, PAN, and Bank details for payroll purposes.</p>
-        </div>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Aadhar Number</label>
-              <input type="text" value={aadhar} onChange={(e) => setAadhar(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter Aadhar Number" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">PAN Number</label>
-              <input type="text" value={pan} onChange={(e) => setPan(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter PAN Number" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Bank Account Name</label>
-              <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Name as per bank" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Bank Details (A/c & IFSC)</label>
-              <input type="text" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Account Number, IFSC" />
-            </div>
+      {isAdminOrHR && !selectedEmployeeId && (
+        <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden mb-6">
+          <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
+            <h2 className="text-lg font-bold text-slate-800">Employees Directory</h2>
+            <p className="text-xs text-slate-500">Select an employee to view their statutory documents.</p>
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button onClick={handleSaveDetails} disabled={savingDetails} className="bg-slate-900 hover:bg-slate-800 text-white">
-              {savingDetails ? "Saving..." : "Save Details"}
-            </Button>
+          <CardContent className="p-0">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+                {employees.map(emp => (
+                   <div key={emp.uid} onClick={() => setSelectedEmployeeId(emp.uid)} className="p-4 border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all">
+                     <p className="font-bold text-slate-800">{emp.fullName || "Unnamed"}</p>
+                     <p className="text-xs text-slate-500">{emp.email}</p>
+                     <p className="text-xs text-slate-400 mt-1">{emp.role === "OPS_HR" ? "HR" : (emp.department || emp.role || "Employee")}</p>
+                   </div>
+                ))}
+             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {(!isAdminOrHR || selectedEmployeeId) && (
+        <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden mb-6">
+          <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex justify-between items-center">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">
+                {isAdminOrHR ? `Statutory & Bank Details: ${employees.find(e => e.uid === selectedEmployeeId)?.fullName}` : "Statutory & Bank Details"}
+              </h2>
+              <p className="text-xs text-slate-500">Please provide Aadhar, PAN, and Bank details for payroll purposes.</p>
+            </div>
+            {isAdminOrHR && (
+              <Button variant="outline" size="sm" onClick={() => setSelectedEmployeeId(null)}>
+                Back to Employees
+              </Button>
+            )}
           </div>
-        </CardContent>
-      </Card>
+          <CardContent className="p-6">
+            {(isAdminOrHR && selectedEmployeeId && selectedEmployeeId !== profile?.uid) || !isEditing ? (
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aadhar Number</p>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{aadhar || "Not provided"}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">PAN Number</p>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{pan || "Not provided"}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Account Name</p>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{bankAccountName || "Not provided"}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Details (A/c & IFSC)</p>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{bankDetails || "Not provided"}</p>
+                  </div>
+                </div>
+                {!(isAdminOrHR && selectedEmployeeId && selectedEmployeeId !== profile?.uid) && (
+                  <div className="mt-4 flex justify-end">
+                    <Button variant="outline" onClick={() => setIsEditing(true)} className="border-slate-200 text-slate-600 hover:bg-slate-50">
+                      Edit Details
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Aadhar Number</label>
+                    <input type="text" maxLength={12} value={aadhar} onChange={(e) => setAadhar(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter 12-digit Aadhar" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">PAN Number</label>
+                    <input type="text" maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter 10-character PAN" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Bank Account Name</label>
+                    <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Name as per bank" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Bank Details (A/c & IFSC)</label>
+                    <input type="text" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Account Number, IFSC" />
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsEditing(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveDetails} disabled={savingDetails} className="bg-slate-900 hover:bg-slate-800 text-white">
+                    {savingDetails ? "Saving..." : "Save Details"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -174,7 +292,7 @@ export default function DocumentsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {documents.map((doc, i) => {
+          {((isAdminOrHR && selectedEmployeeId) ? documents.filter(d => d.uploadedBy === selectedEmployeeId) : documents).map((doc, i) => {
             const { icon: DocIcon, color, bg } = getDocIcon(doc.status);
             return (
               <motion.div key={doc.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}>

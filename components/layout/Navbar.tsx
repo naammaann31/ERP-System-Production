@@ -90,6 +90,7 @@ export default function Navbar() {
                             alt="Vectra Logo"
                             width={48}
                             height={48}
+                            priority
                             className="object-contain scale-[2.5]"
                         />
                     </div>

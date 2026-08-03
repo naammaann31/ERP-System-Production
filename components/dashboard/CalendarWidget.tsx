@@ -94,13 +94,13 @@ export default function CalendarWidget() {
         {dates.map((d, i) => (
           <div key={i} className="flex justify-center items-center">
             <div className={`
-              w-8 h-8 flex items-center justify-center rounded-xl text-xs font-semibold relative transition-all duration-200
+              w-9 h-9 flex flex-col items-center justify-center rounded-xl text-xs font-semibold relative transition-all duration-200
               ${!d.currentMonth ? 'text-slate-300' : 'text-slate-700'}
               ${d.isToday ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30' : 'hover:bg-slate-50 cursor-pointer'}
             `}>
-              {d.date}
+              <span className={d.event && !d.isToday ? "-translate-y-1" : ""}>{d.date}</span>
               {d.event && !d.isToday && (
-                <div className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
+                <div className={`absolute bottom-1.5 w-1.5 h-1.5 rounded-full ${
                   d.event === 'meeting' ? 'bg-purple-500' :
                   d.event === 'leave' ? 'bg-green-500' :
                   d.event === 'holiday' ? 'bg-red-500' : ''

@@ -112,6 +112,7 @@ export default function Sidebar() {
                             alt="Vectra Logo"
                             width={64}
                             height={64}
+                            priority
                             className="object-contain scale-[2.5]"
                         />
                     </div>
