@@ -9,7 +9,9 @@ import {
   Timestamp,
   query,
   orderBy,
+  getDocs,
 } from "firebase/firestore";
+import { createNotification } from "./notifications";
 
 export interface Announcement {
   id?: string;
@@ -40,6 +42,29 @@ export const createAnnouncement = async (
   };
 
   const docRef = await addDoc(collection(db, "announcements"), data);
+
+  // Notify all other users in the system
+  try {
+    const uids = new Set<string>();
+    const usersSnap = await getDocs(collection(db, "users"));
+    usersSnap.forEach((d) => {
+      const uid = d.data().uid || d.id;
+      if (uid && uid !== authorUid) uids.add(uid);
+    });
+    const UsersSnap = await getDocs(collection(db, "Users"));
+    UsersSnap.forEach((d) => {
+      const uid = d.data().uid || d.id;
+      if (uid && uid !== authorUid) uids.add(uid);
+    });
+
+    const notifPromises = Array.from(uids).map((uid) =>
+      createNotification(uid, `New Announcement: ${title}`, "announcement")
+    );
+    await Promise.all(notifPromises);
+  } catch (err) {
+    console.error("Failed to distribute announcement notifications:", err);
+  }
+
   return { id: docRef.id, ...data };
 };
 

@@ -59,6 +59,14 @@ export default function Navbar() {
         if (!notif.read && notif.id) {
             await markAsRead(notif.id);
         }
+        setShowNotifications(false);
+        if (notif.type === "announcement") {
+            router.push("/dashboard/announcements");
+        } else if (notif.type === "leave") {
+            router.push("/dashboard/leave");
+        } else if (notif.type === "payroll") {
+            router.push("/dashboard/payroll");
+        }
     };
 
     const initials = profile?.fullName

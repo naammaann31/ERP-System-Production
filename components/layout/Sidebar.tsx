@@ -16,7 +16,6 @@ import {
     FileText,
     BarChart3,
     Briefcase,
-    Activity,
     Settings,
     Megaphone,
     ClipboardCheck,
@@ -32,7 +31,6 @@ const NAV_LINKS = [
     { name: "Payroll", href: "/dashboard/payroll", icon: CircleDollarSign, roles: ["Admin", "HR", "Employee"] },
     { name: "Announcements", href: "/dashboard/announcements", icon: Megaphone, roles: ["Admin", "HR", "Employee"] },
     { name: "Documents", href: "/dashboard/documents", icon: FileText, roles: ["Admin", "HR", "Employee"] },
-    { name: "Activity Log", href: "/dashboard/activity", icon: Activity, roles: ["Admin"] },
     { name: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["Admin", "HR", "Employee"] },
 ];
 
@@ -47,12 +45,13 @@ export default function Sidebar() {
 
         let isInitial = true;
         let lastCount = 0;
-        let unsubscribe: (() => void) | undefined;
+        let unsubscribeAnnouncements: (() => void) | undefined;
+        let unsubscribeNotifs: (() => void) | undefined;
         let isMounted = true;
         
         import("@/lib/announcements").then(({ listenToAnnouncements }) => {
             if (!isMounted) return;
-            unsubscribe = listenToAnnouncements((records) => {
+            unsubscribeAnnouncements = listenToAnnouncements((records) => {
                 if (isInitial) {
                     isInitial = false;
                     lastCount = records.length;
@@ -64,24 +63,37 @@ export default function Sidebar() {
                                 description: newAnnouncement?.title || "Check the announcements tab.",
                             });
                         });
-                        setUnreadCount(prev => prev + (records.length - lastCount));
                         lastCount = records.length;
                     }
                 }
             });
         });
 
+        if (profile.uid) {
+            import("@/lib/notifications").then(({ listenToUserNotifications }) => {
+                if (!isMounted) return;
+                unsubscribeNotifs = listenToUserNotifications(profile.uid, (notifs) => {
+                    const unreadAnnouncements = notifs.filter(n => n.type === "announcement" && !n.read);
+                    setUnreadCount(unreadAnnouncements.length);
+                });
+            });
+        }
+
         return () => {
             isMounted = false;
-            if (unsubscribe) unsubscribe();
+            if (unsubscribeAnnouncements) unsubscribeAnnouncements();
+            if (unsubscribeNotifs) unsubscribeNotifs();
         };
     }, [profile]);
 
     useEffect(() => {
-        if (pathname === '/dashboard/announcements') {
+        if (pathname === '/dashboard/announcements' && profile?.uid) {
             setUnreadCount(0);
+            import("@/lib/notifications").then(({ markTypeAsRead }) => {
+                markTypeAsRead(profile.uid, "announcement");
+            });
         }
-    }, [pathname]);
+    }, [pathname, profile]);
 
     // Default to 'Employee' if profile isn't loaded yet to avoid flickering restricted links
     const rawRole = profile?.role || "Employee";

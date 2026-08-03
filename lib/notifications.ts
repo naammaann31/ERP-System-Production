@@ -58,6 +58,24 @@ export const markAllAsRead = async (userId: string) => {
   await Promise.all(promises);
 };
 
+export const markTypeAsRead = async (userId: string, type: Notification["type"]) => {
+  const q = query(
+    collection(db, "notifications"),
+    where("userId", "==", userId),
+    where("type", "==", type),
+    where("read", "==", false)
+  );
+
+  const { getDocs } = await import("firebase/firestore");
+  const snapshot = await getDocs(q);
+
+  const promises: Promise<void>[] = [];
+  snapshot.forEach((d) => {
+    promises.push(updateDoc(doc(db, "notifications", d.id), { read: true }));
+  });
+  await Promise.all(promises);
+};
+
 export const listenToUserNotifications = (
   userId: string,
   callback: (notifications: Notification[]) => void
