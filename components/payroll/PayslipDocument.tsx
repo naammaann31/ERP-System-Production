@@ -39,7 +39,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       const element = printRef.current;
       const originalParent = element.parentElement;
       const nextSibling = element.nextSibling;
-      
+
       // Temporarily move to body to escape all CSS transforms and relative parents
       document.body.appendChild(element);
       element.style.position = 'absolute';
@@ -47,7 +47,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       element.style.left = '0px';
       element.style.zIndex = '-9999';
 
-      const canvas = await html2canvas(element, { 
+      const canvas = await html2canvas(element, {
         scale: 3,
         useCORS: true,
         logging: false,
@@ -59,7 +59,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
         windowWidth: 794,
         windowHeight: 1123,
       });
-      
+
       // Use JPEG with 75% quality to drastically reduce the 40MB file size to under 1MB
       const data = canvas.toDataURL("image/jpeg", 0.75);
 
@@ -75,7 +75,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
 
       pdf.addImage(data, "JPEG", 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Payslip_${payroll.employeeName}_${payroll.month}_${payroll.year}.pdf`);
-      
+
       // Move it back
       if (originalParent) {
         element.style.position = '';
@@ -94,15 +94,15 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
 
   const monthName = new Date(0, payroll.month - 1).toLocaleString('default', { month: 'long' }).toUpperCase();
   const daysWorked = payroll.daysWorked ?? 0;
-  
+
   const renderPayslip = () => (
-    <div 
+    <div
       id="pdf-payslip-container"
-      style={{ 
-        width: '794px', 
-        height: '1123px', 
-        fontFamily: 'Arial, Helvetica, sans-serif', 
-        position: 'relative', 
+      style={{
+        width: '794px',
+        height: '1123px',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        position: 'relative',
         backgroundColor: '#ffffff',
         color: '#000000',
         overflow: 'hidden',
@@ -112,11 +112,11 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       }}
     >
       {/* Center Watermark */}
-      <div style={{ 
-        position: 'absolute', 
-        top: '50%', 
-        left: '50%', 
-        transform: 'translate(-50%, -50%)', 
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
         zIndex: 10,
         opacity: 0.12, // Bright enough to be clearly visible
         pointerEvents: 'none'
@@ -127,9 +127,9 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       {/* Main Content */}
       <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Top Header Bar with Logo */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, #1a1a1a 0%, #2b2b2b 50%, #1a1a1a 100%)', 
-          padding: '8px 0', 
+        <div style={{
+          background: 'linear-gradient(135deg, #1a1a1a 0%, #2b2b2b 50%, #1a1a1a 100%)',
+          padding: '8px 0',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
@@ -250,7 +250,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
             <tbody>
               <tr>
                 <td style={{ textAlign: 'center', border: '1px solid #000000', padding: '8px 10px', fontWeight: 700, color: '#000000', backgroundColor: 'rgba(229,229,229,0.7)', verticalAlign: 'middle' }}>
-                  Net Salary Payable: {payroll.netSalary ? payroll.netSalary.toLocaleString('en-IN') : ""} 
+                  Net Salary Payable: {payroll.netSalary ? payroll.netSalary.toLocaleString('en-IN') : ""}
                 </td>
               </tr>
             </tbody>
@@ -283,10 +283,10 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       </div>
 
       {/* Bottom Footer Bar */}
-      <div style={{ 
+      <div style={{
         marginTop: 'auto',
-        background: '#2b2b2b', 
-        padding: '12px 0', 
+        background: '#2b2b2b',
+        padding: '12px 0',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -302,7 +302,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
   return (
     <>
       <div className="flex items-center gap-2 justify-end">
-        <button 
+        <button
           onClick={() => setShowPreview(true)}
           style={{
             color: '#0f172a',
@@ -322,7 +322,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
           <Eye style={{ width: '14px', height: '14px' }} />
           Preview
         </button>
-        <button 
+        <button
           onClick={handleExportPDF}
           disabled={isExporting}
           style={{
@@ -349,7 +349,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       {showPreview && (
         <div className="fixed inset-0 z-[100] flex bg-black/60 backdrop-blur-sm transition-all" onClick={() => setShowPreview(false)}>
           <div className="w-1/2 h-full bg-slate-200 ml-auto overflow-y-auto relative shadow-2xl flex flex-col items-center py-10" onClick={e => e.stopPropagation()}>
-            <button 
+            <button
               onClick={() => setShowPreview(false)}
               className="absolute top-6 right-6 bg-white/80 hover:bg-white text-slate-900 p-2 rounded-full shadow-lg backdrop-blur transition-all z-10"
             >
