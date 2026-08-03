@@ -43,7 +43,7 @@ export default function WelcomeHeader() {
         
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center gap-2">
-            {greeting}, {profile?.fullName?.split(' ')[0] || "Team Member"}! <span className="text-lg">👋</span>
+            {greeting}, {profile?.fullName?.split(' ')[0] || "Team Member"}!
           </h1>
           <p className="text-slate-500 font-medium text-xs">
             {jobRole} &middot; {employeeId}

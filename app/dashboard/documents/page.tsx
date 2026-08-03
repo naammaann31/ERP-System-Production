@@ -13,6 +13,8 @@ import {
   deleteDocument,
   listenToDocuments,
 } from "@/lib/documents";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const getDocIcon = (status: string) => {
   if (status === "Verified") return { icon: ShieldCheck, color: "text-green-500", bg: "bg-green-50" };
@@ -31,9 +33,35 @@ export default function DocumentsPage() {
   const [uploadScope, setUploadScope] = useState<"personal" | "company">("personal");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
+  // Text fields for statutory details
+  const [aadhar, setAadhar] = useState("");
+  const [pan, setPan] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
+  const [bankDetails, setBankDetails] = useState("");
+  const [savingDetails, setSavingDetails] = useState(false);
+
   useEffect(() => {
     if (!profile?.uid) return;
     setLoading(true);
+
+    const fetchUserDetails = async () => {
+      try {
+        let docSnap = await getDoc(doc(db, "users", profile.uid));
+        if (!docSnap.exists()) {
+          docSnap = await getDoc(doc(db, "Users", profile.uid));
+        }
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setAadhar(data.aadhar || "");
+          setPan(data.pan || "");
+          setBankAccountName(data.bankAccountName || "");
+          setBankDetails(data.bankDetails || "");
+        }
+      } catch (error) {
+        console.error("Error fetching user details:", error);
+      }
+    };
+    fetchUserDetails();
 
     const unsubscribe = listenToDocuments(profile.uid, isAdminOrHR, (docs) => {
       setDocuments(docs);
@@ -42,6 +70,29 @@ export default function DocumentsPage() {
 
     return () => unsubscribe();
   }, [profile, isAdminOrHR]);
+
+  const handleSaveDetails = async () => {
+    if (!profile?.uid) return;
+    setSavingDetails(true);
+    try {
+      let docRef = doc(db, "users", profile.uid);
+      let docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        docRef = doc(db, "Users", profile.uid);
+      }
+      await updateDoc(docRef, {
+        aadhar,
+        pan,
+        bankAccountName,
+        bankDetails
+      });
+      alert("Details saved successfully!");
+    } catch (error) {
+      console.error("Error saving details:", error);
+      alert("Failed to save details.");
+    }
+    setSavingDetails(false);
+  };
 
   const handleUpload = async (files: FileList) => {
     if (!profile?.uid || !files.length) return;
@@ -73,10 +124,40 @@ export default function DocumentsPage() {
           <h1 className="text-2xl font-bold text-slate-800">Documents</h1>
           <p className="text-slate-500 mt-1 text-sm font-medium">Access and manage your corporate documents securely.</p>
         </div>
-        <Button onClick={() => setIsUploadModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-sm text-sm">
-          <Upload className="h-4 w-4 mr-1.5" /> Upload Document
-        </Button>
       </div>
+
+      {/* Statutory Details Section */}
+      <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden mb-6">
+        <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-bold text-slate-800">Statutory & Bank Details</h2>
+          <p className="text-xs text-slate-500">Please provide your Aadhar, PAN, and Bank details for payroll purposes.</p>
+        </div>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Aadhar Number</label>
+              <input type="text" value={aadhar} onChange={(e) => setAadhar(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter Aadhar Number" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">PAN Number</label>
+              <input type="text" value={pan} onChange={(e) => setPan(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter PAN Number" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Bank Account Name</label>
+              <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Name as per bank" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Bank Details (A/c & IFSC)</label>
+              <input type="text" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Account Number, IFSC" />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleSaveDetails} disabled={savingDetails} className="bg-slate-900 hover:bg-slate-800 text-white">
+              {savingDetails ? "Saving..." : "Save Details"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">

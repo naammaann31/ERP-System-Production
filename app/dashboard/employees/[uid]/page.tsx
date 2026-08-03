@@ -38,6 +38,10 @@ interface EmployeeData {
   department?: string;
   phone?: string;
   status?: string;
+  aadhar?: string;
+  pan?: string;
+  bankAccountName?: string;
+  bankDetails?: string;
 }
 
 const containerVariants: Variants = {
@@ -199,6 +203,13 @@ export default function EmployeeProfilePage() {
     { label: "Designation", value: employee.designation || "Employee", icon: Clock },
   ];
 
+  const statutoryFields = [
+    { label: "Aadhar Number", value: employee.aadhar || "Not provided" },
+    { label: "PAN Number", value: employee.pan || "Not provided" },
+    { label: "Bank Account Name", value: employee.bankAccountName || "Not provided" },
+    { label: "Bank Details", value: employee.bankDetails || "Not provided" },
+  ];
+
   return (
     <motion.div
       className="max-w-[1400px] mx-auto space-y-5 pb-6"
@@ -285,6 +296,19 @@ export default function EmployeeProfilePage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Statutory Details Section */}
+              <div className="mt-6 pt-6 border-t border-slate-100">
+                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Statutory & Bank Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {statutoryFields.map((field) => (
+                    <div key={field.label} className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{field.label}</p>
+                      <p className="text-sm font-medium text-slate-800 mt-0.5">{field.value}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
