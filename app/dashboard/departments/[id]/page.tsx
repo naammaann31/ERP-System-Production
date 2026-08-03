@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase";
 import * as xlsx from "xlsx";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Card } from "@/components/ui/card";
+import { toast } from "sonner";
 import { 
   Building2, 
   Megaphone, 
@@ -261,9 +262,10 @@ export default function DepartmentPage() {
       await Promise.all(promises);
       setSelectedRows([]);
       setBulkDeleteModalOpen(false);
+      toast.success("Selected records deleted successfully.");
     } catch (error) {
       console.error("Error deleting multiple records:", error);
-      alert("Error deleting records.");
+      toast.error("Error deleting records.");
     }
   };
 
@@ -297,9 +299,10 @@ export default function DepartmentPage() {
       await deleteDoc(doc(db, "sales", saleToDelete));
       setDeleteModalOpen(false);
       setSaleToDelete(null);
+      toast.success("Record deleted successfully.");
     } catch (error) {
       console.error("Error deleting sale record:", error);
-      alert("Error deleting record.");
+      toast.error("Error deleting record.");
     }
   };
 

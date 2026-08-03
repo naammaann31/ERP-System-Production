@@ -21,6 +21,8 @@ import {
 } from "@/lib/payroll";
 import PayslipDocument from "@/components/payroll/PayslipDocument";
 import { getUserLeaves } from "@/lib/leave";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "sonner";
 
 // Employee Type
 interface Employee {
@@ -92,6 +94,7 @@ function HRPayrollDashboard() {
   const [modeOfPayment, setModeOfPayment] = useState("Bank Transfer");
   
   const [allPayrolls, setAllPayrolls] = useState<PayrollRecord[]>([]);
+  const [payrollToDelete, setPayrollToDelete] = useState<PayrollRecord | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -238,14 +241,14 @@ function HRPayrollDashboard() {
       otherDeductions
     });
     setIsConfigModalOpen(false);
-    alert("Salary structure updated successfully!");
+    toast.success("Salary structure updated successfully!");
   };
 
   const openGenerateModal = async (emp: Employee) => {
     setSelectedEmployee(emp);
     const struct = await getSalaryStructure(emp.uid);
     if (!struct) {
-      alert("Please configure the salary structure for this employee first.");
+      toast.error("Please configure the salary structure for this employee first.");
       return;
     }
     setSalaryStructure(struct);
@@ -287,11 +290,19 @@ function HRPayrollDashboard() {
         modeOfPayment
       );
       setIsGenerateModalOpen(false);
-      alert("Payroll generated successfully!");
+      toast.success("Payroll generated successfully!");
       getAllPayrolls().then(setAllPayrolls);
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Failed to generate payroll");
     }
+  };
+
+  const executeDeletePayroll = async () => {
+    if (!payrollToDelete || !payrollToDelete.id) return;
+    await deletePayroll(payrollToDelete.id);
+    getAllPayrolls().then(setAllPayrolls);
+    setPayrollToDelete(null);
+    toast.success("Payroll record deleted");
   };
 
   // Preview calculations
@@ -391,12 +402,7 @@ function HRPayrollDashboard() {
                 <div className="flex items-center gap-2">
                   <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">Paid</Badge>
                   <button
-                    onClick={async () => {
-                      if (window.confirm(`Delete payroll for ${pr.employeeName} (${pr.month}/${pr.year})?`)) {
-                        await deletePayroll(pr.id!);
-                        getAllPayrolls().then(setAllPayrolls);
-                      }
-                    }}
+                    onClick={() => setPayrollToDelete(pr)}
                     className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                     title="Delete Payroll"
                   >
@@ -585,6 +591,16 @@ function HRPayrollDashboard() {
           </motion.div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!payrollToDelete}
+        onClose={() => setPayrollToDelete(null)}
+        onConfirm={executeDeletePayroll}
+        title="Delete Payroll Record"
+        description={`Are you sure you want to delete the payroll record for ${payrollToDelete?.employeeName} (${payrollToDelete?.month}/${payrollToDelete?.year})?`}
+        confirmText="Delete Payroll"
+        variant="danger"
+      />
     </div>
   );
 }

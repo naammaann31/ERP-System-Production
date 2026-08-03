@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Plus, Check, ChevronDown, X } from "lucide-react";
 import { registerEmployeeByAdmin } from "@/lib/auth";
+import { toast } from "sonner";
 
 interface AddEmployeeModalProps {
     isOpen: boolean;
@@ -72,7 +73,7 @@ export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalPr
             return;
         }
 
-        alert("Employee account created successfully!");
+        toast.success("Employee account created successfully!");
         setLoading(false);
         // Reset form
         setFullName(""); setEmployeeId(""); setEmail(""); setRole("Admin");

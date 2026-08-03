@@ -6,6 +6,8 @@ import * as xlsx from "xlsx";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, getDocs, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { useAuth } from "@/components/providers/AuthProvider";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "sonner";
 
 export default function OperationsClient() {
     const [view, setView] = useState<"table" | "form">("table");
@@ -15,6 +17,8 @@ export default function OperationsClient() {
     const [importing, setImporting] = useState(false);
     
     const [statusConfirmModal, setStatusConfirmModal] = useState<{isOpen: boolean, row: any, newStatus: string}>({ isOpen: false, row: null, newStatus: "" });
+    const [candidateToDelete, setCandidateToDelete] = useState<any | null>(null);
+    const [importSummary, setImportSummary] = useState<string | null>(null);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { profile } = useAuth();
@@ -82,7 +86,7 @@ export default function OperationsClient() {
                 createdAt: serverTimestamp()
             });
 
-            alert("Entry saved successfully!");
+            toast.success("Entry saved successfully!");
             // Reset form
             setFormData({
                 "Date": "",
@@ -100,7 +104,7 @@ export default function OperationsClient() {
             setView("table");
         } catch (error) {
             console.error("Error saving entry:", error);
-            alert("Error saving entry.");
+            toast.error("Error saving entry.");
         } finally {
             setSubmitting(false);
         }
@@ -168,21 +172,27 @@ export default function OperationsClient() {
         }
     };
 
-    const handleDelete = async (row: any) => {
-        if (!confirm("Are you sure you want to delete this candidate? This action cannot be undone.")) return;
+    const handleDelete = (row: any) => {
+        setCandidateToDelete(row);
+    };
 
+    const executeDeleteCandidate = async () => {
+        if (!candidateToDelete || !candidateToDelete.id) return;
+        const row = candidateToDelete;
+        
         // Optimistic update
         setData(prev => prev.filter(r => r.id !== row.id));
-
-        if (!row.id) return;
 
         try {
             const docRef = doc(db, "sales", row.id);
             await deleteDoc(docRef);
+            toast.success("Candidate entry removed.");
         } catch (e) {
             console.error("Error deleting candidate", e);
-            alert("Error deleting candidate.");
+            toast.error("Error deleting candidate.");
             fetchData(); // Revert on failure
+        } finally {
+            setCandidateToDelete(null);
         }
     };
 
@@ -370,11 +380,12 @@ export default function OperationsClient() {
                     newCount++;
                 }
 
-                alert(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}`);
+                setImportSummary(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}`);
+                toast.success("Import processing completed!");
                 fetchData();
             } catch (error) {
                 console.error("Error during import:", error);
-                alert("Failed to import file. Please check the format.");
+                toast.error("Failed to import file. Please check the format.");
             } finally {
                 setImporting(false);
                 if (fileInputRef.current) fileInputRef.current.value = '';
@@ -797,6 +808,31 @@ export default function OperationsClient() {
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={!!candidateToDelete}
+                onClose={() => setCandidateToDelete(null)}
+                onConfirm={executeDeleteCandidate}
+                title="Delete Candidate Record"
+                description={`Are you sure you want to delete "${candidateToDelete?.["Candidate Name "] || candidateToDelete?.["Internal Name"] || "this record"}"? This action cannot be undone.`}
+                confirmText="Delete"
+                variant="danger"
+            />
+
+            <ConfirmModal
+                isOpen={!!importSummary}
+                onClose={() => setImportSummary(null)}
+                onConfirm={() => setImportSummary(null)}
+                title="Import Summary"
+                description={
+                  <div className="whitespace-pre-line font-mono text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    {importSummary}
+                  </div>
+                }
+                confirmText="OK"
+                cancelText="Close"
+                variant="success"
+            />
         </div>
     );
 }

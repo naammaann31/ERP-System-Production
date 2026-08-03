@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { registerAdmin } from "@/lib/auth";
+import { toast } from "sonner";
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -48,7 +49,7 @@ export default function RegisterPage() {
         }
 
         // Redirect on success
-        alert("Admin account created successfully! Please log in.");
+        toast.success("Admin account created successfully! Please log in.");
         router.push("/login");
     };
 

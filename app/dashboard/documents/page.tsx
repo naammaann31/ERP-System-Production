@@ -15,6 +15,8 @@ import {
 } from "@/lib/documents";
 import { doc, getDoc, updateDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "sonner";
 
 const getDocIcon = (status: string) => {
   if (status === "Verified") return { icon: ShieldCheck, color: "text-green-500", bg: "bg-green-50" };
@@ -32,6 +34,7 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadScope, setUploadScope] = useState<"personal" | "company">("personal");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [docToDelete, setDocToDelete] = useState<DocumentRecord | null>(null);
 
   // Employees list for Admin/HR
   const [employees, setEmployees] = useState<any[]>([]);
@@ -119,11 +122,11 @@ export default function DocumentsPage() {
     
     // Validation
     if (aadhar && !/^\d{12}$/.test(aadhar.replace(/\s/g, ''))) {
-      alert("Aadhar Number must be exactly 12 digits.");
+      toast.error("Aadhar Number must be exactly 12 digits.");
       return;
     }
     if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(pan)) {
-      alert("Invalid PAN Number format. It should be 10 characters (e.g., ABCDE1234F).");
+      toast.error("Invalid PAN Number format. It should be 10 characters (e.g., ABCDE1234F).");
       return;
     }
 
@@ -141,8 +144,10 @@ export default function DocumentsPage() {
         bankDetails
       });
       setIsEditing(false);
+      toast.success("Details saved successfully!");
     } catch (error) {
       console.error("Error saving details:", error);
+      toast.error("Failed to save details.");
     }
     setSavingDetails(false);
   };
@@ -159,9 +164,15 @@ export default function DocumentsPage() {
     setIsUploadModalOpen(false);
   };
 
-  const handleDelete = async (doc: DocumentRecord) => {
-    if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
-    await deleteDocument(doc.id!, doc.storagePath);
+  const handleDelete = (doc: DocumentRecord) => {
+    setDocToDelete(doc);
+  };
+
+  const executeDelete = async () => {
+    if (!docToDelete || !docToDelete.id) return;
+    await deleteDocument(docToDelete.id, docToDelete.storagePath);
+    setDocToDelete(null);
+    toast.success("Document deleted");
   };
 
   const formatDate = (ts: any) => {
@@ -397,6 +408,16 @@ export default function DocumentsPage() {
           </motion.div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!docToDelete}
+        onClose={() => setDocToDelete(null)}
+        onConfirm={executeDelete}
+        title="Delete Document"
+        description={`Are you sure you want to delete "${docToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

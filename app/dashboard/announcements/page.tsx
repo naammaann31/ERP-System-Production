@@ -14,6 +14,8 @@ import {
   deleteAnnouncement,
   listenToAnnouncements,
 } from "@/lib/announcements";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "sonner";
 
 const formatRelativeTime = (ts: any) => {
   if (!ts || !ts.toDate) return "";
@@ -35,6 +37,7 @@ export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null);
 
   // Form state
   const [title, setTitle] = useState("");
@@ -69,11 +72,18 @@ export default function AnnouncementsPage() {
     setPinned(false);
     setIsModalOpen(false);
     setIsSubmitting(false);
+    toast.success("Announcement published successfully!");
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this announcement?")) return;
-    await deleteAnnouncement(id);
+  const handleDelete = (id: string) => {
+    setAnnouncementToDelete(id);
+  };
+
+  const executeDelete = async () => {
+    if (!announcementToDelete) return;
+    await deleteAnnouncement(announcementToDelete);
+    setAnnouncementToDelete(null);
+    toast.success("Announcement deleted");
   };
 
   const handleTogglePin = async (id: string, current: boolean) => {
@@ -225,6 +235,16 @@ export default function AnnouncementsPage() {
           </motion.div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!announcementToDelete}
+        onClose={() => setAnnouncementToDelete(null)}
+        onConfirm={executeDelete}
+        title="Delete Announcement"
+        description="Are you sure you want to delete this announcement? This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

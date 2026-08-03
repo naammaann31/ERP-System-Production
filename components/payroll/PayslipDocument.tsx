@@ -6,6 +6,7 @@ import { PayrollRecord } from "@/lib/payroll";
 import { useAuth } from "@/components/providers/AuthProvider";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { toast } from "sonner";
 
 export default function PayslipDocument({ payroll }: { payroll: PayrollRecord }) {
   const [isExporting, setIsExporting] = useState(false);
@@ -75,6 +76,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
 
       pdf.addImage(data, "JPEG", 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Payslip_${payroll.employeeName}_${payroll.month}_${payroll.year}.pdf`);
+      toast.success("Payslip PDF downloaded successfully!");
 
       // Move it back
       if (originalParent) {
@@ -86,7 +88,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
       }
     } catch (err) {
       console.error("Error generating PDF", err);
-      alert("Failed to generate PDF");
+      toast.error("Failed to generate PDF");
     } finally {
       setIsExporting(false);
     }

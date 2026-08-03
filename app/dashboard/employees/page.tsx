@@ -10,6 +10,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import AddEmployeeModal from "@/components/employees/AddEmployeeModal";
 import { collection, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "sonner";
 
 const getDepartmentColor = (department: string) => {
   switch (department) {
@@ -38,6 +40,8 @@ export default function EmployeesPage() {
   const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<{ uid: string; name: string } | null>(null);
 
   const toggleSelect = (uid: string) => {
     setSelectedIds((prev) => {
@@ -55,13 +59,19 @@ export default function EmployeesPage() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (!isAdminOrHR || selectedIds.size === 0) return;
-    if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} employee(s)? This will revoke their access.`)) return;
+    setBulkDeleteConfirm(true);
+  };
+
+  const executeBulkDelete = async () => {
+    const count = selectedIds.size;
     for (const uid of selectedIds) {
       try { await deleteDoc(doc(db, "users", uid)); } catch { /* ignore */ }
     }
     setSelectedIds(new Set());
+    setBulkDeleteConfirm(false);
+    toast.success(`${count} employee(s) deleted successfully.`);
   };
 
   const handleExportCSV = () => {
@@ -151,16 +161,21 @@ export default function EmployeesPage() {
     });
   }, [searchQuery, selectedDepartment, employees]);
 
-  const handleDeleteEmployee = async (uid: string, name: string) => {
+  const handleDeleteEmployee = (uid: string, name: string) => {
     if (!isAdminOrHR) return;
-    
-    if (window.confirm(`Are you sure you want to delete ${name}? This will instantly revoke their access to the workspace.`)) {
-      try {
-        await deleteDoc(doc(db, "users", uid));
-      } catch (error) {
-        console.error("Error deleting employee:", error);
-        alert("Failed to delete employee.");
-      }
+    setEmployeeToDelete({ uid, name });
+  };
+
+  const executeDeleteEmployee = async () => {
+    if (!employeeToDelete) return;
+    try {
+      await deleteDoc(doc(db, "users", employeeToDelete.uid));
+      toast.success(`${employeeToDelete.name} has been removed.`);
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      toast.error("Failed to delete employee.");
+    } finally {
+      setEmployeeToDelete(null);
     }
   };
 
@@ -376,6 +391,26 @@ export default function EmployeesPage() {
       <AddEmployeeModal 
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
+      />
+
+      <ConfirmModal
+        isOpen={bulkDeleteConfirm}
+        onClose={() => setBulkDeleteConfirm(false)}
+        onConfirm={executeBulkDelete}
+        title="Delete Multiple Employees"
+        description={`Are you sure you want to delete ${selectedIds.size} selected employee(s)? This will instantly revoke their access to the workspace.`}
+        confirmText="Delete Employees"
+        variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={!!employeeToDelete}
+        onClose={() => setEmployeeToDelete(null)}
+        onConfirm={executeDeleteEmployee}
+        title="Delete Employee"
+        description={`Are you sure you want to delete ${employeeToDelete?.name}? This will instantly revoke their access to the workspace.`}
+        confirmText="Delete Employee"
+        variant="danger"
       />
     </div>
   );
