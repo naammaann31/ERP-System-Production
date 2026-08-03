@@ -45,6 +45,11 @@ export default function AnnouncementsPage() {
   useEffect(() => {
     if (!profile) return;
     setLoading(true);
+    if (profile.uid) {
+      import("@/lib/notifications").then(({ markTypeAsRead }) => {
+        markTypeAsRead(profile.uid, "announcement");
+      });
+    }
     const unsubscribe = listenToAnnouncements((records) => {
       setAnnouncements(records);
       setLoading(false);
