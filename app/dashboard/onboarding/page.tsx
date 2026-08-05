@@ -136,6 +136,8 @@ function HROnboardingView() {
         emps.push({ uid: d.id, name: data.fullName || "Unnamed" });
       });
       setEmployees(emps);
+    }, (error) => {
+      if (error.code !== 'permission-denied') console.error(error);
     });
 
     return () => {

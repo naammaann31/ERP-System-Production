@@ -7,6 +7,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Bell, Lock, User, Globe, Moon, Save, Check } from "lucide-react";
 import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings";
 import { toast, Toaster } from "sonner";
+import { auth } from "@/lib/firebase";
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 
 const tabs = [
   { id: "profile", label: "Profile", icon: User },
@@ -40,6 +42,12 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [timezone, setTimezone] = useState("Asia/Kolkata");
 
+  // Security form
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
   // Notification prefs
   const [notifEmail, setNotifEmail] = useState(true);
   const [notifLeave, setNotifLeave] = useState(true);
@@ -58,6 +66,8 @@ export default function SettingsPage() {
       setNotifEmail(settings.notificationsEmail ?? true);
       setNotifLeave(settings.notificationsLeave ?? true);
       setNotifPayroll(settings.notificationsPayroll ?? true);
+    }).catch(error => {
+      console.error("Error loading user settings:", error);
     });
 
     // Load theme
@@ -96,6 +106,40 @@ export default function SettingsPage() {
     } else {
       document.documentElement.classList.remove("dark");
     }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long.");
+      return;
+    }
+    
+    setUpdatingPassword(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser && currentUser.email) {
+        const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+        await reauthenticateWithCredential(currentUser, credential);
+        await updatePassword(currentUser, newPassword);
+        toast.success("Password updated successfully.");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        toast.error("Could not authenticate user.");
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        toast.error("Incorrect current password.");
+      } else {
+        toast.error("Failed to update password.");
+      }
+    }
+    setUpdatingPassword(false);
   };
 
   return (
@@ -205,20 +249,22 @@ export default function SettingsPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase text-slate-500">Current Password</label>
-                  <input type="password" className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
+                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase text-slate-500">New Password</label>
-                    <input type="password" className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase text-slate-500">Confirm Password</label>
-                    <input type="password" className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
                   </div>
                 </div>
                 <div className="pt-4 flex justify-end">
-                  <Button>Update Password</Button>
+                  <Button onClick={handleUpdatePassword} disabled={updatingPassword}>
+                    {updatingPassword ? "Updating..." : "Update Password"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

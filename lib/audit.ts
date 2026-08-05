@@ -1,4 +1,5 @@
-import { db } from "./firebase";
+import { db, functions } from "./firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   addDoc,
@@ -19,18 +20,13 @@ export interface AuditLogEntry {
 }
 
 export const logAuditEvent = async (
-  actorName: string,
+  actorName: string, // Kept for signature compatibility, but unused on server
   action: string,
   target: string,
   details?: string
 ): Promise<void> => {
-  await addDoc(collection(db, "audit_logs"), {
-    actorName,
-    action,
-    target,
-    details: details || "",
-    createdAt: Timestamp.now(),
-  });
+  const logAuditFunc = httpsCallable(functions, 'logAudit');
+  await logAuditFunc({ action, target, details });
 };
 
 export const listenToAuditLogs = (

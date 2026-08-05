@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db, functions } from "./firebase";
 import {
   collection,
   doc,
@@ -11,6 +11,7 @@ import {
   Timestamp,
   orderBy
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
 export interface SalaryStructure {
   userId: string;
@@ -143,50 +144,23 @@ export const generatePayroll = async (
   paymentDate?: string,
   modeOfPayment?: string
 ): Promise<PayrollRecord> => {
-  const structure = await getSalaryStructure(userId);
-  if (!structure) {
-    throw new Error("Salary structure not found for employee");
-  }
-
-  const breakup = calculateSalaryBreakup(
-    structure.grossSalary,
-    structure.travelAllowance,
-    lopDays,
-    daysInMonth,
-    structure.otherDeductions,
-    structure.otherAllowances,
-    incentives,
-    professionalTax,
-    incomeTax,
-    providentFund
-  );
-
-  const daysWorked = daysInMonth - lopDays;
-
-  const docId = `${userId}_${year}_${month}`;
-  const docRef = doc(db, "payrolls", docId);
-
-  const record: PayrollRecord = {
-    userId,
-    employeeName,
-    employeeId: employeeId || "",
-    jobRole: jobRole || "",
-    department: department || "",
-    dateOfJoining: dateOfJoining || "",
-    bankName: bankName || "",
-    division: division || "",
-    daysWorked,
+  const generateFunc = httpsCallable(functions, "generatePayroll");
+  
+  const result = await generateFunc({
+    employeeUid: userId,
     month,
     year,
-    ...breakup,
-    paymentDate: paymentDate || "",
-    modeOfPayment: modeOfPayment || "Bank Transfer",
-    generatedAt: Timestamp.now(),
-    status: "Pending"
-  };
+    lopDays,
+    professionalTax,
+    incomeTax,
+    providentFund,
+    incentives,
+    paymentDate,
+    modeOfPayment
+  });
 
-  await setDoc(docRef, record);
-  return { id: docId, ...record };
+  const data = result.data as { payrollId: string, payrollData: any };
+  return { id: data.payrollId, ...data.payrollData } as PayrollRecord;
 };
 
 export const getEmployeePayrolls = async (userId: string, fullName?: string, employeeId?: string): Promise<PayrollRecord[]> => {

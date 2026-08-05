@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const { profile } = useAuth();
 
   return (
-    <motion.div 
+    <motion.div
       className="max-w-[1400px] mx-auto space-y-3 pb-2"
       variants={containerVariants}
       initial="hidden"
@@ -38,12 +38,12 @@ export default function DashboardPage() {
       <motion.div variants={itemVariants}>
         <WelcomeHeader />
       </motion.div>
-      
+
       {/* 2. Top Stats row */}
       <motion.div variants={itemVariants}>
         <TopStats />
       </motion.div>
-      
+
       {/* 3. Main Dashboard Grid - Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <motion.div variants={itemVariants} className="h-full">

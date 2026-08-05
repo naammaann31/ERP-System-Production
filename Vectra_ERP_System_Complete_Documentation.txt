@@ -1,0 +1,1519 @@
+================================================================================
+     VECTRA GROUP ERP SYSTEM - COMPLETE TECHNICAL DOCUMENTATION
+     Version: 0.1.0 | Date: August 6, 2026
+     Purpose: Current system state for AI-assisted development discussion
+================================================================================
+
+TABLE OF CONTENTS
+─────────────────
+1.  PROJECT OVERVIEW & TECH STACK
+2.  ARCHITECTURE OVERVIEW
+3.  FILE STRUCTURE (COMPLETE)
+4.  AUTHENTICATION & AUTHORIZATION SYSTEM
+5.  USER ROLES & PERMISSIONS MATRIX
+6.  ROUTING & NAVIGATION (ALL REDIRECTIONS)
+7.  FIRESTORE DATABASE SCHEMA (ALL COLLECTIONS)
+8.  FIRESTORE SECURITY RULES (COMPLETE)
+9.  MODULE-BY-MODULE BREAKDOWN
+    9.1  Authentication Module
+    9.2  Dashboard Module
+    9.3  Employee Management Module
+    9.4  Attendance Module
+    9.5  Leave Management Module
+    9.6  Payroll Module
+    9.7  Announcements Module
+    9.8  Documents Module
+    9.9  Onboarding Module
+    9.10 Operations/Sales Module
+    9.11 Departments Module
+    9.12 Settings Module
+    9.13 Notifications System
+    9.14 Audit Logging System
+10. DATA FLOW DIAGRAMS (TEXT-BASED)
+11. BACKEND SERVICES LAYER (lib/ DIRECTORY)
+12. COMPONENT HIERARCHY
+13. STATE MANAGEMENT
+14. REAL-TIME LISTENERS (FIRESTORE onSnapshot)
+15. KEY BUSINESS LOGIC
+16. CURRENT LIMITATIONS & KNOWN ISSUES
+17. DEPENDENCIES LIST
+
+
+================================================================================
+1. PROJECT OVERVIEW & TECH STACK
+================================================================================
+
+Project Name: Vectra Group ERP System (vectra_crm)
+Type: Enterprise Resource Planning (ERP) / Human Resource Management System (HRMS)
+Target: Internal use for Vectra Group company
+
+TECH STACK:
+├── Frontend Framework:   Next.js 16.2.9 (App Router, React 19.2.4)
+├── Language:             TypeScript 5.x
+├── Styling:              Tailwind CSS 4.x
+├── Animation:            Framer Motion 12.42.0
+├── Icons:                Lucide React 1.21.0
+├── Backend/Database:     Firebase (Firestore, Auth, Storage)
+│   ├── Firebase SDK:     12.15.0
+│   ├── Firestore:        NoSQL document database
+│   ├── Firebase Auth:    Email/password authentication
+│   └── Firebase Storage: File upload/download (for documents)
+├── PDF Generation:       jsPDF 4.2.1 + html2canvas 1.4.1
+├── Excel Export:         xlsx 0.18.5 + xlsx-js-style 1.2.0
+├── Form Handling:        React Hook Form 7.80.0 + Zod 4.4.3
+├── Toast Notifications:  Sonner 2.0.7
+├── UI Components:        Custom (card, badge, button, avatar, progress)
+└── Deployment:           Firebase Hosting (Static Export via `next build`)
+
+FIREBASE PROJECT:
+├── Project ID:           vectra-crm (from .firebaserc)
+├── Auth Domain:          From env vars (NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN)
+├── Storage Bucket:       From env vars (NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET)
+└── Configuration:        All config via .env.local environment variables
+
+
+================================================================================
+2. ARCHITECTURE OVERVIEW
+================================================================================
+
+The system follows a CLIENT-SIDE ONLY architecture:
+- NO server-side API routes or backend server
+- ALL business logic runs in the browser
+- Firebase SDK is used directly from client components
+- Firestore Security Rules enforce authorization on the database level
+- Authentication is handled by Firebase Auth (email/password)
+- Real-time data via Firestore onSnapshot listeners
+- Static export (output: "export" in next.config.ts)
+
+ARCHITECTURE DIAGRAM:
+┌─────────────────────────────────────────────────────────┐
+│                    BROWSER (CLIENT)                      │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │  Auth Pages  │  │  Dashboard   │  │  Module Pages │   │
+│  │ Login/Signup │  │  Main Page   │  │ (Employees,  │   │
+│  └──────┬───────┘  └──────┬───────┘  │  Attendance,  │   │
+│         │                 │          │  Leave, etc.) │   │
+│         │                 │          └──────┬────────┘   │
+│         └────────┬────────┴─────────────────┘            │
+│                  │                                        │
+│         ┌────────▼────────┐                              │
+│         │   lib/ Services │  (auth.ts, attendance.ts,    │
+│         │   (Data Layer)  │   leave.ts, payroll.ts,      │
+│         │                 │   documents.ts, etc.)         │
+│         └────────┬────────┘                              │
+│                  │                                        │
+│         ┌────────▼────────┐                              │
+│         │  Firebase SDK   │                              │
+│         │  (Client-side)  │                              │
+│         └────────┬────────┘                              │
+└──────────────────┼───────────────────────────────────────┘
+                   │ HTTPS
+┌──────────────────▼───────────────────────────────────────┐
+│              FIREBASE CLOUD SERVICES                      │
+│                                                           │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐  │
+│  │ Firebase Auth│ │  Firestore   │ │ Firebase Storage  │  │
+│  │ (Users/Auth) │ │  (Database)  │ │ (File Uploads)    │  │
+│  └──────────────┘ └──────────────┘ └──────────────────┘  │
+│                                                           │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │            Firestore Security Rules                   │ │
+│  │         (Authorization enforcement layer)             │ │
+│  └──────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────┘
+
+
+================================================================================
+3. FILE STRUCTURE (COMPLETE)
+================================================================================
+
+vectra_crm/
+├── .env.local                          # Firebase config environment variables
+├── .firebaserc                         # Firebase project config (project: vectra-crm)
+├── firebase.json                       # Firebase hosting config
+├── firestore.rules                     # Firestore security rules
+├── firestore.indexes.json              # Firestore composite indexes (empty)
+├── package.json                        # Dependencies and scripts
+├── next.config.ts                      # Next.js config (output: "export")
+├── tsconfig.json                       # TypeScript configuration
+├── postcss.config.mjs                  # PostCSS config (Tailwind)
+├── eslint.config.mjs                   # ESLint configuration
+│
+├── app/                                # Next.js App Router
+│   ├── layout.tsx                      # Root layout (Geist fonts, Toaster)
+│   ├── page.tsx                        # Root page → redirect("/login")
+│   ├── globals.css                     # Global styles + Tailwind imports
+│   ├── favicon.ico                     # App favicon
+│   │
+│   ├── (auth)/                         # Auth route group (no layout prefix in URL)
+│   │   ├── layout.tsx                  # Auth layout (video background)
+│   │   ├── login/
+│   │   │   └── page.tsx                # Login page (email/password)
+│   │   └── register/
+│   │       └── page.tsx                # Admin registration page
+│   │
+│   └── dashboard/                      # Protected dashboard area
+│       ├── layout.tsx                  # Dashboard layout (AuthProvider + ProtectedRoute + Sidebar + Navbar)
+│       ├── page.tsx                    # Main dashboard page (widgets)
+│       ├── employees/
+│       │   ├── page.tsx                # Employees directory (table, CRUD)
+│       │   └── [uid]/                  # Dynamic route for employee detail
+│       ├── departments/
+│       │   ├── page.tsx                # Departments overview (HR) / My Department (Employee)
+│       │   └── [id]/                   # Dynamic route for department detail
+│       ├── attendance/
+│       │   └── page.tsx                # Attendance (HRAttendanceDashboard / EmployeeAttendanceDashboard)
+│       ├── leave/
+│       │   └── page.tsx                # Leave management (HRLeaveDashboard / EmployeeLeaveDashboard)
+│       ├── payroll/
+│       │   └── page.tsx                # Payroll (HRPayrollDashboard / EmployeePayrollDashboard)
+│       ├── announcements/
+│       │   └── page.tsx                # Announcements (create/view/pin/delete)
+│       ├── documents/
+│       │   └── page.tsx                # Documents (upload/download/statutory details)
+│       ├── onboarding/
+│       │   └── page.tsx                # Onboarding checklist (HROnboardingView / EmployeeOnboardingView)
+│       ├── operations/
+│       │   └── page.tsx                # Operations/Sales tracking (OperationsClient)
+│       └── settings/
+│           └── page.tsx                # Account settings (Profile/Notifications/Security/Language/Appearance)
+│
+├── components/
+│   ├── auth/
+│   │   └── ProtectedRoute.tsx          # Auth guard + role-based access control
+│   ├── providers/
+│   │   ├── AuthProvider.tsx            # Firebase auth context + user profile fetch
+│   │   └── SidebarProvider.tsx         # Sidebar open/close state context
+│   ├── layout/
+│   │   ├── Sidebar.tsx                 # Left sidebar navigation (role-filtered links)
+│   │   └── Navbar.tsx                  # Top navbar (profile, notifications, logout)
+│   ├── ui/
+│   │   ├── avatar.tsx                  # Avatar component
+│   │   ├── badge.tsx                   # Badge component (variants)
+│   │   ├── button.tsx                  # Button component (variants)
+│   │   ├── card.tsx                    # Card component (CardHeader, CardContent, etc.)
+│   │   ├── progress.tsx                # Progress bar component
+│   │   ├── DashboardCard.tsx           # Dashboard card wrapper
+│   │   └── ConfirmModal.tsx            # Reusable confirmation modal (danger/warning)
+│   ├── employees/
+│   │   └── AddEmployeeModal.tsx        # Modal for adding new employee (used by Admin/HR)
+│   ├── payroll/
+│   │   └── PayslipDocument.tsx         # PDF payslip layout component
+│   ├── dashboard/
+│   │   ├── WelcomeHeader.tsx           # Dashboard welcome banner
+│   │   ├── TopStats.tsx                # Dashboard stats cards (total employees, present, etc.)
+│   │   ├── LiveAttendanceCard.tsx      # Live check-in/out widget
+│   │   ├── WeeklyOverview.tsx          # Weekly attendance chart
+│   │   ├── CalendarWidget.tsx          # Calendar widget
+│   │   ├── TodaySchedule.tsx           # Today's schedule widget
+│   │   ├── TeamStatusWidget.tsx        # Team status widget
+│   │   ├── RecentNotifications.tsx     # Recent notifications widget
+│   │   ├── AttendanceSummaryWidget.tsx  # Attendance summary widget
+│   │   ├── QuickActions.tsx            # Quick action buttons
+│   │   ├── OperationsClient.tsx        # Full operations/sales client (35KB)
+│   │   ├── attendance/
+│   │   │   ├── HRAttendanceDashboard.tsx       # HR/Admin attendance view
+│   │   │   └── EmployeeAttendanceDashboard.tsx # Employee attendance view
+│   │   ├── leave/
+│   │   │   ├── HRLeaveDashboard.tsx            # HR/Admin leave management
+│   │   │   ├── EmployeeLeaveDashboard.tsx      # Employee leave view
+│   │   │   ├── ApplyLeaveModal.tsx             # Leave application form modal
+│   │   │   └── LeaveCalendar.tsx               # Leave calendar visualization
+│   │   ├── payroll/
+│   │   │   ├── HRPayrollDashboard.tsx          # HR/Admin payroll management
+│   │   │   ├── EmployeePayrollDashboard.tsx    # Employee payslip view
+│   │   │   ├── GeneratePayrollModal.tsx        # Payroll generation form
+│   │   │   └── SalaryConfigModal.tsx           # Salary structure configuration
+│   │   ├── departments/
+│   │   │   └── SalesDataSection.tsx            # Sales data section for departments
+│   │   └── operations/
+│   │       └── OperationsForm.tsx              # Operations data entry form
+│
+├── lib/                                # Service/utility layer
+│   ├── firebase.ts                     # Firebase initialization (app, auth, db, storage)
+│   ├── auth.ts                         # Auth functions (registerAdmin, registerEmployee, registerEmployeeByAdmin, logoutUser)
+│   ├── attendance.ts                   # Attendance CRUD (checkIn, checkOut, getAttendance, etc.)
+│   ├── leave.ts                        # Leave CRUD (applyLeave, getUserLeaves, updateLeaveStatus, listeners)
+│   ├── payroll.ts                      # Payroll CRUD (salary structure, generate payroll, calculation logic)
+│   ├── announcements.ts                # Announcements CRUD (create, pin, archive, delete, listen)
+│   ├── documents.ts                    # Documents CRUD (upload, delete, listen) + Firebase Storage
+│   ├── onboarding.ts                   # Onboarding CRUD (create tasks, toggle, listen)
+│   ├── notifications.ts                # Notifications CRUD (create, markAsRead, markAllAsRead, listen)
+│   ├── audit.ts                        # Audit log (logAuditEvent, listen)
+│   ├── settings.ts                     # User settings (updateUserProfile, getUserSettings)
+│   └── utils.ts                        # Utility functions (cn - class merge)
+│
+└── public/
+    ├── updated_logo.png                # Vectra Group logo
+    └── videos/
+        └── hero-bg.mp4                # Login/register background video
+
+
+================================================================================
+4. AUTHENTICATION & AUTHORIZATION SYSTEM
+================================================================================
+
+AUTHENTICATION FLOW:
+────────────────────
+1. User visits "/" → Immediately redirected to "/login" (server-side redirect)
+2. Login Page (/login):
+   - User enters email + password
+   - Firebase Auth signInWithEmailAndPassword() is called
+   - On success → redirect to "/dashboard"
+   - On failure → error message displayed
+   - "Forgot Password" → Firebase sendPasswordResetEmail()
+   
+3. Register Page (/register):
+   - ONLY for creating Admin accounts
+   - Creates Firebase Auth user + Firestore "users" document (role: "Admin")
+   - Signs out immediately after creation → redirects to "/login"
+   - Employee accounts are created by Admin/HR via AddEmployeeModal
+
+4. AuthProvider (Context):
+   - Wraps entire dashboard layout
+   - Listens to Firebase onAuthStateChanged
+   - When user is authenticated:
+     a. Fetches user profile from Firestore "users/{uid}"
+     b. If not found, checks legacy "Users/{uid}" collection and auto-migrates
+     c. If Admin/HR, performs background sweep to migrate all legacy "Users" docs
+   - Provides: { user, profile, loading } via React Context
+
+5. ProtectedRoute (Guard):
+   - Wraps dashboard children
+   - If not loading and no user/profile → redirect to "/login"
+   - If user lacks permission for current route → redirect to "/dashboard" + toast error
+   - Role checks:
+     a. /dashboard/employees → requires Admin, HR, or OPS_HR
+     b. /dashboard/departments → requires Admin only
+
+EMPLOYEE REGISTRATION BY ADMIN (Key Pattern):
+─────────────────────────────────────────────
+- Uses a SECONDARY Firebase App instance so the currently logged-in Admin is NOT logged out
+- Function: registerEmployeeByAdmin() in lib/auth.ts
+- Creates: Firebase Auth account + Firestore "users/{uid}" document
+- Signs out of secondary auth immediately after creation
+
+
+================================================================================
+5. USER ROLES & PERMISSIONS MATRIX
+================================================================================
+
+ROLES DEFINED IN SYSTEM:
+────────────────────────
+1. "Admin"     - Full system administrator
+2. "HR"        - Human Resources manager
+3. "OPS_HR"    - Operations HR (treated same as HR in most places)
+4. "Employee"  - Regular employee
+5. "MARKETING" - Marketing department employee
+6. "SALES"     - Sales department employee
+7. "IT"        - IT department employee
+
+PERMISSION MATRIX:
+┌─────────────────────────┬───────┬────────┬──────────┬──────────┐
+│ Feature                 │ Admin │ HR/OPS │ Employee │ Notes    │
+│                         │       │ _HR    │          │          │
+├─────────────────────────┼───────┼────────┼──────────┼──────────┤
+│ Dashboard               │  ✅   │  ✅    │   ✅     │          │
+│ Operations              │  ✅   │  ✅    │  ✅*     │ *Sales   │
+│ Employees Directory     │  ✅   │  ✅    │   ❌     │ Route    │
+│ Add Employee            │  ✅   │  ✅    │   ❌     │ guarded  │
+│ Delete Employee         │  ✅   │  ✅    │   ❌     │          │
+│ Departments (All)       │  ✅   │  ❌    │   ❌     │ Admin    │
+│ Departments (Own)       │  ❌   │  ✅    │   ✅     │ only     │
+│ Attendance (All Staff)  │  ✅   │  ✅    │   ❌     │          │
+│ Attendance (Own)        │  ✅   │  ✅    │   ✅     │          │
+│ Leave (Approve/Reject)  │  ✅   │  ✅    │   ❌     │          │
+│ Leave (Apply/View Own)  │  ✅   │  ✅    │   ✅     │          │
+│ Payroll (Generate)      │  ✅   │  ✅    │   ❌     │          │
+│ Payroll (View Own)      │  ✅   │  ✅    │   ✅     │          │
+│ Salary Config           │  ✅   │  ✅    │   ❌     │          │
+│ Announcements (Create)  │  ✅   │  ✅    │   ❌     │          │
+│ Announcements (View)    │  ✅   │  ✅    │   ✅     │          │
+│ Documents (Upload)      │  ✅   │  ✅    │   ✅     │          │
+│ Documents (View All)    │  ✅   │  ✅    │   ❌     │ See own  │
+│ Onboarding (Manage All) │  ✅   │  ✅    │   ❌     │          │
+│ Onboarding (Own Tasks)  │  ❌   │  ❌    │   ✅     │          │
+│ Audit Logs (Read)       │  ✅   │  ❌    │   ❌     │ Admin    │
+│ Settings                │  ✅   │  ✅    │   ✅     │ only     │
+└─────────────────────────┴───────┴────────┴──────────┴──────────┘
+
+*Operations is shown in sidebar only for users with department "Sales" or role containing "sales"
+
+
+================================================================================
+6. ROUTING & NAVIGATION (ALL REDIRECTIONS)
+================================================================================
+
+ROUTE TABLE:
+┌────────────────────────────────────┬──────────────────────────────────────┐
+│ Route                              │ Description                          │
+├────────────────────────────────────┼──────────────────────────────────────┤
+│ /                                  │ → redirect("/login")                 │
+│ /login                             │ Login page (auth group layout)       │
+│ /register                          │ Admin registration (auth group)      │
+│ /dashboard                         │ Main dashboard (protected)           │
+│ /dashboard/employees               │ Employees list (Admin/HR only)       │
+│ /dashboard/employees/[uid]         │ Employee detail page                 │
+│ /dashboard/departments             │ Departments (Admin: all, Emp: own)   │
+│ /dashboard/departments/[id]        │ Department detail page               │
+│ /dashboard/attendance              │ Attendance (HR view vs Employee view)│
+│ /dashboard/leave                   │ Leave (HR view vs Employee view)     │
+│ /dashboard/payroll                 │ Payroll (HR view vs Employee view)   │
+│ /dashboard/announcements           │ Announcements board                  │
+│ /dashboard/documents               │ Document management                  │
+│ /dashboard/onboarding              │ Onboarding tasks                     │
+│ /dashboard/operations              │ Sales/Operations tracking            │
+│ /dashboard/settings                │ Account settings                     │
+└────────────────────────────────────┴──────────────────────────────────────┘
+
+REDIRECTION FLOWS:
+──────────────────
+1. Unauthenticated user → ANY /dashboard/* route:
+   ProtectedRoute detects no user → router.push("/login")
+
+2. Already authenticated user → /login or /register:
+   Login/Register pages detect user exists → router.replace("/dashboard")
+
+3. Employee → /dashboard/employees:
+   ProtectedRoute detects unauthorized → router.replace("/dashboard") + toast error
+
+4. Non-Admin → /dashboard/departments:
+   ProtectedRoute detects unauthorized → router.replace("/dashboard") + toast error
+
+5. Root "/" → /login:
+   Server-side redirect in app/page.tsx
+
+6. After successful login:
+   router.push("/dashboard")
+
+7. After successful admin registration:
+   router.push("/login") (signs out first)
+
+8. After logout:
+   router.push("/login")
+
+SIDEBAR NAVIGATION LINKS (Role-filtered):
+──────────────────────────────────────────
+- Dashboard       → All roles
+- Operations      → All roles (but filtered by department: Sales only)
+- Employees       → Admin, HR only
+- Departments     → Admin only
+- Attendance      → All roles
+- Leave           → All roles
+- Payroll         → All roles
+- Announcements   → All roles (with unread badge counter)
+- Documents       → All roles
+- Settings        → All roles
+
+Note: "Onboarding" is a page that exists but is NOT shown in the sidebar navigation.
+It must be accessed directly via URL: /dashboard/onboarding
+
+
+================================================================================
+7. FIRESTORE DATABASE SCHEMA (ALL COLLECTIONS)
+================================================================================
+
+COLLECTION: users (Document ID = Firebase Auth UID)
+─────────────────────────────────────────────────────
+{
+  uid: string,              // Firebase Auth UID
+  fullName: string,         // "Mohammed Hamzah Saiyed"
+  email: string,            // "hamzah@vectragroup.com"
+  role: string,             // "Admin" | "HR" | "OPS_HR" | "Employee" | "MARKETING" | "SALES" | "IT"
+  status: string,           // "Active" (only set for Admin on register)
+  employeeId: string,       // "VG001" (optional, set for employees)
+  jobRole: string,          // "ML Engineer" (optional)
+  designation: string,      // "Manager" | "Intern" | etc.
+  department: string,       // (optional, set on employee profile)
+  phone: string,            // (optional, set in settings)
+  timezone: string,         // "Asia/Kolkata" (default)
+  aadhar: string,           // 12-digit Aadhar number (optional, set in documents page)
+  pan: string,              // 10-char PAN number (optional)
+  bankAccountName: string,  // Bank account holder name (optional)
+  bankDetails: string,      // Account number + IFSC (optional)
+  notificationsEmail: bool, // Notification preference
+  notificationsLeave: bool, // Notification preference
+  notificationsPayroll: bool, // Notification preference
+  createdAt: Timestamp      // Server timestamp
+}
+
+COLLECTION: Users (LEGACY - capital U)
+──────────────────────────────────────
+Same schema as "users". Auto-migrated to "users" when Admin/HR logs in.
+
+COLLECTION: attendance (Document ID = "{userId}_{YYYY-MM-DD}")
+──────────────────────────────────────────────────────────────
+{
+  userId: string,           // Firebase Auth UID
+  fullName: string,         // Employee name
+  role: string,             // Employee role (optional)
+  date: string,             // "2026-08-05" (YYYY-MM-DD)
+  checkInTime: Timestamp,   // Firebase Timestamp (null if not checked in)
+  checkOutTime: Timestamp,  // Firebase Timestamp (null if not checked out)
+  status: string,           // "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off"
+  workingSeconds: number    // Total seconds worked
+}
+IMPORTANT: Date calculation uses a SHIFT-BASED logic.
+  - Shift starts at 7:30 PM (19:30)
+  - Any time before 7:30 PM belongs to PREVIOUS day's shift
+  - e.g., 2:00 AM on Aug 6 → belongs to Aug 5 shift
+
+COLLECTION: leave_requests (Auto-generated Document ID)
+─────────────────────────────────────────────────────────
+{
+  userId: string,           // Firebase Auth UID
+  fullName: string,         // Employee name
+  department: string,       // Employee department
+  role: string,             // Employee role (optional)
+  leaveType: string,        // "Casual Leave" | "Sick Leave" | "Earned Leave" | etc.
+  startDate: string,        // "2026-08-10" (YYYY-MM-DD)
+  endDate: string,          // "2026-08-12" (YYYY-MM-DD)
+  days: number,             // Number of leave days
+  reason: string,           // Leave reason text
+  status: string,           // "Pending" | "Approved" | "Rejected"
+  appliedOn: Timestamp      // When the leave was applied
+}
+
+COLLECTION: salary_structures (Document ID = userId)
+────────────────────────────────────────────────────
+{
+  userId: string,
+  grossSalary: number,      // e.g., 50000
+  travelAllowance: number,  // e.g., 2000
+  otherDeductions: number,  // e.g., 500
+  otherAllowances: number,  // e.g., 1000
+  updatedAt: Timestamp
+}
+
+COLLECTION: payrolls (Document ID = "{userId}_{year}_{month}")
+──────────────────────────────────────────────────────────────
+{
+  userId: string,
+  employeeName: string,
+  employeeId: string,
+  jobRole: string,
+  department: string,
+  dateOfJoining: string,
+  bankName: string,
+  division: string,
+  daysWorked: number,
+  month: number,            // 1-12
+  year: number,             // e.g., 2026
+  
+  // Earnings Breakup
+  grossSalary: number,
+  basic: number,            // 50% of gross
+  hra: number,              // 20% of gross
+  travelAllowance: number,
+  specialAllowance: number, // gross - basic - hra - travel
+  otherAllowances: number,
+  incentives: number,
+  totalEarnings: number,    // gross + otherAllowances + incentives
+  
+  // Deductions
+  lopDays: number,          // Loss of Pay days
+  lopDeduction: number,     // (gross/daysInMonth) * lopDays
+  taxDeduction: number,     // Professional Tax (default 200)
+  incomeTax: number,
+  providentFund: number,
+  otherDeductions: number,
+  totalDeductions: number,
+  
+  // Final
+  netSalary: number,        // totalEarnings - totalDeductions
+  
+  paymentDate: string,
+  modeOfPayment: string,    // "Bank Transfer" (default)
+  generatedAt: Timestamp,
+  status: string            // "Paid" | "Pending"
+}
+
+COLLECTION: announcements (Auto-generated Document ID)
+──────────────────────────────────────────────────────
+{
+  title: string,            // Announcement title
+  body: string,             // Announcement body text
+  author: string,           // UID of the author
+  authorName: string,       // Display name of author
+  pinned: boolean,          // Whether pinned to top
+  archived: boolean,        // Whether archived (hidden from view)
+  createdAt: Timestamp
+}
+
+COLLECTION: documents (Auto-generated Document ID)
+──────────────────────────────────────────────────
+{
+  name: string,             // Original file name
+  type: string,             // File extension uppercase ("PDF", "JPG", etc.)
+  size: string,             // Human-readable size ("256 KB", "1.2 MB")
+  status: string,           // "Verified" | "Available" | "Pending Review"
+  scope: string,            // "personal" | "company"
+  uploadedBy: string,       // UID of uploader
+  uploadedByName: string,   // Display name of uploader
+  uploadedAt: Timestamp,
+  storageUrl: string,       // Firebase Storage download URL
+  storagePath: string       // Firebase Storage path for deletion
+}
+Storage Path Pattern: "documents/{scope}/{userId}_{timestamp}_{filename}"
+
+COLLECTION: notifications (Auto-generated Document ID)
+─────────────────────────────────────────────────────
+{
+  userId: string,           // Target user UID
+  message: string,          // Notification text
+  type: string,             // "payroll" | "leave" | "announcement" | "general"
+  read: boolean,            // Whether user has read it
+  createdAt: Timestamp
+}
+
+COLLECTION: onboarding_tasks (Auto-generated Document ID)
+────────────────────────────────────────────────────────
+{
+  employeeUid: string,      // Target employee UID
+  employeeName: string,     // Employee display name
+  taskName: string,         // Task description
+  completed: boolean,       // Whether completed
+  dueDate: string,          // (optional) Due date
+  createdAt: Timestamp
+}
+DEFAULT TASKS (created automatically):
+  1. Submit Government ID Copy
+  2. Sign Non-Disclosure Agreement (NDA)
+  3. Complete Tax Declaration Form
+  4. Provide Emergency Contact Details
+  5. Submit Bank Account Details
+  6. Acknowledge Employee Handbook
+
+COLLECTION: audit_logs (Auto-generated Document ID)
+──────────────────────────────────────────────────
+{
+  actorName: string,        // Name of person who performed action
+  action: string,           // Action type
+  target: string,           // Target of action
+  details: string,          // Additional details (optional)
+  createdAt: Timestamp
+}
+
+COLLECTION: sales (Auto-generated Document ID)
+──────────────────────────────────────────────
+{
+  // Used by Operations module
+  // Schema varies - managed by OperationsClient.tsx
+  // Contains sales leads, candidate tracking data
+}
+
+
+================================================================================
+8. FIRESTORE SECURITY RULES (COMPLETE)
+================================================================================
+
+Helper Functions:
+  - getUserRole(): Gets role from "users" or legacy "Users" collection
+  - isAdmin(): role == "Admin"
+  - isAdminOrHR(): role in ["Admin", "HR", "OPS_HR"]
+  - isSignedIn(): request.auth != null
+  - isOwner(userId): request.auth.uid == userId
+
+Rules per Collection:
+┌────────────────────┬──────────┬──────────┬──────────────────────────────┬──────────────────┐
+│ Collection         │ Read     │ Create   │ Update                       │ Delete           │
+├────────────────────┼──────────┼──────────┼──────────────────────────────┼──────────────────┤
+│ users/{userId}     │ SignedIn │ SignedIn │ Owner OR Admin/HR            │ Admin/HR         │
+│ Users/{userId}     │ SignedIn │ SignedIn │ Owner OR Admin/HR            │ Admin/HR         │
+│ attendance/{id}    │ SignedIn │ SignedIn │ Owner of record OR Admin/HR  │ Admin/HR         │
+│ leave_requests/{id}│ SignedIn │ SignedIn │ Admin/HR only                │ Admin/HR         │
+│ salary_structures  │ SignedIn │ Admin/HR │ Admin/HR                     │ Admin/HR         │
+│ payrolls/{id}      │ SignedIn │ Admin/HR │ Admin/HR                     │ Admin/HR         │
+│ announcements/{id} │ SignedIn │ Admin/HR │ Admin/HR                     │ Admin/HR         │
+│ documents/{id}     │ SignedIn │ SignedIn │ Uploader OR Admin/HR         │ Uploader/Admin/HR│
+│ notifications/{id} │ SignedIn │ SignedIn │ Owner (userId match)         │ Admin only       │
+│ onboarding_tasks   │ SignedIn │ Admin/HR │ Employee (own) OR Admin/HR   │ Admin/HR         │
+│ audit_logs/{id}    │ Admin    │ SignedIn │ DENIED (immutable)           │ DENIED           │
+│ sales/{id}         │ SignedIn │ SignedIn │ SignedIn                     │ Admin/HR         │
+└────────────────────┴──────────┴──────────┴──────────────────────────────┴──────────────────┘
+
+
+================================================================================
+9. MODULE-BY-MODULE BREAKDOWN
+================================================================================
+
+───────────────────────────────────────────────────────────────────────
+9.1 AUTHENTICATION MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/(auth)/layout.tsx           → Video background layout
+  - app/(auth)/login/page.tsx       → Login form
+  - app/(auth)/register/page.tsx    → Admin registration form
+  - lib/auth.ts                     → Auth service functions
+  - components/providers/AuthProvider.tsx → Auth context
+  - components/auth/ProtectedRoute.tsx   → Route guard
+
+Login Flow:
+  User enters email/password → signInWithEmailAndPassword() → 
+  onAuthStateChanged fires → AuthProvider fetches profile from "users/{uid}" →
+  ProtectedRoute checks role → Dashboard renders
+
+Registration Flow (Admin):
+  Fill form → registerAdmin() → createUserWithEmailAndPassword() →
+  setDoc("users/{uid}") with role:"Admin" → signOut() → redirect to /login
+
+Registration Flow (Employee by Admin):
+  Admin opens AddEmployeeModal → fills form → registerEmployeeByAdmin() →
+  Secondary Firebase App created → createUserWithEmailAndPassword() on secondary →
+  setDoc("users/{uid}") → signOut secondary → Admin stays logged in
+
+Features:
+  - Password reset via email
+  - Show/hide password toggle
+  - Firebase error message parsing
+  - Legacy collection migration ("Users" → "users")
+
+───────────────────────────────────────────────────────────────────────
+9.2 DASHBOARD MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/page.tsx
+  - components/dashboard/WelcomeHeader.tsx
+  - components/dashboard/TopStats.tsx
+  - components/dashboard/LiveAttendanceCard.tsx
+  - components/dashboard/WeeklyOverview.tsx
+  - components/dashboard/CalendarWidget.tsx
+  - components/dashboard/TodaySchedule.tsx
+  - components/dashboard/TeamStatusWidget.tsx
+  - components/dashboard/RecentNotifications.tsx
+
+Layout: Responsive grid with staggered animation (framer-motion)
+  Row 1: WelcomeHeader (full width)
+  Row 2: TopStats (full width)
+  Row 3: LiveAttendanceCard | WeeklyOverview | CalendarWidget (3-col grid)
+  Row 4: TeamStatusWidget | RecentNotifications (2-col grid)
+
+LiveAttendanceCard:
+  - Shows current check-in status
+  - Check In / Check Out buttons
+  - Live timer counting working hours
+  - Updates workingSeconds in Firestore every 60 seconds
+  - Shift logic: resets at 7:30 PM
+
+TopStats (for Admin/HR):
+  - Total Employees count
+  - Present Today count
+  - Pending Leaves count
+  - Monthly Payroll total
+
+───────────────────────────────────────────────────────────────────────
+9.3 EMPLOYEE MANAGEMENT MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/employees/page.tsx
+  - app/dashboard/employees/[uid]/ (dynamic detail page)
+  - components/employees/AddEmployeeModal.tsx
+
+Features:
+  - Employee directory table with real-time updates (onSnapshot)
+  - Search by name, employee ID, or job role
+  - Filter by department
+  - Add Employee modal (Admin/HR): fullName, employeeId, email, password, role, jobRole, designation
+  - Delete employee (removes Firestore doc; Firebase Auth account persists)
+  - Bulk select, bulk delete, export CSV
+  - Click employee name → navigate to /dashboard/employees/{uid}
+
+Employee Table Columns:
+  - Checkbox (Admin/HR only)
+  - Employee Name (clickable → detail page)
+  - Employee ID
+  - Department (badge with color)
+  - Job Role
+  - Designation
+  - Actions: Delete (Admin/HR only)
+
+AddEmployeeModal Fields:
+  - Full Name (required)
+  - Employee ID (required)
+  - Corporate Email (required)
+  - Password (required, min 8 chars)
+  - Role dropdown: Admin, HR, OPS_HR, MARKETING, SALES, IT, Employee
+  - Job Role (required)
+  - Designation dropdown: Manager, Team Lead, Senior, Junior, Intern, Trainee, Consultant
+
+───────────────────────────────────────────────────────────────────────
+9.4 ATTENDANCE MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/attendance/page.tsx
+  - components/dashboard/attendance/HRAttendanceDashboard.tsx
+  - components/dashboard/attendance/EmployeeAttendanceDashboard.tsx
+  - lib/attendance.ts
+
+HR/Admin View (HRAttendanceDashboard):
+  - Date picker to view attendance for any date
+  - Table of all employees' attendance for selected date
+  - Stats: Total Present, Checked In, Absent
+  - Excel export functionality
+
+Employee View (EmployeeAttendanceDashboard):
+  - Monthly calendar view of own attendance
+  - Month/year selector
+  - Status indicators: Present, Checked In, Absent, On Leave, Week Off
+  - Working hours display per day
+
+Key Business Logic:
+  - Document ID pattern: "{userId}_{YYYY-MM-DD}"
+  - Shift starts at 7:30 PM → date calculation adjusted
+  - checkIn: Creates record with checkInTime, status="Checked In"
+  - checkOut: Updates checkOutTime, status="Present", finalizes workingSeconds
+  - updateWorkingSeconds: Called every 60 seconds while checked in
+
+───────────────────────────────────────────────────────────────────────
+9.5 LEAVE MANAGEMENT MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/leave/page.tsx
+  - components/dashboard/leave/HRLeaveDashboard.tsx
+  - components/dashboard/leave/EmployeeLeaveDashboard.tsx
+  - components/dashboard/leave/ApplyLeaveModal.tsx
+  - components/dashboard/leave/LeaveCalendar.tsx
+  - lib/leave.ts
+
+HR/Admin View (HRLeaveDashboard):
+  - Pending leave requests list (real-time via onSnapshot)
+  - Approve / Reject buttons
+  - All leave history (searchable)
+  - Stats cards
+  - Leave Calendar visualization
+
+Employee View (EmployeeLeaveDashboard):
+  - "Apply Leave" button → ApplyLeaveModal
+  - Own leave history with status badges
+  - Leave balance/stats
+
+ApplyLeaveModal:
+  - Leave Type selector
+  - Start Date / End Date pickers
+  - Auto-calculated days
+  - Reason textarea
+  - Submits with status "Pending"
+
+Leave Types Available:
+  - Casual Leave
+  - Sick Leave
+  - Earned Leave
+  - Maternity/Paternity Leave
+  - Compensatory Off
+  - Other
+
+Real-time Listeners:
+  - listenToUserLeaves(userId) → Employee's own leaves
+  - listenToPendingLeaves() → All pending (for HR)
+  - listenToAllLeaves() → All leaves (for HR)
+
+───────────────────────────────────────────────────────────────────────
+9.6 PAYROLL MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/payroll/page.tsx
+  - components/dashboard/payroll/HRPayrollDashboard.tsx
+  - components/dashboard/payroll/EmployeePayrollDashboard.tsx
+  - components/dashboard/payroll/GeneratePayrollModal.tsx
+  - components/dashboard/payroll/SalaryConfigModal.tsx
+  - components/payroll/PayslipDocument.tsx
+  - lib/payroll.ts
+
+HR/Admin View (HRPayrollDashboard):
+  - List all employees with salary structures
+  - Configure salary structure per employee (SalaryConfigModal)
+  - Generate payroll per employee per month (GeneratePayrollModal)
+  - View all generated payrolls
+  - Delete payrolls
+  - Export payslip as PDF (via PayslipDocument + html2canvas + jsPDF)
+
+Employee View (EmployeePayrollDashboard):
+  - View own payroll history
+  - Download payslip PDFs
+
+Salary Calculation Logic (lib/payroll.ts):
+  INPUT: grossSalary, travelAllowance, lopDays, daysInMonth, otherDeductions,
+         otherAllowances, incentives, professionalTax, incomeTax, providentFund
+  
+  CALCULATION:
+    basic = grossSalary × 50%
+    hra = grossSalary × 20%
+    specialAllowance = grossSalary - basic - hra - travelAllowance (min 0)
+    totalEarnings = grossSalary + otherAllowances + incentives
+    perDaySalary = grossSalary ÷ daysInMonth
+    lopDeduction = perDaySalary × lopDays
+    totalDeductions = lopDeduction + professionalTax + incomeTax + providentFund + otherDeductions
+    netSalary = totalEarnings - totalDeductions
+
+  DEFAULTS:
+    Professional Tax = ₹200 (fixed)
+    Mode of Payment = "Bank Transfer"
+
+SalaryConfigModal Fields:
+  - Gross Salary
+  - Travel Allowance
+  - Other Deductions
+  - Other Allowances
+
+GeneratePayrollModal Fields:
+  - Month/Year selector
+  - LOP Days
+  - Professional Tax (default 200)
+  - Income Tax
+  - Provident Fund
+  - Incentives
+  - Payment Date
+  - Mode of Payment
+
+───────────────────────────────────────────────────────────────────────
+9.7 ANNOUNCEMENTS MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/announcements/page.tsx
+  - lib/announcements.ts
+
+Features:
+  - Admin/HR can create announcements
+  - Pin/Unpin announcements (pinned shown first)
+  - Archive announcements (hidden from view)
+  - Delete announcements
+  - Real-time updates via onSnapshot
+  - Auto-creates notifications for ALL users when announcement is created
+  - When user visits announcements page, marks all announcement notifications as read
+  - Sidebar shows unread announcement count badge
+
+Notification Integration:
+  On create → iterates ALL users in "users" collection →
+  creates notification for each user (excluding author) →
+  type: "announcement", message: "New Announcement: {title}"
+
+───────────────────────────────────────────────────────────────────────
+9.8 DOCUMENTS MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/documents/page.tsx
+  - lib/documents.ts
+
+Features:
+  - Upload files to Firebase Storage
+  - Two scopes: "personal" and "company"
+  - Admin/HR: sees all documents, can select employees to view their docs
+  - Employee: sees company docs + own personal docs
+  - Download files via direct Storage URL
+  - Delete files (removes Firestore doc + Storage object)
+  - Statutory/Bank details section:
+    - Aadhar Number (12-digit validation)
+    - PAN Number (format validation)
+    - Bank Account Name
+    - Bank Details (Account + IFSC)
+    - Stored on the user's document in "users" collection
+  - Admin/HR can view any employee's statutory details (read-only)
+  - Employee can edit their own statutory details
+
+Document Status Types:
+  - "Verified" (green shield icon)
+  - "Available" (blue file icon)
+  - "Pending Review" (orange clock icon) — default for new uploads
+
+───────────────────────────────────────────────────────────────────────
+9.9 ONBOARDING MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/onboarding/page.tsx
+  - lib/onboarding.ts
+
+HR/Admin View (HROnboardingView):
+  - Stats: In Progress, Completed, Not Started counts
+  - Employees without onboarding → "Create Onboarding" button per employee
+  - Search employees
+  - Progress cards per employee showing task completion
+  - Uses Firestore batch writes for creating default tasks
+
+Employee View (EmployeeOnboardingView):
+  - Progress bar (percentage complete)
+  - Checklist of tasks (click to toggle complete/incomplete)
+  - Auto-creates default onboarding tasks if none exist
+
+Default Onboarding Tasks (created via writeBatch):
+  1. Submit Government ID Copy
+  2. Sign Non-Disclosure Agreement (NDA)
+  3. Complete Tax Declaration Form
+  4. Provide Emergency Contact Details
+  5. Submit Bank Account Details
+  6. Acknowledge Employee Handbook
+
+───────────────────────────────────────────────────────────────────────
+9.10 OPERATIONS/SALES MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/operations/page.tsx
+  - components/dashboard/OperationsClient.tsx (35KB - largest component)
+  - components/dashboard/operations/OperationsForm.tsx
+  - components/dashboard/departments/SalesDataSection.tsx
+
+Features:
+  - Sales lead and candidate tracking
+  - Full CRUD for sales records
+  - Stored in "sales" Firestore collection
+  - Filtered by department in sidebar (only shown to Sales-related users)
+  - Excel export capabilities
+
+───────────────────────────────────────────────────────────────────────
+9.11 DEPARTMENTS MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/departments/page.tsx
+  - app/dashboard/departments/[id]/ (detail pages)
+
+HR/Admin View (HRDepartmentsDashboard):
+  - Card grid of departments: Marketing, IT, Sales, HR
+  - Real-time employee count per department (from "users" collection)
+  - Auto-detects department head (by designation containing "manager"/"lead"/"head")
+  - "Add Department" button (UI only, no functionality)
+  - Click card → navigate to /dashboard/departments/{id}
+
+Employee View (EmployeeDepartmentDashboard):
+  - Shows "My Department" (hardcoded to IT department)
+  - Team directory with member cards
+  - Department head info
+  - Note: Employee view is HARDCODED with static team data
+
+Base Departments (hardcoded in code):
+  1. Marketing (dbRole: "MARKETING")
+  2. Information Technology (dbRole: "IT")
+  3. Sales (dbRole: "SALES")
+  4. Human Resources (dbRole: "OPS_HR")
+
+───────────────────────────────────────────────────────────────────────
+9.12 SETTINGS MODULE
+───────────────────────────────────────────────────────────────────────
+Files:
+  - app/dashboard/settings/page.tsx
+  - lib/settings.ts
+
+Tabs:
+  1. Profile: Full Name, Email (read-only), Phone, Timezone
+  2. Notifications: Email, Leave Updates, Payroll Alerts toggles
+  3. Security: Password change form (UI only, not wired to Firebase Auth)
+  4. Language: Interface Language, Date Format (UI only, not functional)
+  5. Appearance: Light/Dark theme toggle (localStorage only, partial support)
+
+Data Persistence:
+  - Profile + Notification settings → saved to "users/{uid}" in Firestore
+  - Theme → saved to localStorage ("vectra-theme")
+  - Security tab → UI only, password change NOT implemented
+  - Language tab → UI only, NOT implemented
+
+───────────────────────────────────────────────────────────────────────
+9.13 NOTIFICATIONS SYSTEM
+───────────────────────────────────────────────────────────────────────
+Files:
+  - lib/notifications.ts
+  - components/layout/Navbar.tsx (notification dropdown)
+  - components/layout/Sidebar.tsx (announcement badge)
+
+Types: "payroll" | "leave" | "announcement" | "general"
+
+Created When:
+  - Announcement published → notification for ALL users (type: "announcement")
+  - (Other notification types exist but may not be actively created)
+
+Navbar Behavior:
+  - Bell icon with unread count badge
+  - Dropdown panel with last 15 notifications
+  - Click notification → navigate to relevant page:
+    - "announcement" → /dashboard/announcements
+    - "leave" → /dashboard/leave
+    - "payroll" → /dashboard/payroll
+  - "Mark all read" button
+  - Individual mark-as-read on click
+
+Sidebar Badge:
+  - Counts unread "announcement" type notifications
+  - Shows red pulsing badge on "Announcements" link
+  - Auto-clears when user visits /dashboard/announcements
+
+Real-time: listenToUserNotifications(userId) via Firestore onSnapshot
+
+───────────────────────────────────────────────────────────────────────
+9.14 AUDIT LOGGING SYSTEM
+───────────────────────────────────────────────────────────────────────
+Files:
+  - lib/audit.ts
+
+Functions:
+  - logAuditEvent(actorName, action, target, details?)
+  - listenToAuditLogs(callback, maxItems=100)
+
+Security:
+  - Only Admin can READ audit logs
+  - Any signed-in user can CREATE audit log entries
+  - Update/Delete DENIED for all users (immutable logs)
+
+Current Usage:
+  - The audit functions are defined but NOT extensively used throughout the app
+  - No dedicated UI page for viewing audit logs
+
+
+================================================================================
+10. DATA FLOW DIAGRAMS (TEXT-BASED)
+================================================================================
+
+EMPLOYEE CHECK-IN FLOW:
+───────────────────────
+Employee clicks "Check In"
+  │
+  ├─► getLocalDateString() → determines shift date (7:30 PM cutoff)
+  │
+  ├─► Generate docId: "{userId}_{dateStr}"
+  │
+  ├─► Check if doc exists in "attendance" collection
+  │   ├─ YES → Return existing record (already checked in)
+  │   └─ NO  → Create new record:
+  │            {checkInTime: now, status: "Checked In", workingSeconds: 0}
+  │
+  ├─► Start 60-second interval timer
+  │   └─► Every 60s: updateWorkingSeconds(docId, elapsed)
+  │
+  └─► UI shows live timer counting up
+
+
+EMPLOYEE CHECK-OUT FLOW:
+────────────────────────
+Employee clicks "Check Out"
+  │
+  ├─► Calculate final workingSeconds
+  │
+  └─► updateDoc("attendance/{docId}"):
+      {checkOutTime: now, status: "Present", workingSeconds: final}
+
+
+LEAVE APPLICATION FLOW:
+───────────────────────
+Employee submits leave form
+  │
+  ├─► applyLeave() → addDoc("leave_requests")
+  │   {status: "Pending", appliedOn: now}
+  │
+  └─► HR sees in real-time via listenToPendingLeaves()
+      │
+      ├─► HR clicks "Approve"
+      │   └─► updateDoc("leave_requests/{id}", {status: "Approved"})
+      │
+      └─► HR clicks "Reject"
+          └─► updateDoc("leave_requests/{id}", {status: "Rejected"})
+          
+      Employee sees status change in real-time via listenToUserLeaves()
+
+
+PAYROLL GENERATION FLOW:
+────────────────────────
+HR opens GeneratePayrollModal for employee
+  │
+  ├─► getSalaryStructure(userId) → reads "salary_structures/{userId}"
+  │
+  ├─► HR enters: month, year, lopDays, taxes, incentives
+  │
+  ├─► calculateSalaryBreakup() → pure calculation:
+  │   basic(50%), hra(20%), specialAllowance, earnings, deductions, netSalary
+  │
+  ├─► generatePayroll() → setDoc("payrolls/{userId}_{year}_{month}")
+  │
+  └─► PDF export via PayslipDocument → html2canvas → jsPDF
+
+
+ANNOUNCEMENT CREATION FLOW:
+────────────────────────────
+Admin/HR creates announcement
+  │
+  ├─► addDoc("announcements") with {pinned, archived: false}
+  │
+  ├─► Fetch all users from "users" collection
+  │
+  ├─► For each user (except author):
+  │   └─► createNotification(uid, "New Announcement: {title}", "announcement")
+  │       └─► addDoc("notifications")
+  │
+  └─► All users see:
+      ├─► Real-time announcement in announcements page
+      ├─► Notification bell badge in Navbar
+      └─► Unread count badge on Sidebar
+
+
+DOCUMENT UPLOAD FLOW:
+─────────────────────
+User clicks Upload
+  │
+  ├─► Select scope: "personal" or "company" (Admin/HR can choose)
+  │
+  ├─► uploadBytes() → Firebase Storage
+  │   path: "documents/{scope}/{userId}_{timestamp}_{filename}"
+  │
+  ├─► getDownloadURL() → get public download link
+  │
+  └─► addDoc("documents") with metadata + storageUrl + storagePath
+
+
+================================================================================
+11. BACKEND SERVICES LAYER (lib/ DIRECTORY)
+================================================================================
+
+lib/firebase.ts:
+  - Initializes Firebase app (singleton pattern)
+  - Exports: auth, db, storage, app
+
+lib/auth.ts:
+  - getFirebaseErrorMessage(error) → user-friendly error strings
+  - registerAdmin(fullName, email, password) → creates Admin user
+  - registerEmployee(fullName, employeeId, email, role, password, jobRole, designation)
+  - registerEmployeeByAdmin(...) → uses secondary Firebase app
+  - logoutUser() → signs out current user
+
+lib/attendance.ts:
+  - getLocalDateString() → shift-aware date (7:30 PM cutoff)
+  - checkIn(userId, fullName, role?) → creates/returns attendance record
+  - updateWorkingSeconds(docId, seconds) → live timer update
+  - checkOut(docId, workingSeconds) → finalizes attendance
+  - getTodayAttendance(userId) → single user today
+  - getAllTodayAttendance() → all users today
+  - getAttendanceByDate(dateStr) → all users for date
+  - getUserAttendanceForMonth(userId, yearMonth) → monthly view
+
+lib/leave.ts:
+  - applyLeave(...) → creates leave request (status: "Pending")
+  - getUserLeaves(userId) → all leaves for user
+  - getAllPendingLeaves() → all pending requests
+  - updateLeaveStatus(leaveId, "Approved"|"Rejected")
+  - listenToUserLeaves(userId, callback) → real-time
+  - listenToPendingLeaves(callback) → real-time
+  - listenToAllLeaves(callback) → real-time
+
+lib/payroll.ts:
+  - saveSalaryStructure(userId, data)
+  - getSalaryStructure(userId) → SalaryStructure | null
+  - calculateSalaryBreakup(...) → pure calculation, returns breakup object
+  - generatePayroll(...) → fetches structure, calculates, saves to Firestore
+  - getEmployeePayrolls(userId, fullName?, employeeId?)
+  - getAllPayrolls()
+  - deletePayroll(payrollId)
+
+lib/announcements.ts:
+  - createAnnouncement(title, body, authorUid, authorName, pinned)
+    + auto-creates notifications for all users
+  - togglePinAnnouncement(id, pinned)
+  - archiveAnnouncement(id)
+  - deleteAnnouncement(id)
+  - listenToAnnouncements(callback) → real-time, filters archived, sorts pinned first
+
+lib/documents.ts:
+  - uploadDocument(file, userId, userName, scope) → uploads to Storage + creates doc
+  - deleteDocument(docId, storagePath) → removes from Storage + Firestore
+  - listenToDocuments(userId, isAdmin, callback) → real-time
+    Admin: sees all; Employee: sees company + own personal
+
+lib/onboarding.ts:
+  - createOnboardingForEmployee(uid, name) → batch creates 6 default tasks
+  - toggleOnboardingTask(taskId, completed)
+  - listenToEmployeeOnboarding(uid, callback) → real-time
+  - listenToAllOnboarding(callback) → real-time
+
+lib/notifications.ts:
+  - createNotification(userId, message, type)
+  - markAsRead(notificationId)
+  - markAllAsRead(userId) → marks all unread for user
+  - markTypeAsRead(userId, type) → marks all unread of type
+  - listenToUserNotifications(userId, callback) → real-time
+
+lib/audit.ts:
+  - logAuditEvent(actorName, action, target, details?)
+  - listenToAuditLogs(callback, maxItems) → real-time
+
+lib/settings.ts:
+  - updateUserProfile(uid, data) → updates "users/{uid}"
+  - getUserSettings(uid) → reads profile/notification preferences
+
+lib/utils.ts:
+  - cn(...inputs) → Tailwind class merge utility (clsx + tailwind-merge)
+
+
+================================================================================
+12. COMPONENT HIERARCHY
+================================================================================
+
+RootLayout (app/layout.tsx)
+├── Toaster (sonner)
+├── AuthLayout (app/(auth)/layout.tsx) ── for /login, /register
+│   ├── Video Background
+│   ├── LoginPage
+│   └── RegisterPage
+│
+└── DashboardLayout (app/dashboard/layout.tsx) ── for /dashboard/*
+    └── AuthProvider
+        └── ProtectedRoute
+            └── SidebarProvider
+                └── Flex Container
+                    ├── Sidebar
+                    │   ├── Logo
+                    │   ├── NAV_LINKS (role-filtered)
+                    │   └── System Status indicator
+                    └── Main Content Area
+                        ├── Navbar
+                        │   ├── Sidebar toggle
+                        │   ├── Notification bell + dropdown
+                        │   ├── User name + role badge
+                        │   ├── Profile avatar + dropdown
+                        │   └── Logout button
+                        └── {children} ── Page content
+                            ├── DashboardPage
+                            │   ├── WelcomeHeader
+                            │   ├── TopStats
+                            │   ├── LiveAttendanceCard
+                            │   ├── WeeklyOverview
+                            │   ├── CalendarWidget
+                            │   ├── TeamStatusWidget
+                            │   └── RecentNotifications
+                            ├── EmployeesPage
+                            │   ├── Employee Table
+                            │   ├── AddEmployeeModal
+                            │   └── ConfirmModal (delete)
+                            ├── AttendancePage
+                            │   ├── HRAttendanceDashboard (Admin/HR)
+                            │   └── EmployeeAttendanceDashboard (Employee)
+                            ├── LeavePage
+                            │   ├── HRLeaveDashboard (Admin/HR)
+                            │   │   └── LeaveCalendar
+                            │   └── EmployeeLeaveDashboard (Employee)
+                            │       └── ApplyLeaveModal
+                            ├── PayrollPage
+                            │   ├── HRPayrollDashboard (Admin/HR)
+                            │   │   ├── SalaryConfigModal
+                            │   │   ├── GeneratePayrollModal
+                            │   │   └── PayslipDocument
+                            │   └── EmployeePayrollDashboard (Employee)
+                            ├── AnnouncementsPage
+                            │   └── ConfirmModal (delete)
+                            ├── DocumentsPage
+                            │   └── ConfirmModal (delete)
+                            ├── OnboardingPage
+                            │   ├── HROnboardingView (Admin/HR)
+                            │   └── EmployeeOnboardingView (Employee)
+                            ├── DepartmentsPage
+                            │   ├── HRDepartmentsDashboard (Admin)
+                            │   └── EmployeeDepartmentDashboard (Employee)
+                            ├── OperationsPage
+                            │   └── OperationsClient
+                            │       └── OperationsForm
+                            └── SettingsPage
+
+
+================================================================================
+13. STATE MANAGEMENT
+================================================================================
+
+The app uses REACT CONTEXT for global state, NOT Redux or Zustand.
+
+Global Contexts:
+  1. AuthContext (AuthProvider):
+     - user: Firebase User | null
+     - profile: UserProfile | null (from Firestore)
+     - loading: boolean
+     
+  2. SidebarContext (SidebarProvider):
+     - isOpen: boolean
+     - toggleSidebar: () => void
+
+All other state is LOCAL COMPONENT STATE (useState).
+No centralized store for module data.
+
+Real-time Data Pattern:
+  - Each page/component subscribes to Firestore via onSnapshot in useEffect
+  - Cleanup: unsubscribe returned from onSnapshot called in useEffect cleanup
+  - Data is stored in local component state
+  - No caching layer between components
+
+
+================================================================================
+14. REAL-TIME LISTENERS (FIRESTORE onSnapshot)
+================================================================================
+
+Active Listeners by Component:
+┌────────────────────────────────┬─────────────────────────┬────────────────────┐
+│ Component                      │ Collection              │ Filter             │
+├────────────────────────────────┼─────────────────────────┼────────────────────┤
+│ AuthProvider                   │ users/{uid}             │ Single doc         │
+│ Sidebar                        │ announcements           │ All                │
+│ Sidebar                        │ notifications           │ userId == current  │
+│ Navbar                         │ notifications           │ userId == current  │
+│ EmployeesPage                  │ users                   │ All                │
+│ HRAttendanceDashboard          │ attendance              │ By date            │
+│ EmployeeAttendanceDashboard    │ attendance              │ By userId          │
+│ HRLeaveDashboard               │ leave_requests          │ Pending + All      │
+│ EmployeeLeaveDashboard         │ leave_requests          │ By userId          │
+│ AnnouncementsPage              │ announcements           │ All (filter local) │
+│ DocumentsPage                  │ documents               │ All (filter local) │
+│ DocumentsPage                  │ users                   │ All (Admin/HR)     │
+│ OnboardingPage (HR)            │ onboarding_tasks        │ All                │
+│ OnboardingPage (HR)            │ users                   │ All                │
+│ OnboardingPage (Employee)      │ onboarding_tasks        │ By employeeUid     │
+│ DepartmentsPage (HR)           │ users                   │ All                │
+│ TopStats                       │ users, attendance, etc. │ Various            │
+│ TeamStatusWidget               │ users                   │ All                │
+│ WeeklyOverview                 │ attendance              │ By userId + range  │
+└────────────────────────────────┴─────────────────────────┴────────────────────┘
+
+Note: Multiple components may listen to the same collection simultaneously.
+This can lead to redundant Firestore reads. No deduplication layer exists.
+
+
+================================================================================
+15. KEY BUSINESS LOGIC
+================================================================================
+
+1. SHIFT-BASED DATE CALCULATION:
+   - Function: getLocalDateString() in lib/attendance.ts
+   - Before 7:30 PM (19:30) → previous day's date
+   - At/After 7:30 PM → current day's date
+   - Purpose: Night shift workers who check in late evening
+
+2. SALARY BREAKUP FORMULA:
+   basic = 50% of gross
+   hra = 20% of gross
+   specialAllowance = max(0, gross - basic - hra - travel)
+   totalEarnings = gross + otherAllowances + incentives
+   perDaySalary = gross / daysInMonth
+   lopDeduction = perDaySalary × lopDays
+   totalDeductions = lopDeduction + professionalTax + incomeTax + PF + otherDeductions
+   netSalary = totalEarnings - totalDeductions
+
+3. SECONDARY APP PATTERN (Employee Registration):
+   - Admin creates employee → must not log out Admin
+   - Solution: initializeApp(config, 'SecondaryApp')
+   - Creates auth account on secondary instance
+   - Admin's session on primary instance unaffected
+   - Secondary auth signed out immediately after
+
+4. LEGACY DATA MIGRATION:
+   - Old collection: "Users" (capital U)
+   - New collection: "users" (lowercase)
+   - Migration: On login, if doc not found in "users", checks "Users"
+   - Auto-copies to "users" and deletes from "Users"
+   - Admin/HR login triggers batch migration of ALL remaining legacy docs
+
+5. DOCUMENT VISIBILITY:
+   - Admin/HR: sees ALL documents
+   - Employee: sees company-scoped docs + own personal docs
+   - Filter applied client-side after fetching all docs
+
+6. ANNOUNCEMENT NOTIFICATIONS:
+   - On create: iterates ALL users → creates individual notification per user
+   - Potential N+1 problem with large user base
+
+
+================================================================================
+16. CURRENT LIMITATIONS & KNOWN ISSUES
+================================================================================
+
+1. NO SERVER-SIDE LOGIC:
+   - All business logic runs client-side
+   - Firestore rules are the only security enforcement
+   - No Cloud Functions for triggers, scheduled tasks, or complex validations
+
+2. EMPLOYEE DELETION IS INCOMPLETE:
+   - Deleting from "users" collection removes Firestore profile
+   - Firebase Auth account remains active (user can still authenticate)
+   - Need Firebase Admin SDK (server-side) to fully delete auth accounts
+
+3. HARDCODED EMPLOYEE DEPARTMENT VIEW:
+   - departments/page.tsx Employee view has hardcoded team members
+   - Not pulling dynamic data from Firestore
+
+4. SETTINGS PAGE PARTIAL IMPLEMENTATION:
+   - Security tab: Password change UI exists but NOT connected to Firebase Auth
+   - Language tab: UI exists but NOT functional
+   - Theme: Partial support (localStorage only, no persistent dark mode)
+
+5. AUDIT LOGS NOT WIDELY USED:
+   - lib/audit.ts exists with full CRUD
+   - No dedicated page to VIEW audit logs
+   - Not called from most write operations
+
+6. ONBOARDING NOT IN SIDEBAR:
+   - Onboarding page exists but is NOT listed in sidebar navigation
+   - Must be accessed via direct URL
+
+7. REDUNDANT FIRESTORE READS:
+   - Multiple components listen to same collections independently
+   - No shared data layer or caching
+
+8. NO PAGINATION:
+   - Employee list, payroll history, leave history all fetch ALL documents
+   - Could become slow with large datasets
+
+9. NO EMAIL NOTIFICATIONS:
+   - System only has in-app notifications
+   - No actual email sending capability
+
+10. DEPARTMENT STRUCTURE IS RIGID:
+    - Only 4 departments hardcoded: Marketing, IT, Sales, HR
+    - "Add Department" button exists in UI but has no functionality
+
+11. OPERATIONS MODULE ACCESS:
+    - Filtered in sidebar by department matching "sales"
+    - But Firestore rules allow ALL signed-in users to read/write "sales" collection
+
+12. NO INPUT SANITIZATION:
+    - User inputs go directly to Firestore
+    - Relies entirely on Firestore rules for security
+
+
+================================================================================
+17. DEPENDENCIES LIST (package.json)
+================================================================================
+
+PRODUCTION DEPENDENCIES:
+  @hookform/resolvers    ^5.4.0    # Form validation resolvers
+  class-variance-authority ^0.7.1  # Component variant styling
+  clsx                   ^2.1.1    # Conditional class names
+  firebase               ^12.15.0  # Firebase SDK (Auth, Firestore, Storage)
+  framer-motion          ^12.42.0  # Animation library
+  html2canvas            ^1.4.1    # DOM to canvas (for PDF generation)
+  jspdf                  ^4.2.1    # PDF document generation
+  lucide-react           ^1.21.0   # Icon library
+  next                   16.2.9    # Next.js framework
+  react                  19.2.4    # React library
+  react-dom              19.2.4    # React DOM renderer
+  react-hook-form        ^7.80.0   # Form state management
+  sonner                 ^2.0.7    # Toast notification library
+  tailwind-merge         ^3.6.0    # Tailwind class conflict resolution
+  xlsx                   ^0.18.5   # Excel file generation
+  xlsx-js-style          ^1.2.0    # Styled Excel export
+  zod                    ^4.4.3    # Schema validation
+
+DEV DEPENDENCIES:
+  @tailwindcss/postcss   ^4        # Tailwind PostCSS plugin
+  @types/node            ^20       # Node.js type definitions
+  @types/react           ^19       # React type definitions
+  @types/react-dom       ^19       # React DOM type definitions
+  docx                   ^9.7.1    # DOCX document generation
+  eslint                 ^9        # Code linting
+  eslint-config-next     16.2.9    # Next.js ESLint config
+  tailwindcss            ^4        # Tailwind CSS framework
+  typescript             ^5        # TypeScript compiler
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+This document was auto-generated on August 6, 2026 by analyzing the complete
+Vectra Group ERP System codebase. It represents the CURRENT STATE of the system
+and is intended for upload to AI assistants for development discussion.
+
+Total Firestore Collections: 10 (users, Users, attendance, leave_requests,
+  salary_structures, payrolls, announcements, documents, notifications,
+  onboarding_tasks, audit_logs, sales)
+
+Total lib/ Service Files: 12
+Total App Routes: 14 (including dynamic routes)
+Total Components: 35+

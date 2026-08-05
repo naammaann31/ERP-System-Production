@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const docRef = doc(db, "users", firebaseUser.uid);
                     let docSnap = await getDoc(docRef);
 
+                    // TODO(2026-10-01): Remove legacy 'Users' fallback and auto-migration code completely.
                     // If not found in 'users', check legacy 'Users' table and auto-migrate
                     if (!docSnap.exists()) {
                         const legacyRef = doc(db, "Users", firebaseUser.uid);

@@ -9,7 +9,8 @@ import { Users, Search, Filter, Plus, Trash2, Download, CheckSquare } from "luci
 import { useAuth } from "@/components/providers/AuthProvider";
 import AddEmployeeModal from "@/components/employees/AddEmployeeModal";
 import { collection, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 
@@ -66,8 +67,9 @@ export default function EmployeesPage() {
 
   const executeBulkDelete = async () => {
     const count = selectedIds.size;
+    const deleteFunc = httpsCallable(functions, "deleteEmployee");
     for (const uid of selectedIds) {
-      try { await deleteDoc(doc(db, "users", uid)); } catch { /* ignore */ }
+      try { await deleteFunc({ employeeUid: uid }); } catch (e) { console.error(e); }
     }
     setSelectedIds(new Set());
     setBulkDeleteConfirm(false);
@@ -136,7 +138,8 @@ export default function EmployeesPage() {
   const executeDeleteEmployee = async () => {
     if (!employeeToDelete) return;
     try {
-      await deleteDoc(doc(db, "users", employeeToDelete.uid));
+      const deleteFunc = httpsCallable(functions, "deleteEmployee");
+      await deleteFunc({ employeeUid: employeeToDelete.uid });
       toast.success(`${employeeToDelete.name} has been removed.`);
     } catch (error) {
       console.error("Error deleting employee:", error);

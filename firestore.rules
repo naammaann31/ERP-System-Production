@@ -6,9 +6,9 @@ service cloud.firestore {
     // ─── Helper Functions ───────────────────────────────────────
     function getUserRole() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'Employee')
         : (exists(/databases/$(database)/documents/Users/$(request.auth.uid))
-          ? get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role
+          ? get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.get('role', 'Employee')
           : 'Employee');
     }
 
@@ -31,7 +31,7 @@ service cloud.firestore {
 
     // ─── User Profiles (lowercase collection) ───────────────────
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdminOrHR();
       allow create: if isSignedIn();
       allow update: if isOwner(userId) || isAdminOrHR();
       allow delete: if isAdminOrHR();
@@ -39,7 +39,7 @@ service cloud.firestore {
 
     // ─── User Profiles (capitalized collection — legacy admins) ─
     match /Users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdminOrHR();
       allow create: if isSignedIn();
       allow update: if isOwner(userId) || isAdminOrHR();
       allow delete: if isAdminOrHR();
@@ -49,7 +49,7 @@ service cloud.firestore {
     // ─── Attendance ─────────────────────────────────────────────
     match /attendance/{recordId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdminOrHR());
       allow delete: if isAdminOrHR();
@@ -58,8 +58,8 @@ service cloud.firestore {
 
     // ─── Leave Requests ─────────────────────────────────────────
     match /leave_requests/{leaveId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow read: if isAdminOrHR() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdminOrHR();
       allow delete: if isAdminOrHR();
     }
@@ -67,15 +67,15 @@ service cloud.firestore {
 
     // ─── Salary Structures ──────────────────────────────────────
     match /salary_structures/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdminOrHR();
       allow write: if isAdminOrHR();
     }
 
 
     // ─── Payroll Records ────────────────────────────────────────
     match /payrolls/{payrollId} {
-      allow read: if isSignedIn();
-      allow write: if isAdminOrHR();
+      allow read: if isAdminOrHR() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false; // Server-side only via Cloud Functions
     }
 
 
@@ -98,7 +98,7 @@ service cloud.firestore {
     // ─── Notifications ──────────────────────────────────────────
     match /notifications/{notifId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid;
       allow delete: if isAdmin();
@@ -118,16 +118,13 @@ service cloud.firestore {
     // ─── Audit Logs ─────────────────────────────────────────────
     match /audit_logs/{logId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow create, update, delete: if false; // Server-side only via Cloud Functions
     }
 
 
     // ─── Sales / Operations Data ────────────────────────────────
     match /sales/{recordId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow read, create, update: if isAdminOrHR() || (isSignedIn() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department == 'Sales' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SALES'));
       allow delete: if isAdminOrHR();
     }
 
