@@ -9,9 +9,10 @@ import { toast } from "sonner";
 interface OperationsFormProps {
     onCancel: () => void;
     onSuccess: () => void;
+    collectionName?: string;
 }
 
-export default function OperationsForm({ onCancel, onSuccess }: OperationsFormProps) {
+export default function OperationsForm({ onCancel, onSuccess, collectionName = "sales" }: OperationsFormProps) {
     const { profile } = useAuth();
     const [submitting, setSubmitting] = useState(false);
     const [formData, setFormData] = useState({
@@ -44,7 +45,7 @@ export default function OperationsForm({ onCancel, onSuccess }: OperationsFormPr
         };
 
         try {
-            await addDoc(collection(db, "sales"), {
+            await addDoc(collection(db, collectionName), {
                 ...payload,
                 createdAt: serverTimestamp()
             });

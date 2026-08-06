@@ -6,9 +6,9 @@ service cloud.firestore {
     // ─── Helper Functions ───────────────────────────────────────
     function getUserRole() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'Employee')
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
         : (exists(/databases/$(database)/documents/Users/$(request.auth.uid))
-          ? get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.get('role', 'Employee')
+          ? get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role
           : 'Employee');
     }
 
@@ -31,7 +31,7 @@ service cloud.firestore {
 
     // ─── User Profiles (lowercase collection) ───────────────────
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdminOrHR();
+      allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isOwner(userId) || isAdminOrHR();
       allow delete: if isAdminOrHR();
@@ -39,7 +39,7 @@ service cloud.firestore {
 
     // ─── User Profiles (capitalized collection — legacy admins) ─
     match /Users/{userId} {
-      allow read: if isOwner(userId) || isAdminOrHR();
+      allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isOwner(userId) || isAdminOrHR();
       allow delete: if isAdminOrHR();
@@ -49,7 +49,7 @@ service cloud.firestore {
     // ─── Attendance ─────────────────────────────────────────────
     match /attendance/{recordId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
       allow update: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdminOrHR());
       allow delete: if isAdminOrHR();
@@ -58,8 +58,8 @@ service cloud.firestore {
 
     // ─── Leave Requests ─────────────────────────────────────────
     match /leave_requests/{leaveId} {
-      allow read: if isAdminOrHR() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
       allow update: if isAdminOrHR();
       allow delete: if isAdminOrHR();
     }
@@ -67,15 +67,15 @@ service cloud.firestore {
 
     // ─── Salary Structures ──────────────────────────────────────
     match /salary_structures/{userId} {
-      allow read: if isOwner(userId) || isAdminOrHR();
+      allow read: if isSignedIn();
       allow write: if isAdminOrHR();
     }
 
 
     // ─── Payroll Records ────────────────────────────────────────
     match /payrolls/{payrollId} {
-      allow read: if isAdminOrHR() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow write: if false; // Server-side only via Cloud Functions
+      allow read: if isSignedIn();
+      allow write: if isAdminOrHR();
     }
 
 
@@ -98,25 +98,43 @@ service cloud.firestore {
     // ─── Notifications ──────────────────────────────────────────
     match /notifications/{notifId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid;
       allow delete: if isAdmin();
     }
 
 
+    // ─── Onboarding Tasks ───────────────────────────────────────
+    match /onboarding_tasks/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isAdminOrHR();
+      allow update: if isSignedIn()
+        && (resource.data.employeeUid == request.auth.uid || isAdminOrHR());
+      allow delete: if isAdminOrHR();
+    }
+
 
     // ─── Audit Logs ─────────────────────────────────────────────
     match /audit_logs/{logId} {
       allow read: if isAdmin();
-      allow create, update, delete: if false; // Server-side only via Cloud Functions
+      allow create: if isSignedIn();
+      allow update, delete: if false;
     }
 
 
     // ─── Sales / Operations Data ────────────────────────────────
     match /sales/{recordId} {
-      allow read, create, update: if isAdminOrHR() || (isSignedIn() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department == 'Sales' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SALES'));
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
       allow delete: if isAdminOrHR();
+    }
+
+    // ─── Marketing Data ─────────────────────────────────────────
+    match /marketing/{recordId} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isAdminOrHR() || isOwner(resource.data.userId);
     }
 
   }

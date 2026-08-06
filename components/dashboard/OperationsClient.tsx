@@ -10,7 +10,12 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import OperationsForm from "@/components/dashboard/operations/OperationsForm";
 import { toast } from "sonner";
 
-export default function OperationsClient() {
+interface OperationsClientProps {
+    collectionName?: string;
+    restrictToUser?: boolean;
+}
+
+export default function OperationsClient({ collectionName = "sales", restrictToUser = false }: OperationsClientProps) {
     const [view, setView] = useState<"table" | "form">("table");
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -37,13 +42,24 @@ export default function OperationsClient() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const q = query(collection(db, "sales"));
+            const q = query(collection(db, collectionName));
             const snaps = await getDocs(q);
             const fetched = snaps.docs.map(d => ({
                 id: d.id,
                 ...d.data()
-            }));
-            setData(fetched);
+            })) as any[];
+
+            // Filter data to only show the user's own records if restrictToUser is enabled
+            let finalData = fetched;
+            if (restrictToUser && profile?.role !== "Admin" && profile?.role !== "HR") {
+                const userName = profile?.fullName?.toLowerCase() || "";
+                finalData = fetched.filter(d => 
+                    d["Internal Name"]?.toLowerCase() === userName ||
+                    d["Internal Name"]?.toLowerCase().includes(userName)
+                );
+            }
+
+            setData(finalData);
         } catch (error) {
             console.error("Failed to fetch data from Firestore", error);
         } finally {
@@ -62,14 +78,12 @@ export default function OperationsClient() {
 
             if (!row.id) return;
             try {
-                const docRef = doc(db, "sales", row.id);
+                const docRef = doc(db, collectionName, row.id);
                 await updateDoc(docRef, { Status: newStatus });
             } catch (e) {
                 console.error("Error updating status", e);
                 // Need to reload data to revert if it failed
-                const querySnapshot = await getDocs(collection(db, "sales"));
-                const fetchedData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setData(fetchedData);
+                fetchData();
             }
         }
     };
@@ -82,12 +96,12 @@ export default function OperationsClient() {
 
         if (!row.id) return;
         try {
-            const docRef = doc(db, "sales", row.id);
+            const docRef = doc(db, collectionName, row.id);
             await updateDoc(docRef, { Feedback: newFeedback });
         } catch (e) {
             console.error("Error updating feedback", e);
             // Need to reload data to revert if it failed
-            const querySnapshot = await getDocs(collection(db, "sales"));
+            const querySnapshot = await getDocs(collection(db, collectionName));
             const fetchedData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setData(fetchedData);
         }
@@ -105,7 +119,7 @@ export default function OperationsClient() {
         if (!row.id) return;
 
         try {
-            const docRef = doc(db, "sales", row.id);
+            const docRef = doc(db, collectionName, row.id);
             await updateDoc(docRef, { Status: newStatus });
         } catch (e) {
             console.error("Error updating status", e);
@@ -125,7 +139,7 @@ export default function OperationsClient() {
         setData(prev => prev.filter(r => r.id !== row.id));
 
         try {
-            const docRef = doc(db, "sales", row.id);
+            const docRef = doc(db, collectionName, row.id);
             await deleteDoc(docRef);
             toast.success("Candidate entry removed.");
         } catch (e) {
@@ -317,7 +331,7 @@ export default function OperationsClient() {
                         createdAt: serverTimestamp()
                     };
 
-                    await addDoc(collection(db, "sales"), payload);
+                    await addDoc(collection(db, collectionName), payload);
                     newCount++;
                 }
 
@@ -567,7 +581,7 @@ export default function OperationsClient() {
                     </div>
                 </div>
             ) : (
-                <OperationsForm onCancel={() => setView("table")} onSuccess={() => setView("table")} />
+                <OperationsForm onCancel={() => setView("table")} onSuccess={() => setView("table")} collectionName={collectionName} />
             )}
             {statusConfirmModal.isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">

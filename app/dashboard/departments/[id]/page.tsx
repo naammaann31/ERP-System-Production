@@ -7,6 +7,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card } from "@/components/ui/card";
 import SalesDataSection from "@/components/dashboard/departments/SalesDataSection";
+import MarketingClient from "@/components/dashboard/MarketingClient";
 import { 
   Building2, 
   Megaphone, 
@@ -205,9 +206,23 @@ export default function DepartmentPage() {
           </div>
         </Card>
       </motion.div>
-
-      {/* Sales Data Table */}
+      {/* Department Specific Data */}
       {id === "sales" && <SalesDataSection />}
+      
+      {id === "marketing" && (
+        <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ delay: 0.7 }}
+            className="mt-8"
+        >
+          <div className="mb-4">
+            <h3 className="text-xl font-bold text-slate-900">Marketing Leads Data</h3>
+            <p className="text-sm text-slate-500">Global view of all marketing candidates and records.</p>
+          </div>
+          <MarketingClient restrictToUser={false} />
+        </motion.div>
+      )}
     </div>
   );
 }
