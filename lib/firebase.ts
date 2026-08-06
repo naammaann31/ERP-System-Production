@@ -13,6 +13,13 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "your_api_key_here") {
+    console.error(
+        "⚠️ [Firebase] API Key is missing or invalid in environment variables. " +
+        "Please update your .env.local file with valid Firebase credentials from your project (vectra-crm-hr-2026) and restart the dev server."
+    );
+}
+
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);

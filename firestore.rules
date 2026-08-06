@@ -105,15 +105,6 @@ service cloud.firestore {
     }
 
 
-    // ─── Onboarding Tasks ───────────────────────────────────────
-    match /onboarding_tasks/{taskId} {
-      allow read: if isSignedIn();
-      allow create: if isAdminOrHR();
-      allow update: if isSignedIn()
-        && (resource.data.employeeUid == request.auth.uid || isAdminOrHR());
-      allow delete: if isAdminOrHR();
-    }
-
 
     // ─── Audit Logs ─────────────────────────────────────────────
     match /audit_logs/{logId} {
