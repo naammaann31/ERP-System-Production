@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
-            
+
             if (firebaseUser) {
                 try {
                     const docRef = doc(db, "users", firebaseUser.uid);
@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             const data = legacySnap.data();
                             // Copy to standard 'users' collection and remove legacy document
                             await setDoc(docRef, data);
-                            await deleteDoc(legacyRef).catch(() => {});
+                            await deleteDoc(legacyRef).catch(() => { });
                             docSnap = await getDoc(docRef);
                         }
                     }
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } else {
                 setProfile(null);
             }
-            
+
             setLoading(false);
         });
 
