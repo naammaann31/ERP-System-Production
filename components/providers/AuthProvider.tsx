@@ -62,20 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (docSnap.exists()) {
                         const profileData = { uid: firebaseUser.uid, ...docSnap.data() } as UserProfile;
                         setProfile(profileData);
-
-                        // If Admin or HR is logged in, perform a background sweep to migrate all remaining legacy docs from 'Users' to 'users'
-                        if (["Admin", "HR", "OPS_HR"].includes(profileData.role)) {
-                            getDocs(collection(db, "Users")).then(async (usersSnap) => {
-                                for (const uDoc of usersSnap.docs) {
-                                    try {
-                                        await setDoc(doc(db, "users", uDoc.id), uDoc.data());
-                                        await deleteDoc(doc(db, "Users", uDoc.id));
-                                    } catch (err) {
-                                        console.error("Auto-migration error for user", uDoc.id, err);
-                                    }
-                                }
-                            }).catch(() => {});
-                        }
                     } else {
                         setProfile(null);
                     }
