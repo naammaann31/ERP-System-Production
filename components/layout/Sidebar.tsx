@@ -25,6 +25,7 @@ const NAV_LINKS = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["Admin", "HR", "Employee"] },
     { name: "Operations", href: "/dashboard/operations", icon: Briefcase, roles: ["Admin", "HR", "Employee"], department: "Sales" },
     { name: "Employees", href: "/dashboard/employees", icon: Users, roles: ["Admin", "HR"] },
+    { name: "My Team", href: "/dashboard/my-team", icon: Users, roles: [] as string[], isTeamLeadOnly: true },
     { name: "Departments", href: "/dashboard/departments", icon: Building2, roles: ["Admin"] },
     { name: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck, roles: ["Admin", "HR", "Employee"] },
     { name: "Leave", href: "/dashboard/leave", icon: CalendarOff, roles: ["Admin", "HR", "Employee"] },
@@ -104,7 +105,7 @@ export default function Sidebar() {
             : "Employee";
 
     return (
-        <aside className={`bg-white border-slate-200/60 flex flex-col h-screen sticky top-0 hidden md:flex transition-all duration-300 ease-in-out z-40 overflow-hidden ${isOpen ? "w-64 border-r opacity-100" : "w-0 border-r-0 opacity-0"
+        <aside className={`bg-white border-slate-200/60 flex flex-col h-screen sticky top-0 hidden md:flex z-40 overflow-hidden ${isOpen ? "w-64 border-r opacity-100" : "w-0 border-r-0 opacity-0"
             }`}>
             <div className="w-64 flex flex-col h-full shrink-0">
                 <div className="h-16 flex items-center justify-center border-b border-slate-200/60 shrink-0">
@@ -122,6 +123,9 @@ export default function Sidebar() {
 
                 <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 custom-scrollbar">
                     {NAV_LINKS.filter(link => {
+                        if (link.isTeamLeadOnly) {
+                            return profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead";
+                        }
                         if (link.department) {
                             const userDept = profile?.department?.toLowerCase() || "";
                             const userRoleStr = profile?.role?.toLowerCase() || "";

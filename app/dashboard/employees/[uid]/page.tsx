@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, Variants } from "framer-motion";
+import { motion, Variants, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,17 @@ import {
   Clock,
   BadgeCheck,
   Hash,
+  Megaphone,
+  LineChart,
+  ChevronDown,
 } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getUserAttendanceForMonth, AttendanceRecord } from "@/lib/attendance";
 import { getUserLeaves, LeaveRequest } from "@/lib/leave";
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
+import MarketingClient from "@/components/dashboard/MarketingClient";
+import SalesDataSection from "@/components/dashboard/departments/SalesDataSection";
 
 interface EmployeeData {
   uid: string;
@@ -80,6 +85,17 @@ export default function EmployeeProfilePage() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [openCards, setOpenCards] = useState({
+    personalInfo: true,
+    attendance: true,
+    leave: true,
+    payroll: true,
+  });
+
+  const toggleCard = (key: keyof typeof openCards) => {
+    setOpenCards((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     if (!uid) return;
@@ -214,30 +230,34 @@ export default function EmployeeProfilePage() {
     >
       {/* Back button */}
       <motion.div variants={itemVariants}>
-        <button onClick={() => router.push('/dashboard/employees')} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
-          <ArrowLeft className="h-4 w-4" /> Back to Employees
+        <button onClick={() => {
+            if (profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead") {
+                router.push('/dashboard/my-team');
+            } else {
+                router.push('/dashboard/employees');
+            }
+        }} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm w-fit">
+          <ArrowLeft className="h-4 w-4" /> {profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" ? "Back to My Team" : "Back to Employees"}
         </button>
       </motion.div>
 
       {/* Profile Header */}
       <motion.div variants={itemVariants}>
-        <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden">
-          <div className="bg-gradient-to-br from-indigo-800 via-blue-700 to-violet-800 px-6 py-8">
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-5">
-              <div className="h-20 w-20 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white font-black text-2xl border border-white/20 shadow-lg">
-                {initials}
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-black text-white tracking-tight">{employee.fullName}</h1>
-                <p className="text-slate-300 text-sm font-medium mt-1">{employee.jobRole || "Employee"} · {employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role)}</p>
-                <div className="flex items-center gap-2 mt-3">
-                  <Badge className="bg-white/15 text-white border-white/20 backdrop-blur-sm font-semibold text-[10px]">
-                    {employee.employeeId || "N/A"}
-                  </Badge>
-                  <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 backdrop-blur-sm font-semibold text-[10px]">
-                    {employee.status || "Active"}
-                  </Badge>
-                </div>
+        <Card className="border border-slate-200 shadow-sm overflow-hidden bg-white">
+          <div className="px-6 py-8 flex flex-col md:flex-row items-start md:items-center gap-5">
+            <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-2xl border border-slate-200 shadow-sm shrink-0">
+              {initials}
+            </div>
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{employee.fullName}</h1>
+              <p className="text-slate-500 text-sm font-medium mt-1">{employee.jobRole || "Employee"} · {employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role)}</p>
+              <div className="flex items-center gap-2 mt-3">
+                <Badge variant="outline" className="text-slate-600 border-slate-200 bg-slate-50 font-medium text-[10px]">
+                  {employee.employeeId || "N/A"}
+                </Badge>
+                <Badge className={`border-0 font-medium text-[10px] ${employee.status === 'Active' || !employee.status ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>
+                  {employee.status || "Active"}
+                </Badge>
               </div>
             </div>
           </div>
@@ -250,212 +270,311 @@ export default function EmployeeProfilePage() {
           <motion.div
             key={stat.title}
             variants={itemVariants}
-            className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group cursor-pointer relative overflow-hidden"
+            className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between transition-all"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className={`p-2 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ease-out`}>
-                <stat.icon className="h-4 w-4" />
+            <div className="flex items-center justify-between mb-4">
+              <div className={`p-2.5 rounded-xl ${stat.bg} ${stat.color}`}>
+                <stat.icon className="h-5 w-5" />
               </div>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-200 shadow-sm">{stat.subtitle}</span>
+              <span className="text-[10px] font-medium px-2.5 py-1 rounded-md bg-slate-50 border border-slate-100 text-slate-500">{stat.subtitle}</span>
             </div>
-            <div className="relative z-10">
-              <p className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{stat.value}</p>
-              <p className="text-[11px] md:text-xs font-semibold text-slate-500 mt-0.5">{stat.title}</p>
+            <div>
+              <p className="text-2xl font-bold text-slate-900 tracking-tight">{stat.value}</p>
+              <p className="text-sm font-medium text-slate-500 mt-0.5">{stat.title}</p>
             </div>
           </motion.div>
         ))}
       </div>
 
       {/* Personal Info + Attendance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Personal Information */}
         <motion.div variants={itemVariants}>
-          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden h-full">
-            <CardHeader className="border-b border-slate-100 px-5 py-4 bg-white">
-              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <User className="h-5 w-5 text-slate-400" /> Personal Information
-              </CardTitle>
+          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <CardHeader 
+              className="border-b border-slate-100 px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => toggleCard('personalInfo')}
+            >
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <User className="h-5 w-5 text-slate-400" /> Personal Information
+                </CardTitle>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.personalInfo ? 'rotate-180' : ''}`} />
+              </div>
             </CardHeader>
-            <CardContent className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {infoFields.map((field) => (
-                  <div key={field.label} className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-slate-50 text-slate-400 shrink-0">
-                      <field.icon className="h-4 w-4" />
+            <AnimatePresence initial={false}>
+              {openCards.personalInfo && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <CardContent className="p-5 flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {infoFields.map((field) => (
+                        <div key={field.label} className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-slate-50 text-slate-400 shrink-0">
+                            <field.icon className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{field.label}</p>
+                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{field.value}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{field.label}</p>
-                      <p className="text-sm font-semibold text-slate-800 mt-0.5">{field.value}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
 
-              {/* Statutory Details Section */}
-              <div className="mt-6 pt-6 border-t border-slate-100">
-                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Statutory & Bank Details</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {statutoryFields.map((field) => (
-                    <div key={field.label} className="bg-slate-50 rounded-lg p-3">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{field.label}</p>
-                      <p className="text-sm font-medium text-slate-800 mt-0.5">{field.value}</p>
+                    {/* Statutory Details Section */}
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                      <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Statutory & Bank Details</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {statutoryFields.map((field) => (
+                          <div key={field.label} className="bg-slate-50 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{field.label}</p>
+                            <p className="text-sm font-medium text-slate-800 mt-0.5">{field.value}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
+                  </CardContent>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         </motion.div>
 
         {/* Recent Attendance */}
         <motion.div variants={itemVariants}>
-          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden h-full">
-            <CardHeader className="border-b border-slate-100 px-5 py-4 bg-white">
-              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <CalendarCheck className="h-5 w-5 text-slate-400" /> Attendance This Month
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
-                    <tr>
-                      <th className="px-5 py-3 font-bold tracking-wider">Date</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Clock In</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Clock Out</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {attendance.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No attendance records this month.</td>
-                      </tr>
-                    ) : (
-                      attendance.slice(0, 15).map((r) => (
-                        <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{r.date}</td>
-                          <td className="px-5 py-2.5 text-slate-600 text-xs">{formatTime(r.checkInTime)}</td>
-                          <td className="px-5 py-2.5 text-slate-600 text-xs">{formatTime(r.checkOutTime)}</td>
-                          <td className="px-5 py-2.5">
-                            <Badge
-                              variant={r.status === "Present" || r.status === "Checked In" ? "success" : "secondary"}
-                              className="font-semibold text-[10px] py-0.5"
-                            >
-                              {r.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <CardHeader 
+              className="border-b border-slate-100 px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => toggleCard('attendance')}
+            >
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <CalendarCheck className="h-5 w-5 text-slate-400" /> Attendance This Month
+                </CardTitle>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.attendance ? 'rotate-180' : ''}`} />
               </div>
-            </CardContent>
+            </CardHeader>
+            <AnimatePresence initial={false}>
+              {openCards.attendance && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <CardContent className="p-0 flex-1">
+                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-sm text-left">
+                        <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
+                          <tr>
+                            <th className="px-5 py-3 font-bold tracking-wider">Date</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Clock In</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Clock Out</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {attendance.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No attendance records this month.</td>
+                            </tr>
+                          ) : (
+                            attendance.slice(0, 15).map((r) => (
+                              <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{r.date}</td>
+                                <td className="px-5 py-2.5 text-slate-600 text-xs">{formatTime(r.checkInTime)}</td>
+                                <td className="px-5 py-2.5 text-slate-600 text-xs">{formatTime(r.checkOutTime)}</td>
+                                <td className="px-5 py-2.5">
+                                  <Badge
+                                    variant={r.status === "Present" || r.status === "Checked In" ? "success" : "secondary"}
+                                    className="font-semibold text-[10px] py-0.5"
+                                  >
+                                    {r.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         </motion.div>
       </div>
 
       {/* Leave History + Payroll History */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Leave History */}
         <motion.div variants={itemVariants}>
-          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden h-full">
-            <CardHeader className="border-b border-slate-100 px-5 py-4 bg-white">
-              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <CalendarOff className="h-5 w-5 text-slate-400" /> Leave History
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
-                    <tr>
-                      <th className="px-5 py-3 font-bold tracking-wider">Type</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Duration</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Days</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {leaves.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No leave records.</td>
-                      </tr>
-                    ) : (
-                      leaves.slice(0, 10).map((l) => (
-                        <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{l.leaveType}</td>
-                          <td className="px-5 py-2.5 text-slate-600 text-xs">{formatDate(l.startDate)} – {formatDate(l.endDate)}</td>
-                          <td className="px-5 py-2.5 font-bold text-slate-800 text-xs">{l.days}</td>
-                          <td className="px-5 py-2.5">
-                            <Badge
-                              variant={l.status === "Approved" ? "success" : l.status === "Rejected" ? "destructive" : "warning"}
-                              className="font-semibold text-[10px] py-0.5"
-                            >
-                              {l.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <CardHeader 
+              className="border-b border-slate-100 px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => toggleCard('leave')}
+            >
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <CalendarOff className="h-5 w-5 text-slate-400" /> Leave History
+                </CardTitle>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.leave ? 'rotate-180' : ''}`} />
               </div>
-            </CardContent>
+            </CardHeader>
+            <AnimatePresence initial={false}>
+              {openCards.leave && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <CardContent className="p-0 flex-1">
+                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-sm text-left">
+                        <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
+                          <tr>
+                            <th className="px-5 py-3 font-bold tracking-wider">Type</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Duration</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Days</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {leaves.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No leave records.</td>
+                            </tr>
+                          ) : (
+                            leaves.slice(0, 10).map((l) => (
+                              <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{l.leaveType}</td>
+                                <td className="px-5 py-2.5 text-slate-600 text-xs">{formatDate(l.startDate)} – {formatDate(l.endDate)}</td>
+                                <td className="px-5 py-2.5 font-bold text-slate-800 text-xs">{l.days}</td>
+                                <td className="px-5 py-2.5">
+                                  <Badge
+                                    variant={l.status === "Approved" ? "success" : l.status === "Rejected" ? "destructive" : "warning"}
+                                    className="font-semibold text-[10px] py-0.5"
+                                  >
+                                    {l.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         </motion.div>
 
         {/* Payroll History */}
         <motion.div variants={itemVariants}>
-          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden h-full">
-            <CardHeader className="border-b border-slate-100 px-5 py-4 bg-white">
-              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-slate-400" /> Payroll History
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
-                    <tr>
-                      <th className="px-5 py-3 font-bold tracking-wider">Period</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Gross</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Net</th>
-                      <th className="px-5 py-3 font-bold tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {payrolls.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No payroll records.</td>
-                      </tr>
-                    ) : (
-                      payrolls.slice(0, 10).map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{p.month}/{p.year}</td>
-                          <td className="px-5 py-2.5 text-slate-600 text-xs">₹{p.grossSalary.toLocaleString()}</td>
-                          <td className="px-5 py-2.5 font-bold text-emerald-700 text-xs">₹{p.netSalary.toLocaleString()}</td>
-                          <td className="px-5 py-2.5">
-                            <Badge
-                              variant={p.status === "Paid" ? "success" : "warning"}
-                              className="font-semibold text-[10px] py-0.5"
-                            >
-                              {p.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <CardHeader 
+              className="border-b border-slate-100 px-5 py-4 bg-white cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => toggleCard('payroll')}
+            >
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-slate-400" /> Payroll History
+                </CardTitle>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.payroll ? 'rotate-180' : ''}`} />
               </div>
-            </CardContent>
+            </CardHeader>
+            <AnimatePresence initial={false}>
+              {openCards.payroll && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <CardContent className="p-0 flex-1">
+                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-sm text-left">
+                        <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
+                          <tr>
+                            <th className="px-5 py-3 font-bold tracking-wider">Period</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Gross</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Net</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {payrolls.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No payroll records.</td>
+                            </tr>
+                          ) : (
+                            payrolls.slice(0, 10).map((p) => (
+                              <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{p.month}/{p.year}</td>
+                                <td className="px-5 py-2.5 text-slate-600 text-xs">₹{p.grossSalary.toLocaleString()}</td>
+                                <td className="px-5 py-2.5 font-bold text-emerald-700 text-xs">₹{p.netSalary.toLocaleString()}</td>
+                                <td className="px-5 py-2.5">
+                                  <Badge
+                                    variant={p.status === "Paid" ? "success" : "warning"}
+                                    className="font-semibold text-[10px] py-0.5"
+                                  >
+                                    {p.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         </motion.div>
       </div>
+
+      {/* Marketing Leads Section - Only for Marketing employees */}
+      {employee.role === "MARKETING" && (
+        <motion.div variants={itemVariants}>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Megaphone className="h-5 w-5 text-blue-500" />
+              Marketing Leads by {employee.fullName}
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">All marketing candidates and records generated by this employee.</p>
+          </div>
+          <MarketingClient filterByUid={uid} />
+        </motion.div>
+      )}
+
+      {/* Sales Leads Section - Only for Sales employees */}
+      {employee.role === "SALES" && (
+        <motion.div variants={itemVariants}>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <LineChart className="h-5 w-5 text-emerald-500" />
+              Sales Leads by {employee.fullName}
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">All sales candidates and records generated by this employee.</p>
+          </div>
+          <SalesDataSection filterByName={employee.fullName} />
+        </motion.div>
+      )}
     </motion.div>
   );
 }
+

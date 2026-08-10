@@ -7,13 +7,15 @@ import { db } from "@/lib/firebase";
 import { collection, query, getDocs, deleteDoc, doc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 
 interface MarketingClientProps {
     restrictToUser?: boolean;
+    filterByUid?: string;
 }
 
-export default function MarketingClient({ restrictToUser = false }: MarketingClientProps) {
+export default function MarketingClient({ restrictToUser = false, filterByUid }: MarketingClientProps) {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
@@ -69,7 +71,9 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
             })) as any[];
 
             let finalData = fetched;
-            if (restrictToUser && profile?.role !== "Admin") {
+            if (filterByUid) {
+                finalData = fetched.filter(d => d["userId"] === filterByUid);
+            } else if (restrictToUser && profile?.role !== "Admin") {
                 const userName = profile?.fullName?.toLowerCase() || "";
                 finalData = fetched.filter(d => 
                     d["Name"]?.toLowerCase() === userName ||
@@ -305,89 +309,117 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
         reader.readAsBinaryString(file);
     };
 
-    return (
-        <div>
-            {/* View Toggle and Filters */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
-                <div className="flex items-center space-x-2 bg-white p-1 rounded-xl w-fit border border-slate-200">
-                    <button
-                        onClick={() => setIsAddingNew(false)}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-all ${!isAddingNew ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
-                    >
-                        <TableIcon className="w-4 h-4" />
-                        Data ({displayData.length})
-                    </button>
-                    <button
-                        onClick={() => setIsAddingNew(true)}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-all ${isAddingNew ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
-                    >
-                        <Plus className="w-4 h-4" />
-                        Add data
-                    </button>
-                </div>
+    const [selectedRows, setSelectedRows] = useState<string[]>([]);
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
 
-                <div className="flex flex-wrap items-center gap-3 lg:justify-end flex-1 max-w-full">
-                    <div className="relative w-full sm:w-auto flex-1 sm:max-w-[240px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-slate-400" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search companies..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-4 py-2 w-full bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
-                        />
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedRows(displayData.slice(0, visibleCount).map(r => r.id));
+        } else {
+            setSelectedRows([]);
+        }
+    };
+
+    const handleSelectRow = (id: string) => {
+        setSelectedRows(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+    };
+
+    const handleBulkDelete = async () => {
+        try {
+            const promises = selectedRows.map(rowId => deleteDoc(doc(db, "marketing", rowId)));
+            await Promise.all(promises);
+            setData(prev => prev.filter(r => !selectedRows.includes(r.id)));
+            setSelectedRows([]);
+            setBulkDeleteModalOpen(false);
+            toast.success("Selected records deleted successfully.");
+        } catch (error) {
+            console.error("Error deleting multiple records:", error);
+            toast.error("Error deleting records.");
+        }
+    };
+
+    const handleDeleteSingle = async () => {
+        if (!recordToDelete) return;
+        try {
+            await deleteDoc(doc(db, "marketing", recordToDelete));
+            setData(prev => prev.filter(r => r.id !== recordToDelete));
+            setDeleteModalOpen(false);
+            setRecordToDelete(null);
+            toast.success("Record deleted successfully.");
+        } catch (error) {
+            console.error("Error deleting record:", error);
+            toast.error("Error deleting record.");
+        }
+    };
+
+    return (
+        <>
+            <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden bg-white">
+                {/* Header Bar - Sales Style */}
+                <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-blue-50/50">
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            Marketing Leads Data
+                            <span className="bg-blue-200 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-semibold">
+                                {displayData.length}
+                            </span>
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-1">Real-time candidate data generated by the marketing team.</p>
                     </div>
-                    
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center space-x-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm overflow-x-auto w-fit">
-                            <div className="flex items-center space-x-2 px-2">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">From</span>
-                                <input 
-                                    type="date" 
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
-                                />
+                    <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0 justify-end flex-1">
+                        <div className="relative w-full sm:w-auto flex-1 sm:max-w-xs min-w-[200px]">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search className="h-4 w-4 text-slate-400" />
                             </div>
-                            <div className="h-5 w-px bg-slate-200"></div>
-                            <div className="flex items-center space-x-2 px-2">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">To</span>
-                                <input 
-                                    type="date" 
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
-                                />
+                            <input
+                                type="text"
+                                placeholder="Search candidates..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10 pr-4 py-2 w-full bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                            />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center space-x-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm overflow-x-auto w-fit">
+                                <div className="flex items-center space-x-2 px-2">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">From</span>
+                                    <input 
+                                        type="date" 
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
+                                    />
+                                </div>
+                                <div className="h-5 w-px bg-slate-200"></div>
+                                <div className="flex items-center space-x-2 px-2">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">To</span>
+                                    <input 
+                                        type="date" 
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
+                                    />
+                                </div>
+                                {(startDate || endDate) && (
+                                    <button 
+                                        onClick={() => { setStartDate(""); setEndDate(""); }}
+                                        className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
                             </div>
-                            {(startDate || endDate) && (
-                                <button 
-                                    onClick={() => { setStartDate(""); setEndDate(""); }}
-                                    className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
+                            {profile?.role === "Admin" && selectedRows.length > 0 && (
+                                <button
+                                    onClick={() => setBulkDeleteModalOpen(true)}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-semibold text-sm rounded-xl transition-all border border-red-200 shadow-sm whitespace-nowrap"
                                 >
-                                    Clear
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete ({selectedRows.length})
                                 </button>
                             )}
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <input 
-                                type="file" 
-                                accept=".xlsx, .xls, .csv" 
-                                className="hidden" 
-                                ref={fileInputRef}
-                                onChange={handleFileUpload}
-                            />
-                            <button
-                                onClick={handleImportClick}
-                                disabled={importing}
-                                className={`flex items-center gap-2 px-4 py-2.5 ${importing ? 'bg-blue-50 text-blue-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700'} font-semibold text-sm rounded-xl transition-all border border-blue-200 shadow-sm whitespace-nowrap`}
-                                title="Import from Excel"
-                            >
-                                <Download className={`w-4 h-4 ${importing ? 'animate-bounce' : ''}`} />
-                                {importing ? "Importing..." : "Import XL"}
-                            </button>
                             <button
                                 onClick={handleExport}
                                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 font-semibold text-sm rounded-xl transition-all border border-emerald-200 shadow-sm whitespace-nowrap"
@@ -399,21 +431,29 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Content Area */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                {/* Table */}
                 <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
-                    <table className="w-full text-sm text-left whitespace-nowrap relative">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase text-slate-500 font-bold tracking-wider sticky top-0 z-10 shadow-sm">
+                    <table className="w-full text-sm text-left relative">
+                        <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 w-[200px]">Candidate Name</th>
-                                <th className="px-6 py-4 w-[150px]">Date</th>
-                                <th className="px-6 py-4">Company Name</th>
-                                <th className="px-6 py-4">Link</th>
-                                <th className="px-6 py-4">Added By</th>
-                                {(profile?.role === "Admin" || isAddingNew) && (
-                                    <th className="px-6 py-4 text-right w-[100px]">Actions</th>
+                                {profile?.role === "Admin" && (
+                                    <th className="px-6 py-4 font-semibold whitespace-nowrap w-12">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            checked={displayData.length > 0 && selectedRows.length === displayData.slice(0, visibleCount).length}
+                                            onChange={handleSelectAll}
+                                        />
+                                    </th>
+                                )}
+                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Candidate Name</th>
+                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Date</th>
+                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Company Name</th>
+                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Link</th>
+                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Added By</th>
+                                {profile?.role === "Admin" && (
+                                    <th className="px-6 py-4 font-semibold whitespace-nowrap text-right">Actions</th>
                                 )}
                             </tr>
                         </thead>
@@ -423,7 +463,8 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                                 <>
                                     {newRows.map((row, index) => (
                                         <tr key={row.id} className="bg-slate-50/30 border-b border-slate-200/60 hover:bg-slate-50/80 transition-colors group">
-                                            <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200/50">
+                                            {profile?.role === "Admin" && <td className="px-6 py-4"></td>}
+                                            <td className="px-6 py-4 whitespace-nowrap">
                                                 <input
                                                     type="text"
                                                     placeholder="Candidate Name..."
@@ -479,7 +520,7 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                                         </tr>
                                     ))}
                                     <tr className="bg-slate-50/50 border-b border-slate-200/60">
-                                        <td colSpan={6} className="px-6 py-4 text-right">
+                                        <td colSpan={profile?.role === "Admin" ? 7 : 6} className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-between">
                                                 <button 
                                                     onClick={() => setNewRows([...newRows, createEmptyRow()])}
@@ -513,23 +554,33 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                             {!isAddingNew && (
                                 loading ? (
                                     <tr>
-                                        <td colSpan={profile?.role === "Admin" ? 6 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
+                                        <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
                                             Loading data...
                                         </td>
                                     </tr>
                                 ) : displayData.length === 0 ? (
                                     <tr>
-                                        <td colSpan={profile?.role === "Admin" ? 6 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
+                                        <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
                                             No data available
                                         </td>
                                     </tr>
                                 ) : (
                                     displayData.slice(0, visibleCount).map((row, idx) => (
-                                        <tr key={row.id || idx} className={`transition-colors group ${idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-slate-50 hover:bg-slate-100"}`}>
+                                        <tr key={row.id || idx} className={`hover:bg-slate-100 transition-colors group ${selectedRows.includes(row.id) ? 'bg-blue-50/30' : idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                                            {profile?.role === "Admin" && (
+                                                <td className="px-6 py-4">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                        checked={selectedRows.includes(row.id)}
+                                                        onChange={() => handleSelectRow(row.id)}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
                                                 {row["Name"] || "-"}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap">
+                                            <td className="px-6 py-4 font-mono text-xs text-slate-500 whitespace-nowrap">
                                                 {formatDisplayDate(row["Date"])}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">
@@ -546,10 +597,13 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                                                 {row["marketing"] || "-"}
                                             </td>
                                             {profile?.role === "Admin" && (
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-6 py-4 text-right whitespace-nowrap">
                                                     <button 
-                                                        onClick={() => handleDelete(row)}
-                                                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                        onClick={() => {
+                                                            setRecordToDelete(row.id);
+                                                            setDeleteModalOpen(true);
+                                                        }}
+                                                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                                                         title="Delete record"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
@@ -574,17 +628,83 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                         </div>
                     )}
                 </div>
-            </div>
 
-            <ConfirmModal
-                isOpen={!!candidateToDelete}
-                onClose={() => setCandidateToDelete(null)}
-                onConfirm={executeDeleteCandidate}
-                title="Delete Record"
-                description={`Are you sure you want to delete this record for "${candidateToDelete?.["Company Name"] || "this company"}"? This action cannot be undone.`}
-                confirmText="Delete"
-                variant="danger"
-            />
+                {/* Add Data Toggle Button */}
+                <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end">
+                    <button
+                        onClick={() => setIsAddingNew(!isAddingNew)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${isAddingNew ? 'bg-slate-200 text-slate-700' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm'}`}
+                    >
+                        <Plus className="w-4 h-4" />
+                        {isAddingNew ? "Cancel Adding" : "Add Data"}
+                    </button>
+                </div>
+            </Card>
+
+            {/* Single Delete Modal */}
+            {deleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="p-6">
+                            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                                <Trash2 className="w-6 h-6 text-red-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Record</h3>
+                            <p className="text-slate-500 text-sm">
+                                Are you sure you want to delete this record? This action cannot be undone and will permanently remove this data.
+                            </p>
+                        </div>
+                        <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button 
+                                onClick={() => {
+                                    setDeleteModalOpen(false);
+                                    setRecordToDelete(null);
+                                }}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleDeleteSingle}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors"
+                            >
+                                Yes, delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Delete Modal */}
+            {bulkDeleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="p-6">
+                            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                                <Trash2 className="w-6 h-6 text-red-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">Delete {selectedRows.length} Records</h3>
+                            <p className="text-slate-500 text-sm">
+                                Are you sure you want to delete {selectedRows.length} records? This action cannot be undone and will permanently remove this data.
+                            </p>
+                        </div>
+                        <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button 
+                                onClick={() => setBulkDeleteModalOpen(false)}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleBulkDelete}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors"
+                            >
+                                Yes, delete all
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <ConfirmModal
                 isOpen={!!importSummary}
@@ -600,6 +720,6 @@ export default function MarketingClient({ restrictToUser = false }: MarketingCli
                 cancelText="Close"
                 variant="success"
             />
-        </div>
+        </>
     );
 }
