@@ -87,10 +87,10 @@ export default function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
 
   const [openCards, setOpenCards] = useState({
-    personalInfo: true,
-    attendance: true,
-    leave: true,
-    payroll: true,
+    personalInfo: false,
+    attendance: false,
+    leave: false,
+    payroll: false,
   });
 
   const toggleCard = (key: keyof typeof openCards) => {
