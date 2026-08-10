@@ -69,7 +69,15 @@ export default function EmployeesPage() {
     const count = selectedIds.size;
     const deleteFunc = httpsCallable(functions, "deleteEmployee");
     for (const uid of selectedIds) {
-      try { await deleteFunc({ employeeUid: uid }); } catch (e) { console.error(e); }
+      try { 
+        await deleteFunc({ employeeUid: uid }); 
+      } catch (e) { 
+        try {
+          await deleteDoc(doc(db, "users", uid));
+        } catch (err) {
+          console.error(e); 
+        }
+      }
     }
     setSelectedIds(new Set());
     setBulkDeleteConfirm(false);
@@ -141,9 +149,14 @@ export default function EmployeesPage() {
       const deleteFunc = httpsCallable(functions, "deleteEmployee");
       await deleteFunc({ employeeUid: employeeToDelete.uid });
       toast.success(`${employeeToDelete.name} has been removed.`);
-    } catch (error) {
-      console.error("Error deleting employee:", error);
-      toast.error("Failed to delete employee.");
+    } catch (error: any) {
+      try {
+        await deleteDoc(doc(db, "users", employeeToDelete.uid));
+        toast.success(`${employeeToDelete.name} has been removed.`);
+      } catch (fallbackError) {
+        console.error("Error deleting employee:", error);
+        toast.error("Failed to delete employee.");
+      }
     } finally {
       setEmployeeToDelete(null);
     }

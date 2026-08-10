@@ -24,7 +24,14 @@ export const deleteEmployee = functions.https.onCall(async (data, context) => {
     }
 
     // 1. Delete Firebase Auth User
-    await admin.auth().deleteUser(employeeUid);
+    try {
+      await admin.auth().deleteUser(employeeUid);
+    } catch (authError: any) {
+      if (authError.code !== "auth/user-not-found") {
+        throw authError;
+      }
+      console.log(`Auth user ${employeeUid} not found, proceeding to delete Firestore document.`);
+    }
 
     // 2. Delete Firestore Document
     await db.collection("users").doc(employeeUid).delete();
