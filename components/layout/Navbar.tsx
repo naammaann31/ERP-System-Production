@@ -5,7 +5,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { logoutUser } from "@/lib/auth";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Menu, ChevronLeft, Bell } from "lucide-react";
+import { LogOut, User, Menu, ChevronLeft, Bell, X } from "lucide-react";
 import { useSidebar } from "@/components/providers/SidebarProvider";
 import {
     Notification,
@@ -13,6 +13,7 @@ import {
     markAsRead,
     markAllAsRead,
 } from "@/lib/notifications";
+import { motion, AnimatePresence } from "framer-motion";
 
 const formatRelativeTime = (ts: any) => {
     if (!ts || !ts.toDate) return "";
@@ -34,6 +35,7 @@ export default function Navbar() {
     const [showProfile, setShowProfile] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     useEffect(() => {
         if (!profile?.uid) return;
@@ -45,9 +47,14 @@ export default function Navbar() {
 
     const unreadCount = notifications.filter((n) => !n.read).length;
 
-    const handleLogout = async () => {
+    const executeLogout = async () => {
         await logoutUser();
         router.push("/login");
+    };
+
+    const handleLogoutClick = () => {
+        setShowProfile(false);
+        setShowLogoutConfirm(true);
     };
 
     const handleMarkAllRead = async () => {
@@ -74,8 +81,9 @@ export default function Navbar() {
         : 'U';
 
     return (
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 flex items-center justify-between px-6 sticky top-0 z-50">
-            <div className="flex items-center gap-4">
+        <>
+            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 flex items-center justify-between px-6 sticky top-0 z-50">
+                <div className="flex items-center gap-4">
                 <button
                     onClick={toggleSidebar}
                     className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors md:flex"
@@ -194,7 +202,7 @@ export default function Navbar() {
                                 </div>
 
                                 <button
-                                    onClick={handleLogout}
+                                    onClick={handleLogoutClick}
                                     className="w-full flex items-center justify-center gap-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl transition-colors"
                                 >
                                     <LogOut className="h-4 w-4" />
@@ -208,7 +216,7 @@ export default function Navbar() {
                 <div className="h-8 w-px bg-slate-200 mx-1 hidden sm:block"></div>
 
                 <button
-                    onClick={handleLogout}
+                    onClick={handleLogoutClick}
                     className="hidden sm:flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-red-600 bg-white border border-slate-200 hover:border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] transition-all"
                 >
                     <LogOut className="h-4 w-4" />
@@ -216,5 +224,43 @@ export default function Navbar() {
                 </button>
             </div>
         </header>
+
+        <AnimatePresence>
+                {showLogoutConfirm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            className="bg-white rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
+                        >
+                            <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Sign Out</h2>
+                                    <p className="text-xs font-semibold text-slate-500 mt-1">Confirm your request to leave</p>
+                                </div>
+                                <button onClick={() => setShowLogoutConfirm(false)} className="p-2 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="p-6">
+                                <p className="text-sm font-semibold text-slate-600 mb-6">
+                                    Are you sure you want to sign out of your account? You will need to log back in to access your dashboard.
+                                </p>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" onClick={() => setShowLogoutConfirm(false)} className="rounded-xl border border-slate-200 font-bold hover:bg-slate-50 px-6 py-2.5 text-slate-600 text-sm transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button type="button" onClick={executeLogout} className="rounded-xl bg-slate-900 hover:bg-black font-bold px-6 py-2.5 shadow-md shadow-slate-900/20 active:scale-95 transition-all text-white text-sm">
+                                        Sign Out
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </>
     );
 }

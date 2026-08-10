@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, Clock, LogOut, LogIn, Info } from "lucide-react";
+import { CheckCircle2, Clock, LogOut, LogIn, Info, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { 
   checkIn, 
@@ -18,6 +19,7 @@ export default function LiveAttendanceCard() {
   const [workingSeconds, setWorkingSeconds] = useState(0);
   const [attendanceRecord, setAttendanceRecord] = useState<AttendanceRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showClockOutConfirm, setShowClockOutConfirm] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -80,26 +82,34 @@ export default function LiveAttendanceCard() {
   const handleToggleCheckIn = async () => {
     if (!profile?.uid) return;
 
-    try {
-      if (!isCheckedIn) {
-        // Perform Check In
+    if (!isCheckedIn) {
+      try {
         const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role);
         setAttendanceRecord(record);
         setIsCheckedIn(true);
-      } else {
-        // Perform Check Out
-        if (attendanceRecord?.id) {
-          await checkOut(attendanceRecord.id, workingSeconds);
-          setAttendanceRecord({
-            ...attendanceRecord,
-            status: "Present",
-            workingSeconds
-          });
-        }
-        setIsCheckedIn(false);
+      } catch (error) {
+        console.error("Error during check in:", error);
       }
+    } else {
+      setShowClockOutConfirm(true);
+    }
+  };
+
+  const executeClockOut = async () => {
+    try {
+      if (attendanceRecord?.id) {
+        await checkOut(attendanceRecord.id, workingSeconds);
+        setAttendanceRecord({
+          ...attendanceRecord,
+          status: "Present",
+          workingSeconds
+        });
+      }
+      setIsCheckedIn(false);
     } catch (error) {
-      console.error("Error during check in/out:", error);
+      console.error("Error during check out:", error);
+    } finally {
+      setShowClockOutConfirm(false);
     }
   };
 
@@ -140,7 +150,8 @@ export default function LiveAttendanceCard() {
   const alreadyCheckedOut = attendanceRecord?.status === "Present";
 
   return (
-    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col h-full relative overflow-hidden">
+    <>
+      <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col h-full relative overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-bold text-slate-800 text-sm">Today's Attendance</h3>
         {loading ? (
@@ -218,6 +229,44 @@ export default function LiveAttendanceCard() {
           <Info className="h-3 w-3 text-slate-400" /> View Details
         </button>
       </div>
-    </div>
+      </div>
+      
+      <AnimatePresence>
+        {showClockOutConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
+            >
+              <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight">Clock Out</h2>
+                  <p className="text-xs font-semibold text-slate-500 mt-1">Confirm your request to finish the shift</p>
+                </div>
+                <button onClick={() => setShowClockOutConfirm(false)} className="p-2 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6">
+                <p className="text-sm font-semibold text-slate-600 mb-6">
+                  Are you sure you want to clock out for the day? This action will complete your current shift.
+                </p>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => setShowClockOutConfirm(false)} className="rounded-xl border border-slate-200 font-bold hover:bg-slate-50 px-6 py-2.5 text-slate-600 text-sm transition-colors">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={executeClockOut} className="rounded-xl bg-slate-900 hover:bg-black font-bold px-6 py-2.5 shadow-md shadow-slate-900/20 active:scale-95 transition-all text-white text-sm">
+                    Clock Out
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

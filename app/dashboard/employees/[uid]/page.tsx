@@ -547,8 +547,8 @@ export default function EmployeeProfilePage() {
         </motion.div>
       </div>
 
-      {/* Marketing Leads Section - Only for Marketing employees */}
-      {employee.role === "MARKETING" && (
+      {/* Marketing Leads Section - Hidden from HR */}
+      {employee.role === "MARKETING" && profile?.role !== "HR" && profile?.role !== "OPS_HR" && (
         <motion.div variants={itemVariants}>
           <div className="mb-4">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -561,8 +561,8 @@ export default function EmployeeProfilePage() {
         </motion.div>
       )}
 
-      {/* Sales Leads Section - Only for Sales employees */}
-      {employee.role === "SALES" && (
+      {/* Sales Leads Section - Hidden from HR */}
+      {employee.role === "SALES" && profile?.role !== "HR" && profile?.role !== "OPS_HR" && (
         <motion.div variants={itemVariants}>
           <div className="mb-4">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
