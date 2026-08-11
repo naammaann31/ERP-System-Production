@@ -9,6 +9,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { getLocalDateString } from "@/lib/attendance";
+import { useRouter } from "next/navigation";
 
 type TeamMember = {
   id: string;
@@ -21,6 +22,8 @@ type TeamMember = {
 
 export default function TeamStatusWidget() {
   const { profile } = useAuth();
+  const router = useRouter();
+  const isAdmin = profile?.role === "Admin";
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,7 +72,7 @@ export default function TeamStatusWidget() {
       setLoading(false);
     };
 
-    const isAdmin = profile.role === "Admin";
+
     const qUsers = isAdmin 
       ? collection(db, "users") 
       : query(collection(db, "users"), where("role", "==", profile.role));
@@ -116,7 +119,15 @@ export default function TeamStatusWidget() {
         {team.length > 0 ? (
           <div className="space-y-3">
             {team.map((member) => (
-              <div key={member.id} className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-300 ${member.isMe ? "bg-indigo-50/80 border border-indigo-100 shadow-sm" : "hover:bg-slate-50 border border-transparent hover:-translate-y-0.5 hover:shadow-sm"}`}>
+              <div 
+                key={member.id} 
+                onClick={() => {
+                  if (isAdmin) {
+                    router.push(`/dashboard/employees/${member.id}`);
+                  }
+                }}
+                className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-300 ${isAdmin ? "cursor-pointer" : ""} ${member.isMe ? "bg-indigo-50/80 border border-indigo-100 shadow-sm" : "hover:bg-slate-50 border border-transparent hover:-translate-y-0.5 hover:shadow-sm"}`}
+              >
                 <Avatar 
                   size="default" 
                   fallback={member.name.charAt(0)} 
