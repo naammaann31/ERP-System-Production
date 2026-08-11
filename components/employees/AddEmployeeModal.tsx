@@ -9,9 +9,10 @@ import { toast } from "sonner";
 interface AddEmployeeModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onSuccess?: () => void;
 }
 
-export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalProps) {
+export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModalProps) {
     const [fullName, setFullName] = useState("");
     const [employeeId, setEmployeeId] = useState("");
     const [email, setEmail] = useState("");
@@ -78,6 +79,7 @@ export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalPr
         // Reset form
         setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
         setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee");
+        onSuccess?.();
         onClose();
     };
 

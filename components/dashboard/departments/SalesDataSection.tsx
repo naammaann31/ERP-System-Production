@@ -167,6 +167,7 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
             if (error) throw error;
             setSelectedRows([]);
             setBulkDeleteModalOpen(false);
+            setSalesData(prev => prev.filter(row => !selectedRows.includes(row.id)));
             toast.success("Selected records deleted successfully.");
         } catch (error) {
             console.error("Error deleting multiple records:", error);
@@ -181,6 +182,7 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
             const { error } = await supabase.from("sales").delete().eq("id", saleToDelete);
             if (error) throw error;
             setDeleteModalOpen(false);
+            setSalesData(prev => prev.filter(row => row.id !== saleToDelete));
             setSaleToDelete(null);
             toast.success("Record deleted successfully.");
         } catch (error) {
