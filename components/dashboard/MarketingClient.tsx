@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } from "lucide-react";
 import * as xlsx from "xlsx";
-import { db } from "@/lib/firebase";
-import { collection, query, getDocs, deleteDoc, doc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
+import { marketingRowToUi, marketingUiToRow } from "@/lib/salesMarketingMap";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -13,9 +13,10 @@ import { toast } from "sonner";
 interface MarketingClientProps {
     restrictToUser?: boolean;
     filterByUid?: string;
+    filterByName?: string;
 }
 
-export default function MarketingClient({ restrictToUser = false, filterByUid }: MarketingClientProps) {
+export default function MarketingClient({ restrictToUser = false, filterByUid, filterByName }: MarketingClientProps) {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
@@ -63,19 +64,29 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
     const fetchData = async () => {
         setLoading(true);
         try {
-            const q = query(collection(db, "marketing"));
-            const snaps = await getDocs(q);
-            const fetched = snaps.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as any[];
+            const supabase = createClient();
+            const { data: rows, error } = await supabase.from("marketing").select("*");
+            if (error) throw error;
+            const fetched = (rows || []).map(marketingRowToUi);
 
             let finalData = fetched;
-            if (filterByUid) {
-                finalData = fetched.filter(d => d["userId"] === filterByUid);
+            if (filterByUid || filterByName) {
+                // Match by uid when available, falling back to name — a
+                // lead's created_by uid is cleared (set null) if that
+                // employee's account is later deleted, but the
+                // created_by_name/candidate-name text survives, so name
+                // matching keeps historical leads visible on their profile.
+                const targetName = filterByName?.toLowerCase() || "";
+                finalData = fetched.filter(d =>
+                    d["userId"] === filterByUid ||
+                    (targetName && (
+                        d["Name"]?.toLowerCase() === targetName ||
+                        d["marketing"]?.toLowerCase() === targetName
+                    ))
+                );
             } else if (restrictToUser && profile?.role !== "Admin") {
                 const userName = profile?.fullName?.toLowerCase() || "";
-                finalData = fetched.filter(d => 
+                finalData = fetched.filter(d =>
                     d["Name"]?.toLowerCase() === userName ||
                     d["Name"]?.toLowerCase().includes(userName) ||
                     d["marketing"]?.toLowerCase() === userName ||
@@ -102,8 +113,9 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
         setData(prev => prev.filter(r => r.id !== row.id));
 
         try {
-            const docRef = doc(db, "marketing", row.id);
-            await deleteDoc(docRef);
+            const supabase = createClient();
+            const { error } = await supabase.from("marketing").delete().eq("id", row.id);
+            if (error) throw error;
             toast.success("Record removed.");
         } catch (e) {
             console.error("Error deleting record", e);
@@ -128,23 +140,23 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
 
         setSavingRow(true);
         try {
-            const addedPayloads: any[] = [];
-            
-            for (const row of validRows) {
-                const payload = {
+            const supabase = createClient();
+            const rowsToInsert = validRows.map(row => marketingUiToRow(
+                {
                     "Name": row.CandidateName || "Unknown Candidate",
-                    "marketing": profile?.fullName || "rohit",
-                    "userId": profile?.uid || "",
                     "Date": row.Date,
                     "Company Name": row.CompanyName,
                     "Link": row.Link,
-                    createdAt: serverTimestamp()
-                };
+                },
+                profile?.uid || null,
+                profile?.fullName || "rohit"
+            ));
 
-                const docRef = await addDoc(collection(db, "marketing"), payload);
-                addedPayloads.push({ id: docRef.id, ...payload, createdAt: { seconds: Date.now() / 1000 } });
-            }
-            
+            const { data: inserted, error } = await supabase.from("marketing").insert(rowsToInsert).select();
+            if (error) throw error;
+
+            const addedPayloads = (inserted || []).map(marketingRowToUi);
+
             // Optimistic Update
             setData(prev => [...addedPayloads, ...prev]);
             
@@ -252,8 +264,16 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
                 let dupCount = 0;
                 let invalidCount = 0;
 
-                let batch = writeBatch(db);
-                let batchCount = 0;
+                const supabase = createClient();
+                const BATCH_SIZE = 490;
+                let pending: any[] = [];
+
+                const flush = async () => {
+                    if (pending.length === 0) return;
+                    const { error } = await supabase.from("marketing").insert(pending);
+                    if (error) throw error;
+                    pending = [];
+                };
 
                 for (const row of rawData as any[]) {
                     const originalName = row["__EMPTY"] || row["Name"] || row["name"] || "";
@@ -264,36 +284,31 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
                     if (typeof date === 'number') {
                          date = new Date(Math.round((date - 25569)*86400*1000)).toISOString().split('T')[0];
                     }
-                    
+
                     if (!date || String(date).trim() === "") {
                         date = new Date().toISOString().split('T')[0];
                     }
 
-                    const payload = {
-                        "Name": originalName || "Unknown Candidate",
-                        "marketing": profile?.fullName || "rohit",
-                        "Date": date,
-                        "Company Name": company,
-                        "Link": link,
-                        "userId": profile?.uid || "",
-                        createdAt: serverTimestamp()
-                    };
+                    const row_ = marketingUiToRow(
+                        {
+                            "Name": originalName || "Unknown Candidate",
+                            "Date": date,
+                            "Company Name": company,
+                            "Link": link,
+                        },
+                        profile?.uid || null,
+                        profile?.fullName || "rohit"
+                    );
 
-                    const newDocRef = doc(collection(db, "marketing"));
-                    batch.set(newDocRef, payload);
+                    pending.push(row_);
                     newCount++;
-                    batchCount++;
-                    
-                    if (batchCount === 490) {
-                        await batch.commit();
-                        batch = writeBatch(db);
-                        batchCount = 0;
+
+                    if (pending.length === BATCH_SIZE) {
+                        await flush();
                     }
                 }
-                
-                if (batchCount > 0) {
-                    await batch.commit();
-                }
+
+                await flush();
 
                 setImportSummary(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}`);
                 toast.success("Import processing completed!");
@@ -328,8 +343,9 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
 
     const handleBulkDelete = async () => {
         try {
-            const promises = selectedRows.map(rowId => deleteDoc(doc(db, "marketing", rowId)));
-            await Promise.all(promises);
+            const supabase = createClient();
+            const { error } = await supabase.from("marketing").delete().in("id", selectedRows);
+            if (error) throw error;
             setData(prev => prev.filter(r => !selectedRows.includes(r.id)));
             setSelectedRows([]);
             setBulkDeleteModalOpen(false);
@@ -343,7 +359,9 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
     const handleDeleteSingle = async () => {
         if (!recordToDelete) return;
         try {
-            await deleteDoc(doc(db, "marketing", recordToDelete));
+            const supabase = createClient();
+            const { error } = await supabase.from("marketing").delete().eq("id", recordToDelete);
+            if (error) throw error;
             setData(prev => prev.filter(r => r.id !== recordToDelete));
             setDeleteModalOpen(false);
             setRecordToDelete(null);
@@ -420,6 +438,22 @@ export default function MarketingClient({ restrictToUser = false, filterByUid }:
                                     Delete ({selectedRows.length})
                                 </button>
                             )}
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                className="hidden"
+                                ref={fileInputRef}
+                                onChange={handleFileUpload}
+                            />
+                            <button
+                                onClick={handleImportClick}
+                                disabled={importing}
+                                className={`flex items-center gap-2 px-4 py-2.5 ${importing ? 'bg-blue-50 text-blue-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700'} font-semibold text-sm rounded-xl transition-all border border-blue-200 shadow-sm whitespace-nowrap`}
+                                title="Import from Excel"
+                            >
+                                <Download className={`w-4 h-4 ${importing ? 'animate-bounce' : ''}`} />
+                                {importing ? "Importing..." : "Import XL"}
+                            </button>
                             <button
                                 onClick={handleExport}
                                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 font-semibold text-sm rounded-xl transition-all border border-emerald-200 shadow-sm whitespace-nowrap"

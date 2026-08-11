@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# migration script output (may contain names/emails)
+/scripts/migration-report.json

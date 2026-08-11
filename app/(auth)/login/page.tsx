@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { getFirebaseErrorMessage } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
+import { getAuthErrorMessage } from "@/lib/auth";
 import { useAuth } from "@/components/providers/AuthProvider";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -37,14 +36,16 @@ export default function LoginPage() {
         setSuccess("");
 
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const supabase = createClient();
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            if (signInError) throw signInError;
 
             toast.success("Login Successful!");
 
             // Redirect after login
             router.push("/dashboard");
         } catch (err: any) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -62,10 +63,14 @@ export default function LoginPage() {
         setSuccess("");
 
         try {
-            await sendPasswordResetEmail(auth, email);
+            const supabase = createClient();
+            const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/dashboard/settings`,
+            });
+            if (resetError) throw resetError;
             setSuccess("Password reset email sent! Please check your inbox.");
         } catch (err: any) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setResetLoading(false);
         }

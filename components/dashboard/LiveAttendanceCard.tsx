@@ -36,7 +36,7 @@ export default function LiveAttendanceCard() {
             // Calculate elapsed time since check-in
             let elapsed = 0;
             if (record.checkInTime) {
-              const checkInDate = record.checkInTime.toDate();
+              const checkInDate = new Date(record.checkInTime);
               elapsed = Math.floor((new Date().getTime() - checkInDate.getTime()) / 1000);
             }
             // We use the elapsed time plus whatever was previously saved, although usually it starts at 0.

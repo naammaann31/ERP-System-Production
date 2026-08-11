@@ -8,9 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Users, Search, Filter, Plus, Trash2, Download, CheckSquare } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import AddEmployeeModal from "@/components/employees/AddEmployeeModal";
-import { collection, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable } from "firebase/functions";
+import { createClient } from "@/lib/supabase/client";
+import { deleteEmployeeAction } from "@/app/actions/employees";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 
@@ -53,10 +52,10 @@ export default function EmployeesPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredEmployees.length) {
+    if (selectedIds.size === selectableEmployees.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredEmployees.map((e: any) => e.uid)));
+      setSelectedIds(new Set(selectableEmployees.map((e: any) => e.uid)));
     }
   };
 
@@ -67,21 +66,21 @@ export default function EmployeesPage() {
 
   const executeBulkDelete = async () => {
     const count = selectedIds.size;
-    const deleteFunc = httpsCallable(functions, "deleteEmployee");
+    let failures = 0;
     for (const uid of selectedIds) {
-      try { 
-        await deleteFunc({ employeeUid: uid }); 
-      } catch (e) { 
-        try {
-          await deleteDoc(doc(db, "users", uid));
-        } catch (err) {
-          console.error(e); 
-        }
+      const { error } = await deleteEmployeeAction(uid);
+      if (error) {
+        failures++;
+        console.error(error);
       }
     }
     setSelectedIds(new Set());
     setBulkDeleteConfirm(false);
-    toast.success(`${count} employee(s) deleted successfully.`);
+    if (failures > 0) {
+      toast.error(`${count - failures} deleted, ${failures} failed.`);
+    } else {
+      toast.success(`${count} employee(s) deleted successfully.`);
+    }
   };
 
   const handleExportCSV = () => {
@@ -97,27 +96,39 @@ export default function EmployeesPage() {
   useEffect(() => {
     if (!profile) return;
 
-    const q = collection(db, "users");
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const emps: any[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        emps.push({
-          uid: doc.id,
-          id: data.employeeId || "N/A",
-          name: data.fullName || "Unnamed",
-          department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          jobRole: data.jobRole || "N/A",
-          designation: data.designation || "Employee",
-          createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
-        });
-      });
+    const supabase = createClient();
+
+    const fetchEmployees = async () => {
+      const { data, error } = await supabase.from("profiles").select("*");
+      if (error) {
+        console.error(error);
+        setLoading(false);
+        return;
+      }
+      const emps = (data || []).map((row: any) => ({
+        uid: row.id,
+        id: row.employee_id || "N/A",
+        name: row.full_name || "Unnamed",
+        department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
+        jobRole: row.job_role || "N/A",
+        designation: row.designation || "Employee",
+        createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
+      }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);
       setLoading(false);
-    });
-    
-    return () => unsubscribe();
+    };
+
+    fetchEmployees();
+
+    const channel = supabase
+      .channel(`profiles_employees_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchEmployees)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile]);
 
   const departments = useMemo(() => {
@@ -138,6 +149,11 @@ export default function EmployeesPage() {
     });
   }, [searchQuery, selectedDepartment, employees]);
 
+  const selectableEmployees = useMemo(
+    () => filteredEmployees.filter((e: any) => e.uid !== profile?.uid),
+    [filteredEmployees, profile?.uid]
+  );
+
   const handleDeleteEmployee = (uid: string, name: string) => {
     if (!isAdminOrHR) return;
     setEmployeeToDelete({ uid, name });
@@ -145,21 +161,14 @@ export default function EmployeesPage() {
 
   const executeDeleteEmployee = async () => {
     if (!employeeToDelete) return;
-    try {
-      const deleteFunc = httpsCallable(functions, "deleteEmployee");
-      await deleteFunc({ employeeUid: employeeToDelete.uid });
+    const { error } = await deleteEmployeeAction(employeeToDelete.uid);
+    if (error) {
+      console.error("Error deleting employee:", error);
+      toast.error("Failed to delete employee.");
+    } else {
       toast.success(`${employeeToDelete.name} has been removed.`);
-    } catch (error: any) {
-      try {
-        await deleteDoc(doc(db, "users", employeeToDelete.uid));
-        toast.success(`${employeeToDelete.name} has been removed.`);
-      } catch (fallbackError) {
-        console.error("Error deleting employee:", error);
-        toast.error("Failed to delete employee.");
-      }
-    } finally {
-      setEmployeeToDelete(null);
     }
+    setEmployeeToDelete(null);
   };
 
   return (
@@ -258,7 +267,7 @@ export default function EmployeesPage() {
                 <tr>
                   {isAdminOrHR && (
                     <th className="px-4 py-4 w-10">
-                      <input type="checkbox" checked={selectedIds.size === filteredEmployees.length && filteredEmployees.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" />
+                      <input type="checkbox" checked={selectedIds.size === selectableEmployees.length && selectableEmployees.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" />
                     </th>
                   )}
                   <th className="px-6 py-4 font-medium">Employee Name</th>
@@ -299,7 +308,9 @@ export default function EmployeesPage() {
                     >
                       {isAdminOrHR && (
                         <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selectedIds.has(employee.uid)} onChange={() => toggleSelect(employee.uid)} className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" />
+                          {employee.uid !== profile?.uid && (
+                            <input type="checkbox" checked={selectedIds.has(employee.uid)} onChange={() => toggleSelect(employee.uid)} className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" />
+                          )}
                         </td>
                       )}
                       <td className="px-6 py-4 font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => router.push(`/dashboard/employees/${employee.uid}`)}>
@@ -321,13 +332,15 @@ export default function EmployeesPage() {
                       </td>
                       {isAdminOrHR && (
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleDeleteEmployee(employee.uid, employee.name)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                            title="Delete Employee & Revoke Access"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {employee.uid !== profile?.uid && (
+                            <button
+                              onClick={() => handleDeleteEmployee(employee.uid, employee.name)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="Delete Employee & Revoke Access"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </td>
                       )}
                     </motion.tr>

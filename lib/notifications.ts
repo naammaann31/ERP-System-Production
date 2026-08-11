@@ -1,14 +1,4 @@
-import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  doc,
-  onSnapshot,
-  Timestamp,
-  query,
-  where,
-} from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
 
 export interface Notification {
   id?: string;
@@ -16,7 +6,18 @@ export interface Notification {
   message: string;
   type: "payroll" | "leave" | "announcement" | "general";
   read: boolean;
-  createdAt: Timestamp;
+  createdAt: string;
+}
+
+function fromRow(row: any): Notification {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    message: row.message,
+    type: row.type,
+    read: row.read,
+    createdAt: row.created_at,
+  };
 }
 
 export const createNotification = async (
@@ -24,80 +25,73 @@ export const createNotification = async (
   message: string,
   type: Notification["type"] = "general"
 ): Promise<Notification> => {
-  const data: Omit<Notification, "id"> = {
-    userId,
-    message,
-    type,
-    read: false,
-    createdAt: Timestamp.now(),
-  };
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("notifications")
+    .insert({ user_id: userId, message, type, read: false })
+    .select()
+    .single();
 
-  const docRef = await addDoc(collection(db, "notifications"), data);
-  return { id: docRef.id, ...data };
+  if (error) throw error;
+  return fromRow(data);
 };
 
 export const markAsRead = async (notificationId: string) => {
-  await updateDoc(doc(db, "notifications", notificationId), { read: true });
+  const supabase = createClient();
+  await supabase.from("notifications").update({ read: true }).eq("id", notificationId);
 };
 
 export const markAllAsRead = async (userId: string) => {
-  // Listen once and mark all
-  const q = query(
-    collection(db, "notifications"),
-    where("userId", "==", userId),
-    where("read", "==", false)
-  );
-
-  const { getDocs } = await import("firebase/firestore");
-  const snapshot = await getDocs(q);
-
-  const promises: Promise<void>[] = [];
-  snapshot.forEach((d) => {
-    promises.push(updateDoc(doc(db, "notifications", d.id), { read: true }));
-  });
-  await Promise.all(promises);
+  const supabase = createClient();
+  await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", userId)
+    .eq("read", false);
 };
 
 export const markTypeAsRead = async (userId: string, type: Notification["type"]) => {
-  const q = query(
-    collection(db, "notifications"),
-    where("userId", "==", userId),
-    where("type", "==", type),
-    where("read", "==", false)
-  );
-
-  const { getDocs } = await import("firebase/firestore");
-  const snapshot = await getDocs(q);
-
-  const promises: Promise<void>[] = [];
-  snapshot.forEach((d) => {
-    promises.push(updateDoc(doc(db, "notifications", d.id), { read: true }));
-  });
-  await Promise.all(promises);
+  const supabase = createClient();
+  await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", userId)
+    .eq("type", type)
+    .eq("read", false);
 };
 
 export const listenToUserNotifications = (
   userId: string,
   callback: (notifications: Notification[]) => void
 ) => {
-  const q = query(
-    collection(db, "notifications"),
-    where("userId", "==", userId)
-  );
+  const supabase = createClient();
 
-  return onSnapshot(q, (snapshot) => {
-    const records: Notification[] = [];
-    snapshot.forEach((d) => {
-      records.push({ id: d.id, ...d.data() } as Notification);
-    });
+  const fetchAndEmit = async () => {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
-    // Sort newest first
-    records.sort((a, b) => {
-      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-      return bTime - aTime;
-    });
+    if (error) {
+      console.error("notifications listener error:", error);
+      return;
+    }
+    callback((data || []).map(fromRow));
+  };
 
-    callback(records);
-  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
+  fetchAndEmit();
+
+  const channel = supabase
+    .channel(`notifications_${userId}_${Math.random().toString(36).slice(2)}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+      fetchAndEmit
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };

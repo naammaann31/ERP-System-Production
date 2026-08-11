@@ -1,17 +1,4 @@
-import { db } from "./firebase";
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  query, 
-  where, 
-  getDocs,
-  Timestamp,
-  orderBy,
-  addDoc,
-  onSnapshot
-} from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
 
 export interface LeaveRequest {
   id?: string;
@@ -25,145 +12,122 @@ export interface LeaveRequest {
   days: number;
   reason: string;
   status: "Pending" | "Approved" | "Rejected";
-  appliedOn: Timestamp;
+  appliedOn: string; // ISO timestamp
+}
+
+function fromRow(row: any): LeaveRequest {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    fullName: row.full_name,
+    department: row.department,
+    role: row.role || undefined,
+    leaveType: row.leave_type,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    days: row.days,
+    reason: row.reason,
+    status: row.status,
+    appliedOn: row.applied_on,
+  };
 }
 
 export const applyLeave = async (
-  userId: string, 
-  fullName: string, 
-  department: string, 
-  leaveType: string, 
-  startDate: string, 
-  endDate: string, 
-  days: number, 
+  userId: string,
+  fullName: string,
+  department: string,
+  leaveType: string,
+  startDate: string,
+  endDate: string,
+  days: number,
   reason: string,
   role?: string
 ) => {
-  const newLeave: any = {
-    userId,
-    fullName,
+  const supabase = createClient();
+  const insertData: any = {
+    user_id: userId,
+    full_name: fullName,
     department,
-    leaveType,
-    startDate,
-    endDate,
+    leave_type: leaveType,
+    start_date: startDate,
+    end_date: endDate,
     days,
     reason,
     status: "Pending",
-    appliedOn: Timestamp.now(),
   };
+  if (role) insertData.role = role;
 
-  if (role) {
-    newLeave.role = role;
-  }
-
-  const docRef = await addDoc(collection(db, "leave_requests"), newLeave);
-  return { id: docRef.id, ...newLeave } as LeaveRequest;
+  const { data, error } = await supabase.from("leave_requests").insert(insertData).select().single();
+  if (error) throw error;
+  return fromRow(data);
 };
 
 export const getUserLeaves = async (userId: string) => {
-  const q = query(
-    collection(db, "leave_requests"), 
-    where("userId", "==", userId)
-  );
-  
-  const querySnapshot = await getDocs(q);
-  let records: LeaveRequest[] = [];
-  querySnapshot.forEach((doc) => {
-    records.push({ id: doc.id, ...doc.data() } as LeaveRequest);
-  });
-  
-  // Sort descending by appliedOn
-  records.sort((a, b) => {
-    const aTime = a.appliedOn?.toMillis ? a.appliedOn.toMillis() : 0;
-    const bTime = b.appliedOn?.toMillis ? b.appliedOn.toMillis() : 0;
-    return bTime - aTime;
-  });
-  
-  return records;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("user_id", userId)
+    .order("applied_on", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(fromRow);
 };
 
 export const getAllPendingLeaves = async () => {
-  const q = query(
-    collection(db, "leave_requests"), 
-    where("status", "==", "Pending")
-  );
-  
-  const querySnapshot = await getDocs(q);
-  let records: LeaveRequest[] = [];
-  querySnapshot.forEach((doc) => {
-    records.push({ id: doc.id, ...doc.data() } as LeaveRequest);
-  });
-  
-  // Sort descending by appliedOn
-  records.sort((a, b) => {
-    const aTime = a.appliedOn?.toMillis ? a.appliedOn.toMillis() : 0;
-    const bTime = b.appliedOn?.toMillis ? b.appliedOn.toMillis() : 0;
-    return bTime - aTime;
-  });
-  
-  return records;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("status", "Pending")
+    .order("applied_on", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(fromRow);
 };
 
 export const updateLeaveStatus = async (leaveId: string, status: "Approved" | "Rejected") => {
-  const docRef = doc(db, "leave_requests", leaveId);
-  await updateDoc(docRef, { status });
+  const supabase = createClient();
+  const { error } = await supabase.from("leave_requests").update({ status }).eq("id", leaveId);
+  if (error) throw error;
 };
 
+function listenToQuery(
+  filter: (query: any) => any,
+  callback: (leaves: LeaveRequest[]) => void
+) {
+  const supabase = createClient();
+
+  const fetchAndEmit = async () => {
+    const { data, error } = await filter(supabase.from("leave_requests").select("*")).order(
+      "applied_on",
+      { ascending: false }
+    );
+    if (error) {
+      console.error("leave_requests listener error:", error);
+      return;
+    }
+    callback((data || []).map(fromRow));
+  };
+
+  fetchAndEmit();
+
+  const channel = supabase
+    .channel(`leave_requests_${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, fetchAndEmit)
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 export const listenToUserLeaves = (userId: string, callback: (leaves: LeaveRequest[]) => void) => {
-  const q = query(
-    collection(db, "leave_requests"), 
-    where("userId", "==", userId)
-  );
-  
-  return onSnapshot(q, (querySnapshot) => {
-    let records: LeaveRequest[] = [];
-    querySnapshot.forEach((doc) => {
-      records.push({ id: doc.id, ...doc.data() } as LeaveRequest);
-    });
-    records.sort((a, b) => {
-      const aTime = a.appliedOn?.toMillis ? a.appliedOn.toMillis() : 0;
-      const bTime = b.appliedOn?.toMillis ? b.appliedOn.toMillis() : 0;
-      return bTime - aTime;
-    });
-    callback(records);
-  }, (error) => {
-    console.error("listenToUserLeaves error: ", error);
-  });
+  return listenToQuery((q) => q.eq("user_id", userId), callback);
 };
 
 export const listenToPendingLeaves = (callback: (leaves: LeaveRequest[]) => void) => {
-  const q = query(
-    collection(db, "leave_requests"), 
-    where("status", "==", "Pending")
-  );
-  
-  return onSnapshot(q, (querySnapshot) => {
-    let records: LeaveRequest[] = [];
-    querySnapshot.forEach((doc) => {
-      records.push({ id: doc.id, ...doc.data() } as LeaveRequest);
-    });
-    records.sort((a, b) => {
-      const aTime = a.appliedOn?.toMillis ? a.appliedOn.toMillis() : 0;
-      const bTime = b.appliedOn?.toMillis ? b.appliedOn.toMillis() : 0;
-      return bTime - aTime;
-    });
-    callback(records);
-  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
+  return listenToQuery((q) => q.eq("status", "Pending"), callback);
 };
 
 export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) => {
-  const q = collection(db, "leave_requests");
-  
-  return onSnapshot(q, (querySnapshot) => {
-    let records: LeaveRequest[] = [];
-    querySnapshot.forEach((doc) => {
-      records.push({ id: doc.id, ...doc.data() } as LeaveRequest);
-    });
-    records.sort((a, b) => {
-      const aTime = a.appliedOn?.toMillis ? a.appliedOn.toMillis() : 0;
-      const bTime = b.appliedOn?.toMillis ? b.appliedOn.toMillis() : 0;
-      return bTime - aTime;
-    });
-    callback(records);
-  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
+  return listenToQuery((q) => q, callback);
 };

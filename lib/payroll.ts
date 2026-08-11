@@ -1,17 +1,4 @@
-import { db, functions } from "./firebase";
-import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  deleteDoc,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-  orderBy
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+import { createClient } from "@/lib/supabase/client";
 
 export interface SalaryStructure {
   userId: string;
@@ -19,7 +6,7 @@ export interface SalaryStructure {
   travelAllowance: number;
   otherDeductions: number;
   otherAllowances: number;
-  updatedAt: Timestamp;
+  updatedAt: string;
 }
 
 export interface PayrollRecord {
@@ -36,7 +23,6 @@ export interface PayrollRecord {
   month: number;
   year: number;
 
-  // Breakup
   grossSalary: number;
   basic: number;
   hra: number;
@@ -47,58 +33,126 @@ export interface PayrollRecord {
 
   totalEarnings: number;
 
-  // Deductions
   lopDays: number;
   lopDeduction: number;
-  taxDeduction: number; // Professional Tax
+  taxDeduction: number;
   incomeTax: number;
   providentFund: number;
   otherDeductions: number;
 
   totalDeductions: number;
 
-  // Final
   netSalary: number;
 
   paymentDate?: string;
   modeOfPayment?: string;
 
-  generatedAt: Timestamp;
+  generatedAt: string;
   status: "Paid" | "Pending";
 }
 
-const FIXED_TAX = 200;
-
-export const saveSalaryStructure = async (userId: string, data: Omit<SalaryStructure, 'userId' | 'updatedAt'>) => {
-  const docRef = doc(db, "salary_structures", userId);
-  const structure: SalaryStructure = {
-    userId,
-    ...data,
-    updatedAt: Timestamp.now()
+function structureFromRow(row: any): SalaryStructure {
+  return {
+    userId: row.user_id,
+    grossSalary: row.gross_salary,
+    travelAllowance: row.travel_allowance,
+    otherDeductions: row.other_deductions,
+    otherAllowances: row.other_allowances,
+    updatedAt: row.updated_at,
   };
-  await setDoc(docRef, structure);
-  return structure;
+}
+
+function payrollFromRow(row: any): PayrollRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    employeeName: row.employee_name,
+    employeeId: row.employee_id,
+    jobRole: row.job_role,
+    department: row.department,
+    dateOfJoining: row.date_of_joining,
+    bankName: row.bank_name,
+    division: row.division,
+    daysWorked: row.days_worked,
+    month: row.month,
+    year: row.year,
+    grossSalary: row.gross_salary,
+    basic: row.basic,
+    hra: row.hra,
+    travelAllowance: row.travel_allowance,
+    specialAllowance: row.special_allowance,
+    otherAllowances: row.other_allowances,
+    incentives: row.incentives,
+    totalEarnings: row.total_earnings,
+    lopDays: row.lop_days,
+    lopDeduction: row.lop_deduction,
+    taxDeduction: row.tax_deduction,
+    incomeTax: row.income_tax,
+    providentFund: row.provident_fund,
+    otherDeductions: row.other_deductions,
+    totalDeductions: row.total_deductions,
+    netSalary: row.net_salary,
+    paymentDate: row.payment_date,
+    modeOfPayment: row.mode_of_payment,
+    generatedAt: row.generated_at,
+    status: row.status,
+  };
+}
+
+export const saveSalaryStructure = async (
+  userId: string,
+  data: Omit<SalaryStructure, "userId" | "updatedAt">
+) => {
+  const supabase = createClient();
+  const { data: row, error } = await supabase
+    .from("salary_structures")
+    .upsert({
+      user_id: userId,
+      gross_salary: data.grossSalary,
+      travel_allowance: data.travelAllowance,
+      other_deductions: data.otherDeductions,
+      other_allowances: data.otherAllowances,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return structureFromRow(row);
 };
 
 export const getSalaryStructure = async (userId: string): Promise<SalaryStructure | null> => {
-  const docRef = doc(db, "salary_structures", userId);
-  const docSnap = await getDoc(docRef);
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("salary_structures")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (docSnap.exists()) {
-    return docSnap.data() as SalaryStructure;
-  }
-  return null;
+  return data ? structureFromRow(data) : null;
 };
 
-// Pure calculation logic
-export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: number, daysInMonth: number, otherDeds = 0, otherAlls = 0, incentives = 0, professionalTax = 200, incomeTax = 0, providentFund = 0) => {
+// Pure calculation logic (client-side preview only — the server-side
+// generate_payroll() RPC recomputes this authoritatively)
+export const calculateSalaryBreakup = (
+  gross: number,
+  travel: number,
+  lopDays: number,
+  daysInMonth: number,
+  otherDeds = 0,
+  otherAlls = 0,
+  incentives = 0,
+  professionalTax = 200,
+  incomeTax = 0,
+  providentFund = 0
+) => {
   const basic = gross * 0.5;
   const hra = gross * 0.2;
   const specialAllowance = Math.max(0, gross - basic - hra - travel);
 
   const totalEarnings = gross + otherAlls + incentives;
 
-  const perDaySalary = gross / daysInMonth; // Per Day Salary = Gross Salary ÷ Total Days
+  const perDaySalary = gross / daysInMonth;
   const lopDeduction = Number((perDaySalary * lopDays).toFixed(2));
 
   const totalDeductions = lopDeduction + professionalTax + incomeTax + providentFund + otherDeds;
@@ -120,7 +174,7 @@ export const calculateSalaryBreakup = (gross: number, travel: number, lopDays: n
     providentFund,
     otherDeductions: otherDeds,
     totalDeductions: Number(totalDeductions.toFixed(2)),
-    netSalary: Number(netSalary.toFixed(2))
+    netSalary: Number(netSalary.toFixed(2)),
   };
 };
 
@@ -144,64 +198,51 @@ export const generatePayroll = async (
   paymentDate?: string,
   modeOfPayment?: string
 ): Promise<PayrollRecord> => {
-  const generateFunc = httpsCallable(functions, "generatePayroll");
-  
-  const result = await generateFunc({
-    employeeUid: userId,
-    month,
-    year,
-    lopDays,
-    professionalTax,
-    incomeTax,
-    providentFund,
-    incentives,
-    paymentDate,
-    modeOfPayment
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("generate_payroll", {
+    p_employee_uid: userId,
+    p_month: month,
+    p_year: year,
+    p_lop_days: lopDays,
+    p_professional_tax: professionalTax,
+    p_income_tax: incomeTax,
+    p_provident_fund: providentFund,
+    p_incentives: incentives,
+    p_payment_date: paymentDate || null,
+    p_mode_of_payment: modeOfPayment || "Bank Transfer",
   });
 
-  const data = result.data as { payrollId: string, payrollData: any };
-  return { id: data.payrollId, ...data.payrollData } as PayrollRecord;
+  if (error) throw error;
+  return payrollFromRow(data);
 };
 
-export const getEmployeePayrolls = async (userId: string, fullName?: string, employeeId?: string): Promise<PayrollRecord[]> => {
-  const q = collection(db, "payrolls");
-  const querySnapshot = await getDocs(q);
-  const records: PayrollRecord[] = [];
+export const getEmployeePayrolls = async (userId: string): Promise<PayrollRecord[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("payrolls")
+    .select("*")
+    .eq("user_id", userId)
+    .order("year", { ascending: false })
+    .order("month", { ascending: false });
 
-  querySnapshot.forEach((doc) => {
-    const data = doc.data() as PayrollRecord;
-    const matchUser = data.userId === userId ||
-      (fullName && data.employeeName?.toLowerCase() === fullName.toLowerCase()) ||
-      (employeeId && data.employeeId === employeeId);
-
-    if (matchUser) {
-      records.push({ id: doc.id, ...data });
-    }
-  });
-
-  // Sort in JS to avoid Firebase Index errors
-  records.sort((a, b) => b.year - a.year || b.month - a.month);
-
-  return records;
+  if (error) throw error;
+  return (data || []).map(payrollFromRow);
 };
 
 export const getAllPayrolls = async (): Promise<PayrollRecord[]> => {
-  const q = query(collection(db, "payrolls"));
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("payrolls")
+    .select("*")
+    .order("year", { ascending: false })
+    .order("month", { ascending: false });
 
-  const querySnapshot = await getDocs(q);
-  const records: PayrollRecord[] = [];
-
-  querySnapshot.forEach((doc) => {
-    records.push({ id: doc.id, ...doc.data() } as PayrollRecord);
-  });
-
-  // Sort in JS to avoid Firebase Index errors
-  records.sort((a, b) => b.year - a.year || b.month - a.month);
-
-  return records;
+  if (error) throw error;
+  return (data || []).map(payrollFromRow);
 };
 
 export const deletePayroll = async (payrollId: string): Promise<void> => {
-  const docRef = doc(db, "payrolls", payrollId);
-  await deleteDoc(docRef);
+  const supabase = createClient();
+  const { error } = await supabase.from("payrolls").delete().eq("id", payrollId);
+  if (error) throw error;
 };

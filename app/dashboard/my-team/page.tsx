@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import { Users, MoreVertical, ArrowRight } from "lucide-react";
 
 
@@ -26,40 +25,55 @@ export default function MyTeamPage() {
       return;
     }
 
-    const q = collection(db, "users");
-    // We fetch all users and filter client-side for flexibility, or we can use a query if department/role is strictly defined.
-    // Assuming team members share the same role (e.g., MARKETING) or department.
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const supabase = createClient();
+
+    // We fetch all profiles and filter client-side for flexibility, since
+    // team members may share either the same role (e.g., MARKETING) or department.
+    const fetchTeam = async () => {
+      const { data, error } = await supabase.from("profiles").select("*");
+      if (error) {
+        console.error(error);
+        setLoading(false);
+        return;
+      }
+
       const emps: any[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        
+      (data || []).forEach((row: any) => {
         // Filter logic: match the Team Lead's role or department
         const leadDept = profile.department?.toLowerCase();
         const leadRole = profile.role?.toLowerCase();
-        const memberDept = data.department?.toLowerCase();
-        const memberRole = data.role?.toLowerCase();
-        
-        const isSameDept = (leadDept && memberDept && leadDept === memberDept) || 
+        const memberDept = row.department?.toLowerCase();
+        const memberRole = row.role?.toLowerCase();
+
+        const isSameDept = (leadDept && memberDept && leadDept === memberDept) ||
                            (leadRole && memberRole && leadRole === memberRole);
-                           
+
         if (isSameDept) {
             emps.push({
-            uid: doc.id,
-            id: data.employeeId || "N/A",
-            name: data.fullName || "Unnamed",
-            jobRole: data.jobRole || "N/A",
-            designation: data.designation || "Employee",
-            createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
+            uid: row.id,
+            id: row.employee_id || "N/A",
+            name: row.full_name || "Unnamed",
+            jobRole: row.job_role || "N/A",
+            designation: row.designation || "Employee",
+            createdAt: row.created_at ? new Date(row.created_at).getTime() : 0
             });
         }
       });
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setTeamMembers(emps);
       setLoading(false);
-    });
-    
-    return () => unsubscribe();
+    };
+
+    fetchTeam();
+
+    const channel = supabase
+      .channel(`profiles_my_team_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchTeam)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile, router]);
 
   if (loading) {

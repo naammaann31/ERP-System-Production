@@ -13,8 +13,7 @@ import {
   deleteDocument,
   listenToDocuments,
 } from "@/lib/documents";
-import { doc, getDoc, updateDoc, collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 
@@ -51,10 +50,25 @@ export default function DocumentsPage() {
   // Fetch all employees for Admin/HR
   useEffect(() => {
     if (isAdminOrHR) {
-      const unsub = onSnapshot(collection(db, "users"), (snap) => {
-        setEmployees(snap.docs.map(d => ({ uid: d.id, ...d.data() })));
-      });
-      return () => unsub();
+      const supabase = createClient();
+      const fetchEmployees = async () => {
+        const { data } = await supabase.from("profiles").select("*");
+        setEmployees((data || []).map((row: any) => ({
+          uid: row.id,
+          fullName: row.full_name,
+          email: row.email,
+          role: row.role,
+          department: row.department,
+        })));
+      };
+      fetchEmployees();
+      const channel = supabase
+        .channel(`profiles_docs_${Math.random().toString(36).slice(2)}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchEmployees)
+        .subscribe();
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [isAdminOrHR]);
 
@@ -70,14 +84,19 @@ export default function DocumentsPage() {
         return;
       }
       try {
-        const docSnap = await getDoc(doc(db, "users", uidToFetch));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("profiles")
+          .select("aadhar, pan, bank_account_name, bank_details")
+          .eq("id", uidToFetch)
+          .maybeSingle();
+
+        if (data) {
           setAadhar(data.aadhar || "");
           setPan(data.pan || "");
-          setBankAccountName(data.bankAccountName || "");
-          setBankDetails(data.bankDetails || "");
-          
+          setBankAccountName(data.bank_account_name || "");
+          setBankDetails(data.bank_details || "");
+
           if (data.aadhar || data.pan) {
             setIsEditing(false);
           } else {
@@ -116,13 +135,17 @@ export default function DocumentsPage() {
 
     setSavingDetails(true);
     try {
-      const docRef = doc(db, "users", uidToSave);
-      await updateDoc(docRef, {
-        aadhar,
-        pan,
-        bankAccountName,
-        bankDetails
-      });
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          aadhar,
+          pan,
+          bank_account_name: bankAccountName,
+          bank_details: bankDetails,
+        })
+        .eq("id", uidToSave);
+      if (error) throw error;
       setIsEditing(false);
       toast.success("Details saved successfully!");
     } catch (error) {
@@ -155,10 +178,11 @@ export default function DocumentsPage() {
     toast.success("Document deleted");
   };
 
-  const formatDate = (ts: any) => {
-    if (!ts) return "-";
-    if (ts.toDate) return ts.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    return "-";
+  const formatDate = (isoString: string | null) => {
+    if (!isoString) return "-";
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
   return (

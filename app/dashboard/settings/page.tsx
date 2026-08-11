@@ -7,8 +7,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Bell, Lock, User, Globe, Moon, Save, Check } from "lucide-react";
 import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings";
 import { toast, Toaster } from "sonner";
-import { auth } from "@/lib/firebase";
-import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { createClient } from "@/lib/supabase/client";
 
 const tabs = [
   { id: "profile", label: "Profile", icon: User },
@@ -120,11 +119,23 @@ export default function SettingsPage() {
     
     setUpdatingPassword(true);
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser && currentUser.email) {
-        const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
-        await reauthenticateWithCredential(currentUser, credential);
-        await updatePassword(currentUser, newPassword);
+      const supabase = createClient();
+      if (profile?.email) {
+        // Verify the current password by re-signing-in (Supabase has no
+        // separate "reauthenticate" call — signing in again confirms it).
+        const { error: reauthError } = await supabase.auth.signInWithPassword({
+          email: profile.email,
+          password: currentPassword,
+        });
+        if (reauthError) {
+          toast.error("Incorrect current password.");
+          setUpdatingPassword(false);
+          return;
+        }
+
+        const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+        if (updateError) throw updateError;
+
         toast.success("Password updated successfully.");
         setCurrentPassword("");
         setNewPassword("");
@@ -133,11 +144,7 @@ export default function SettingsPage() {
         toast.error("Could not authenticate user.");
       }
     } catch (error: any) {
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-        toast.error("Incorrect current password.");
-      } else {
-        toast.error("Failed to update password.");
-      }
+      toast.error("Failed to update password.");
     }
     setUpdatingPassword(false);
   };

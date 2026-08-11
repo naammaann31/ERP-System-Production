@@ -1,21 +1,4 @@
-import { db, storage } from "./firebase";
-import {
-  collection,
-  addDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  Timestamp,
-  query,
-  orderBy,
-  where,
-} from "firebase/firestore";
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
+import { createClient } from "@/lib/supabase/client";
 
 export interface DocumentRecord {
   id?: string;
@@ -26,9 +9,26 @@ export interface DocumentRecord {
   scope: "personal" | "company";
   uploadedBy: string;
   uploadedByName: string;
-  uploadedAt: Timestamp;
+  uploadedAt: string;
   storageUrl: string;
   storagePath: string;
+}
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24; // 24 hours
+
+function fromRow(row: any): Omit<DocumentRecord, "storageUrl"> & { storagePath: string } {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    size: row.size,
+    status: row.status,
+    scope: row.scope,
+    uploadedBy: row.uploaded_by,
+    uploadedByName: row.uploaded_by_name,
+    uploadedAt: row.uploaded_at,
+    storagePath: row.storage_path,
+  };
 }
 
 export const uploadDocument = async (
@@ -37,11 +37,15 @@ export const uploadDocument = async (
   userName: string,
   scope: "personal" | "company"
 ): Promise<DocumentRecord> => {
-  const storagePath = `documents/${scope}/${userId}_${Date.now()}_${file.name}`;
-  const storageRef = ref(storage, storagePath);
+  const supabase = createClient();
+  const storagePath = `${scope}/${userId}/${Date.now()}_${file.name}`;
 
-  await uploadBytes(storageRef, file);
-  const storageUrl = await getDownloadURL(storageRef);
+  const { error: uploadError } = await supabase.storage.from("documents").upload(storagePath, file);
+  if (uploadError) throw uploadError;
+
+  const { data: signed } = await supabase.storage
+    .from("documents")
+    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
 
   const ext = file.name.split(".").pop()?.toUpperCase() || "FILE";
   const sizeStr =
@@ -49,31 +53,34 @@ export const uploadDocument = async (
       ? `${(file.size / 1024).toFixed(0)} KB`
       : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
 
-  const docData: Omit<DocumentRecord, "id"> = {
-    name: file.name,
-    type: ext,
-    size: sizeStr,
-    status: "Pending Review",
-    scope,
-    uploadedBy: userId,
-    uploadedByName: userName,
-    uploadedAt: Timestamp.now(),
-    storageUrl,
-    storagePath,
-  };
+  const { data, error } = await supabase
+    .from("documents")
+    .insert({
+      name: file.name,
+      type: ext,
+      size: sizeStr,
+      status: "Pending Review",
+      scope,
+      uploaded_by: userId,
+      uploaded_by_name: userName,
+      storage_path: storagePath,
+    })
+    .select()
+    .single();
 
-  const docRef = await addDoc(collection(db, "documents"), docData);
-  return { id: docRef.id, ...docData };
+  if (error) throw error;
+
+  return { ...fromRow(data), storageUrl: signed?.signedUrl || "" };
 };
 
 export const deleteDocument = async (docId: string, storagePath: string) => {
+  const supabase = createClient();
   try {
-    const storageRef = ref(storage, storagePath);
-    await deleteObject(storageRef);
-  } catch (e) {
+    await supabase.storage.from("documents").remove([storagePath]);
+  } catch {
     // File may not exist in storage
   }
-  await deleteDoc(doc(db, "documents", docId));
+  await supabase.from("documents").delete().eq("id", docId);
 };
 
 export const listenToDocuments = (
@@ -81,28 +88,45 @@ export const listenToDocuments = (
   isAdmin: boolean,
   callback: (docs: DocumentRecord[]) => void
 ) => {
-  const q = collection(db, "documents");
+  const supabase = createClient();
 
-  return onSnapshot(q, (snapshot) => {
-    let records: DocumentRecord[] = [];
-    snapshot.forEach((d) => {
-      records.push({ id: d.id, ...d.data() } as DocumentRecord);
-    });
-
-    // Filter: admins see all, employees see company docs + their own personal docs
-    if (!isAdmin) {
-      records = records.filter(
-        (r) => r.scope === "company" || r.uploadedBy === userId
-      );
+  const fetchAndEmit = async () => {
+    const { data, error } = await supabase.from("documents").select("*");
+    if (error) {
+      console.error("documents listener error:", error);
+      return;
     }
 
-    // Sort by upload date, newest first
-    records.sort((a, b) => {
-      const aTime = a.uploadedAt?.toMillis ? a.uploadedAt.toMillis() : 0;
-      const bTime = b.uploadedAt?.toMillis ? b.uploadedAt.toMillis() : 0;
-      return bTime - aTime;
-    });
+    let records = (data || []).map(fromRow);
 
-    callback(records);
-  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
+    if (!isAdmin) {
+      records = records.filter((r) => r.scope === "company" || r.uploadedBy === userId);
+    }
+
+    records.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+    const paths = records.map((r) => r.storagePath);
+    let signedUrlMap = new Map<string, string>();
+    if (paths.length > 0) {
+      const { data: signedList } = await supabase.storage
+        .from("documents")
+        .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
+      (signedList || []).forEach((s) => {
+        if (s.signedUrl) signedUrlMap.set(s.path || "", s.signedUrl);
+      });
+    }
+
+    callback(records.map((r) => ({ ...r, storageUrl: signedUrlMap.get(r.storagePath) || "" })));
+  };
+
+  fetchAndEmit();
+
+  const channel = supabase
+    .channel(`documents_${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "documents" }, fetchAndEmit)
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };

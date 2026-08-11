@@ -25,12 +25,11 @@ import {
   AttendanceRecord
 } from "@/lib/attendance";
 
-const formatTime = (dateObj: any) => {
-  if (!dateObj) return "-";
-  if (dateObj.toDate) {
-    return dateObj.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  }
-  return "-";
+const formatTime = (isoString: string | null) => {
+  if (!isoString) return "-";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
 const formatDuration = (totalSeconds: number) => {
@@ -88,7 +87,7 @@ export default function EmployeeAttendanceDashboard() {
     getTodayAttendance(profile.uid).then((rec) => {
       setTodayRecord(rec);
       if (rec && rec.status === "Checked In" && rec.checkInTime) {
-        const checkInMs = rec.checkInTime.toDate().getTime();
+        const checkInMs = new Date(rec.checkInTime).getTime();
         const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
         setLiveSeconds(elapsed);
       } else if (rec) {
@@ -102,7 +101,7 @@ export default function EmployeeAttendanceDashboard() {
     if (!isClockedIn) return;
     const interval = setInterval(() => {
       if (todayRecord?.checkInTime) {
-        const checkInMs = todayRecord.checkInTime.toDate().getTime();
+        const checkInMs = new Date(todayRecord.checkInTime).getTime();
         const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
         setLiveSeconds(elapsed);
       }

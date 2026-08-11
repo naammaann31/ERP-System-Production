@@ -1,5 +1,4 @@
-import { db } from "./firebase";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
 
 export interface UserSettings {
   fullName?: string;
@@ -11,30 +10,35 @@ export interface UserSettings {
 }
 
 export const updateUserProfile = async (uid: string, data: UserSettings) => {
-  const docRef = doc(db, "users", uid);
-  const snap = await getDoc(docRef);
+  const supabase = createClient();
+  const update: Record<string, any> = {};
+  if (data.fullName !== undefined) update.full_name = data.fullName;
+  if (data.phone !== undefined) update.phone = data.phone;
+  if (data.timezone !== undefined) update.timezone = data.timezone;
+  if (data.notificationsEmail !== undefined) update.notifications_email = data.notificationsEmail;
+  if (data.notificationsLeave !== undefined) update.notifications_leave = data.notificationsLeave;
+  if (data.notificationsPayroll !== undefined) update.notifications_payroll = data.notificationsPayroll;
 
-  if (snap.exists()) {
-    await updateDoc(docRef, { ...data });
-    return;
-  }
-
-  throw new Error("User document not found");
+  const { error } = await supabase.from("profiles").update(update).eq("id", uid);
+  if (error) throw error;
 };
 
 export const getUserSettings = async (uid: string): Promise<UserSettings> => {
-  const docRef = doc(db, "users", uid);
-  const snap = await getDoc(docRef);
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("full_name, phone, timezone, notifications_email, notifications_leave, notifications_payroll")
+    .eq("id", uid)
+    .maybeSingle();
 
-  if (snap.exists()) {
-    const data = snap.data();
+  if (data) {
     return {
-      fullName: data.fullName,
+      fullName: data.full_name,
       phone: data.phone || "",
       timezone: data.timezone || "Asia/Kolkata",
-      notificationsEmail: data.notificationsEmail ?? true,
-      notificationsLeave: data.notificationsLeave ?? true,
-      notificationsPayroll: data.notificationsPayroll ?? true,
+      notificationsEmail: data.notifications_email ?? true,
+      notificationsLeave: data.notifications_leave ?? true,
+      notificationsPayroll: data.notifications_payroll ?? true,
     };
   }
 

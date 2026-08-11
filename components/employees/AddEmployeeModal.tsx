@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Plus, Check, ChevronDown, X } from "lucide-react";
-import { registerEmployeeByAdmin } from "@/lib/auth";
+import { createEmployeeAction } from "@/app/actions/employees";
 import { toast } from "sonner";
 
 interface AddEmployeeModalProps {
@@ -57,15 +57,15 @@ export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalPr
 
         setLoading(true);
 
-        const { error: signUpError } = await registerEmployeeByAdmin(
-            fullName, 
-            employeeId, 
-            email, 
-            role, 
-            password, 
-            jobRole, 
-            designation
-        );
+        const { error: signUpError } = await createEmployeeAction({
+            fullName,
+            employeeId,
+            email,
+            role,
+            password,
+            jobRole,
+            designation,
+        });
 
         if (signUpError) {
             setError(signUpError);

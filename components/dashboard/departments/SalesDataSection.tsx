@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { collection, onSnapshot, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
+import { salesRowToUi } from "@/lib/salesMarketingMap";
 import * as xlsx from "xlsx";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Card } from "@/components/ui/card";
@@ -28,12 +28,15 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
     const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
 
     useEffect(() => {
-        const q = collection(db, "sales");
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data: any[] = [];
-            snapshot.forEach((doc) => {
-                data.push({ id: doc.id, ...doc.data() });
-            });
+        const supabase = createClient();
+
+        const fetchAndEmit = async () => {
+            const { data: rows, error } = await supabase.from("sales").select("*");
+            if (error) {
+                console.error(error);
+                return;
+            }
+            const data = (rows || []).map(salesRowToUi);
             data.sort((a, b) => {
                 const dateA = new Date(a["Date"] || 0).getTime();
                 const dateB = new Date(b["Date"] || 0).getTime();
@@ -41,7 +44,7 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
             });
             if (filterByName) {
                 const targetName = filterByName.toLowerCase();
-                const filtered = data.filter(d => 
+                const filtered = data.filter(d =>
                     d["Internal Name"]?.toLowerCase() === targetName ||
                     d["Internal Name"]?.toLowerCase().includes(targetName)
                 );
@@ -49,10 +52,19 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
             } else {
                 setSalesData(data);
             }
-        });
+        };
 
-        return () => unsubscribe();
-    }, []);
+        fetchAndEmit();
+
+        const channel = supabase
+            .channel(`sales_${Math.random().toString(36).slice(2)}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, fetchAndEmit)
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [filterByName]);
 
     const filteredSalesData = salesData.filter((row) => {
         if (salesSearchQuery) {
@@ -140,8 +152,9 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
 
         if (!row.id) return;
         try {
-            const docRef = doc(db, "sales", row.id);
-            await updateDoc(docRef, { Feedback: newFeedback });
+            const supabase = createClient();
+            const { error } = await supabase.from("sales").update({ feedback: newFeedback }).eq("id", row.id);
+            if (error) throw error;
         } catch (e) {
             console.error("Error updating feedback", e);
         }
@@ -149,8 +162,9 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
 
     const handleBulkDelete = async () => {
         try {
-            const promises = selectedRows.map(rowId => deleteDoc(doc(db, "sales", rowId)));
-            await Promise.all(promises);
+            const supabase = createClient();
+            const { error } = await supabase.from("sales").delete().in("id", selectedRows);
+            if (error) throw error;
             setSelectedRows([]);
             setBulkDeleteModalOpen(false);
             toast.success("Selected records deleted successfully.");
@@ -163,7 +177,9 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
     const handleDeleteSale = async () => {
         if (!saleToDelete) return;
         try {
-            await deleteDoc(doc(db, "sales", saleToDelete));
+            const supabase = createClient();
+            const { error } = await supabase.from("sales").delete().eq("id", saleToDelete);
+            if (error) throw error;
             setDeleteModalOpen(false);
             setSaleToDelete(null);
             toast.success("Record deleted successfully.");

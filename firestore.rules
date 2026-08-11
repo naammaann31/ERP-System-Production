@@ -33,7 +33,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isOwner(userId) || isAdminOrHR();
+      // Owners may update their own profile but may NOT change their own role.
+      // Only Admin/HR can change a role, on any profile.
+      allow update: if isAdminOrHR()
+        || (isOwner(userId) && request.resource.data.role == resource.data.role);
       allow delete: if isAdminOrHR();
     }
 
@@ -41,7 +44,8 @@ service cloud.firestore {
     match /Users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isOwner(userId) || isAdminOrHR();
+      allow update: if isAdminOrHR()
+        || (isOwner(userId) && request.resource.data.role == resource.data.role);
       allow delete: if isAdminOrHR();
     }
 

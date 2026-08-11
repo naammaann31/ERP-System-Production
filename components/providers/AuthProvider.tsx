@@ -1,9 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import type { User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 export interface UserProfile {
     uid: string;
@@ -31,40 +30,41 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+function toProfile(row: any): UserProfile {
+    return {
+        uid: row.id,
+        fullName: row.full_name,
+        email: row.email,
+        role: row.role,
+        status: row.status,
+        jobRole: row.job_role,
+        employeeId: row.employee_id,
+        designation: row.designation,
+        department: row.department,
+    };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            setUser(firebaseUser);
+        const supabase = createClient();
 
-            if (firebaseUser) {
+        const loadProfile = async (authUser: User | null) => {
+            setUser(authUser);
+
+            if (authUser) {
                 try {
-                    const docRef = doc(db, "users", firebaseUser.uid);
-                    let docSnap = await getDoc(docRef);
+                    const { data, error } = await supabase
+                        .from("profiles")
+                        .select("*")
+                        .eq("id", authUser.id)
+                        .single();
 
-                    // TODO(2026-10-01): Remove legacy 'Users' fallback and auto-migration code completely.
-                    // If not found in 'users', check legacy 'Users' table and auto-migrate
-                    if (!docSnap.exists()) {
-                        const legacyRef = doc(db, "Users", firebaseUser.uid);
-                        const legacySnap = await getDoc(legacyRef);
-                        if (legacySnap.exists()) {
-                            const data = legacySnap.data();
-                            // Copy to standard 'users' collection and remove legacy document
-                            await setDoc(docRef, data);
-                            await deleteDoc(legacyRef).catch(() => { });
-                            docSnap = await getDoc(docRef);
-                        }
-                    }
-
-                    if (docSnap.exists()) {
-                        const profileData = { uid: firebaseUser.uid, ...docSnap.data() } as UserProfile;
-                        setProfile(profileData);
-                    } else {
-                        setProfile(null);
-                    }
+                    if (error) throw error;
+                    setProfile(data ? toProfile(data) : null);
                 } catch (error) {
                     console.error("Error fetching user profile:", error);
                     setProfile(null);
@@ -74,9 +74,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             setLoading(false);
+        };
+
+        supabase.auth.getUser().then(({ data }) => loadProfile(data.user));
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            loadProfile(session?.user ?? null);
         });
 
-        return () => unsubscribe();
+        return () => subscription.unsubscribe();
     }, []);
 
     return (

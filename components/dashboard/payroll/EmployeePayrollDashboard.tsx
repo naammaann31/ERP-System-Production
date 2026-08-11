@@ -13,7 +13,7 @@ export default function EmployeePayrollDashboard() {
 
   useEffect(() => {
     if (profile?.uid) {
-      getEmployeePayrolls(profile.uid, profile.fullName, profile.employeeId).then(setPayrolls);
+      getEmployeePayrolls(profile.uid).then(setPayrolls);
     }
   }, [profile]);
 

@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search } from "lucide-react";
 import * as xlsx from "xlsx";
-import { db } from "@/lib/firebase";
-import { collection, query, getDocs, updateDoc, deleteDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
+import { salesRowToUi, salesUiToRow } from "@/lib/salesMarketingMap";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import OperationsForm from "@/components/dashboard/operations/OperationsForm";
@@ -42,12 +42,10 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
     const fetchData = async () => {
         setLoading(true);
         try {
-            const q = query(collection(db, collectionName));
-            const snaps = await getDocs(q);
-            const fetched = snaps.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as any[];
+            const supabase = createClient();
+            const { data: rows, error } = await supabase.from(collectionName).select("*");
+            if (error) throw error;
+            const fetched = (rows || []).map(salesRowToUi);
 
             // Filter data to only show the user's own records if restrictToUser is enabled
             let finalData = fetched;
@@ -78,8 +76,9 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
 
             if (!row.id) return;
             try {
-                const docRef = doc(db, collectionName, row.id);
-                await updateDoc(docRef, { Status: newStatus });
+                const supabase = createClient();
+                const { error } = await supabase.from(collectionName).update({ status: newStatus }).eq("id", row.id);
+                if (error) throw error;
             } catch (e) {
                 console.error("Error updating status", e);
                 // Need to reload data to revert if it failed
@@ -90,20 +89,19 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
 
     const handleFeedbackChange = async (row: any, newFeedback: string) => {
         if (row["Feedback"] === newFeedback) return; // No change
-        
+
         // Optimistic update
         setData(prev => prev.map(r => r.id === row.id ? { ...r, Feedback: newFeedback } : r));
 
         if (!row.id) return;
         try {
-            const docRef = doc(db, collectionName, row.id);
-            await updateDoc(docRef, { Feedback: newFeedback });
+            const supabase = createClient();
+            const { error } = await supabase.from(collectionName).update({ feedback: newFeedback }).eq("id", row.id);
+            if (error) throw error;
         } catch (e) {
             console.error("Error updating feedback", e);
             // Need to reload data to revert if it failed
-            const querySnapshot = await getDocs(collection(db, collectionName));
-            const fetchedData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setData(fetchedData);
+            fetchData();
         }
     };
 
@@ -119,8 +117,9 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
         if (!row.id) return;
 
         try {
-            const docRef = doc(db, collectionName, row.id);
-            await updateDoc(docRef, { Status: newStatus });
+            const supabase = createClient();
+            const { error } = await supabase.from(collectionName).update({ status: newStatus }).eq("id", row.id);
+            if (error) throw error;
         } catch (e) {
             console.error("Error updating status", e);
             fetchData(); // revert on fail
@@ -139,8 +138,9 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
         setData(prev => prev.filter(r => r.id !== row.id));
 
         try {
-            const docRef = doc(db, collectionName, row.id);
-            await deleteDoc(docRef);
+            const supabase = createClient();
+            const { error } = await supabase.from(collectionName).delete().eq("id", row.id);
+            if (error) throw error;
             toast.success("Candidate entry removed.");
         } catch (e) {
             console.error("Error deleting candidate", e);
@@ -315,7 +315,7 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                     }
 
                     // Insert
-                    const payload = {
+                    const uiPayload = {
                         "Date": formattedDate,
                         "Candidate Name ": row["Candidate Name "] || "",
                         "Contact Number": row["Contact Number"] ? String(row["Contact Number"]) : "",
@@ -328,10 +328,13 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                         "Linkedln Profile URL": row["Linkedln Profile URL"] || row["LinkedIn Profile URL"] || "",
                         "Feedback": row["Feedback"] || "",
                         "Status": row["Status"] || row["Feedback"] || "New",
-                        createdAt: serverTimestamp()
                     };
 
-                    await addDoc(collection(db, collectionName), payload);
+                    const supabase = createClient();
+                    const { error } = await supabase
+                        .from(collectionName)
+                        .insert(salesUiToRow(uiPayload, profile?.uid || null));
+                    if (error) throw error;
                     newCount++;
                 }
 

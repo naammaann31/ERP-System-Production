@@ -1,16 +1,4 @@
-import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  Timestamp,
-  query,
-  orderBy,
-  getDocs,
-} from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
 import { createNotification } from "./notifications";
 
 export interface Announcement {
@@ -21,7 +9,20 @@ export interface Announcement {
   authorName: string;
   pinned: boolean;
   archived: boolean;
-  createdAt: Timestamp;
+  createdAt: string;
+}
+
+function fromRow(row: any): Announcement {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    author: row.author,
+    authorName: row.author_name,
+    pinned: row.pinned,
+    archived: row.archived,
+    createdAt: row.created_at,
+  };
 }
 
 export const createAnnouncement = async (
@@ -31,73 +32,74 @@ export const createAnnouncement = async (
   authorName: string,
   pinned: boolean = false
 ): Promise<Announcement> => {
-  const data: Omit<Announcement, "id"> = {
-    title,
-    body,
-    author: authorUid,
-    authorName,
-    pinned,
-    archived: false,
-    createdAt: Timestamp.now(),
-  };
+  const supabase = createClient();
 
-  const docRef = await addDoc(collection(db, "announcements"), data);
+  const { data, error } = await supabase
+    .from("announcements")
+    .insert({ title, body, author: authorUid, author_name: authorName, pinned, archived: false })
+    .select()
+    .single();
+
+  if (error) throw error;
 
   // Notify all other users in the system
   try {
-    const uids = new Set<string>();
-    const usersSnap = await getDocs(collection(db, "users"));
-    usersSnap.forEach((d) => {
-      const uid = d.data().uid || d.id;
-      if (uid && uid !== authorUid) uids.add(uid);
-    });
-
-    const notifPromises = Array.from(uids).map((uid) =>
-      createNotification(uid, `New Announcement: ${title}`, "announcement")
+    const { data: profiles } = await supabase.from("profiles").select("id");
+    const otherIds = (profiles || []).map((p) => p.id).filter((id) => id !== authorUid);
+    await Promise.all(
+      otherIds.map((uid) => createNotification(uid, `New Announcement: ${title}`, "announcement"))
     );
-    await Promise.all(notifPromises);
   } catch (err) {
     console.error("Failed to distribute announcement notifications:", err);
   }
 
-  return { id: docRef.id, ...data };
+  return fromRow(data);
 };
 
 export const togglePinAnnouncement = async (id: string, pinned: boolean) => {
-  await updateDoc(doc(db, "announcements", id), { pinned });
+  const supabase = createClient();
+  await supabase.from("announcements").update({ pinned }).eq("id", id);
 };
 
 export const archiveAnnouncement = async (id: string) => {
-  await updateDoc(doc(db, "announcements", id), { archived: true });
+  const supabase = createClient();
+  await supabase.from("announcements").update({ archived: true }).eq("id", id);
 };
 
 export const deleteAnnouncement = async (id: string) => {
-  await deleteDoc(doc(db, "announcements", id));
+  const supabase = createClient();
+  await supabase.from("announcements").delete().eq("id", id);
 };
 
-export const listenToAnnouncements = (
-  callback: (announcements: Announcement[]) => void
-) => {
-  const q = collection(db, "announcements");
+export const listenToAnnouncements = (callback: (announcements: Announcement[]) => void) => {
+  const supabase = createClient();
 
-  return onSnapshot(q, (snapshot) => {
-    let records: Announcement[] = [];
-    snapshot.forEach((d) => {
-      records.push({ id: d.id, ...d.data() } as Announcement);
-    });
+  const fetchAndEmit = async () => {
+    const { data, error } = await supabase.from("announcements").select("*");
+    if (error) {
+      console.error("announcements listener error:", error);
+      return;
+    }
 
-    // Filter out archived
-    records = records.filter((r) => !r.archived);
+    let records = (data || []).map(fromRow).filter((r) => !r.archived);
 
-    // Sort: pinned first, then by date
     records.sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
-      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-      return bTime - aTime;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
     callback(records);
-  }, (error) => { if (error.code !== 'permission-denied') console.error(error); });
+  };
+
+  fetchAndEmit();
+
+  const channel = supabase
+    .channel(`announcements_${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, fetchAndEmit)
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };

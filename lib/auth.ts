@@ -1,111 +1,34 @@
-import app, { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signOut, User, getAuth as getFirebaseAuth } from "firebase/auth";
-import { doc, setDoc, serverTimestamp, getFirestore } from "firebase/firestore";
-import { getApps, initializeApp } from "firebase/app";
+import { createClient } from "@/lib/supabase/client";
 
 /**
- * Parses Firebase authentication errors into user-friendly messages.
+ * Parses Supabase authentication errors into user-friendly messages.
  */
-export function getFirebaseErrorMessage(error: any): string {
-    const code = error?.code;
-    switch (code) {
-        case "auth/email-already-in-use":
-            return "This email is already registered. Please log in instead.";
-        case "auth/weak-password":
-            return "Password is too weak. It must be at least 8 characters.";
-        case "auth/invalid-email":
-            return "The email address is invalid.";
-        case "auth/operation-not-allowed":
-            return "Email/password accounts are not enabled in Firebase.";
-        case "auth/network-request-failed":
-            return "Network error. Please check your internet connection.";
-        case "auth/user-disabled":
-            return "This account has been disabled by an administrator.";
-        case "auth/user-not-found":
-        case "auth/wrong-password":
-        case "auth/invalid-credential":
-            return "Invalid email or password.";
-        default:
-            return error?.message || "An unexpected error occurred. Please try again.";
+export function getAuthErrorMessage(error: any): string {
+    const message = (error?.message || "").toLowerCase();
+
+    if (message.includes("invalid login credentials")) {
+        return "Invalid email or password.";
     }
-}
-
-/**
- * Registers a new Admin user using Firebase Auth and stores details in Firestore.
- */
-export async function registerAdmin(
-    fullName: string,
-    email: string,
-    password: string
-): Promise<{ user?: User; error?: string }> {
-    try {
-        // 1. Create user in Firebase Authentication
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        // 2. Store additional user details in Firestore
-        // Document ID is set to the Firebase Auth UID
-        await setDoc(doc(db, "users", user.uid), {
-            uid: user.uid,
-            fullName: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            role: "Admin",
-            status: "Active",
-            createdAt: serverTimestamp(),
-        });
-
-
-
-        // Sign out immediately to prevent auto-login
-        await signOut(auth);
-
-        return { user };
-    } catch (error: any) {
-        console.error("Registration Error:", error.message);
-        return { error: getFirebaseErrorMessage(error) };
+    if (message.includes("email not confirmed")) {
+        return "Please confirm your email before logging in.";
     }
-}
-
-/**
- * Registers a new Employee user using Firebase Auth and stores details in Firestore.
- */
-export async function registerEmployee(
-    fullName: string,
-    employeeId: string,
-    email: string,
-    role: string,
-    password: string,
-    jobRole: string,
-    designation: string
-): Promise<{ user?: User; error?: string }> {
-    try {
-        // 1. Create user in Firebase Authentication
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        // 2. Store additional user details in Firestore
-        // Document ID is set to the Firebase Auth UID
-        await setDoc(doc(db, "users", user.uid), {
-            uid: user.uid,
-            fullName: fullName.trim(),
-            employeeId: employeeId.trim(),
-            email: email.trim().toLowerCase(),
-            role: role,
-            jobRole: jobRole.trim(),
-            designation: designation,
-            createdAt: serverTimestamp(),
-        });
-
-
-
-        // Sign out immediately to prevent auto-login
-        await signOut(auth);
-
-        return { user };
-    } catch (error: any) {
-        console.error("Employee Registration Error:", error.message);
-        return { error: getFirebaseErrorMessage(error) };
+    if (message.includes("user already registered") || message.includes("already been registered")) {
+        return "This email is already registered. Please log in instead.";
     }
+    if (message.includes("password") && message.includes("least")) {
+        return "Password is too weak. It must be at least 8 characters.";
+    }
+    if (message.includes("invalid email")) {
+        return "The email address is invalid.";
+    }
+    if (message.includes("network")) {
+        return "Network error. Please check your internet connection.";
+    }
+    if (message.includes("user not found")) {
+        return "This account has been disabled or does not exist.";
+    }
+
+    return error?.message || "An unexpected error occurred. Please try again.";
 }
 
 /**
@@ -113,56 +36,12 @@ export async function registerEmployee(
  */
 export async function logoutUser(): Promise<{ error?: string }> {
     try {
-        await signOut(auth);
+        const supabase = createClient();
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
         return {};
     } catch (error: any) {
         console.error("Logout Error:", error.message);
-        return { error: getFirebaseErrorMessage(error) };
-    }
-}
-
-/**
- * Registers a new Employee user using a Secondary Firebase App so the current Admin/HR is not logged out.
- */
-export async function registerEmployeeByAdmin(
-    fullName: string,
-    employeeId: string,
-    email: string,
-    role: string,
-    password: string,
-    jobRole: string,
-    designation: string
-): Promise<{ user?: User; error?: string }> {
-    try {
-        // Initialize a secondary app so we don't log out the current Admin
-        const secondaryApp = getApps().find(a => a.name === 'SecondaryApp') || initializeApp(app.options, 'SecondaryApp');
-        const secondaryAuth = getFirebaseAuth(secondaryApp);
-        const secondaryDb = getFirestore(secondaryApp);
-
-        // 1. Create user in Firebase Authentication using secondary app
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-        const user = userCredential.user;
-
-        // 2. Store additional user details in Firestore using secondary db (acts as the new user)
-        await setDoc(doc(secondaryDb, "users", user.uid), {
-            uid: user.uid,
-            fullName: fullName.trim(),
-            employeeId: employeeId.trim(),
-            email: email.trim().toLowerCase(),
-            role: role,
-            jobRole: jobRole.trim(),
-            designation: designation,
-            createdAt: serverTimestamp(),
-        });
-
-
-
-        // Sign out immediately from secondary auth
-        await signOut(secondaryAuth);
-
-        return { user };
-    } catch (error: any) {
-        console.error("Employee Registration Error:", error.message);
-        return { error: getFirebaseErrorMessage(error) };
+        return { error: getAuthErrorMessage(error) };
     }
 }

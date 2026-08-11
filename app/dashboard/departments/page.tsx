@@ -5,8 +5,7 @@ import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import { 
   Building2, 
   Megaphone, 
@@ -60,29 +59,45 @@ function HRDepartmentsDashboard() {
   const [stats, setStats] = useState<Record<string, { count: number, manager: string }>>({});
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
-      const emps = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+    const supabase = createClient();
+
+    const fetchStats = async () => {
+      const { data, error } = await supabase.from("profiles").select("*");
+      if (error) {
+        console.error(error);
+        return;
+      }
+      const emps = (data || []).map((row: any) => ({ uid: row.id, fullName: row.full_name, role: row.role, designation: row.designation }));
       const newStats: Record<string, { count: number, manager: string }> = {};
-      
+
       emps.forEach((emp: any) => {
         const role = emp.role || "Employee";
         if (!newStats[role]) {
           newStats[role] = { count: 0, manager: "Pending Assignment" };
         }
-        
+
         newStats[role].count += 1;
-        
+
         // Check if manager or lead
         const desig = (emp.designation || "").toLowerCase();
         if (desig.includes("manager") || desig.includes("lead") || desig.includes("head") || emp.role === "Admin") {
-          newStats[role].manager = emp.fullName || emp.name || "Unknown";
+          newStats[role].manager = emp.fullName || "Unknown";
         }
       });
-      
-      setStats(newStats);
-    });
 
-    return () => unsubscribe();
+      setStats(newStats);
+    };
+
+    fetchStats();
+
+    const channel = supabase
+      .channel(`profiles_dept_stats_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchStats)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const departments = baseDepartments.map(dept => {

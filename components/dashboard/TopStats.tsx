@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { CalendarCheck, Clock, Palmtree, Users, Wallet } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import { getTodayAttendance } from "@/lib/attendance";
 import { getUserLeaves } from "@/lib/leave";
 
@@ -21,11 +20,23 @@ export default function TopStats() {
   useEffect(() => {
     if (!profile || !isAdminOrHR) return;
 
-    const unsub = onSnapshot(collection(db, "users"), (snap) => {
-      setTotalEmployees(snap.size);
-    });
+    const supabase = createClient();
 
-    return () => unsub();
+    const fetchCount = async () => {
+      const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
+      setTotalEmployees(count || 0);
+    };
+
+    fetchCount();
+
+    const channel = supabase
+      .channel(`profiles_count_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchCount)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile, isAdminOrHR]);
 
   useEffect(() => {

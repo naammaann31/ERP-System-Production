@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { createClient } from "@/lib/supabase/client";
+import { marketingUiToRow } from "@/lib/salesMarketingMap";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
 
@@ -35,10 +35,11 @@ export default function MarketingForm({ onCancel, onSuccess }: MarketingFormProp
         setSubmitting(true);
 
         try {
-            await addDoc(collection(db, "marketing"), {
-                ...formData,
-                createdAt: serverTimestamp()
-            });
+            const supabase = createClient();
+            const { error } = await supabase
+                .from("marketing")
+                .insert(marketingUiToRow(formData, profile?.uid || null, profile?.fullName || null));
+            if (error) throw error;
 
             toast.success("Entry saved successfully!");
             onSuccess();

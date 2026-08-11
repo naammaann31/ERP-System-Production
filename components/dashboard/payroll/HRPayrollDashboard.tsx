@@ -5,8 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Edit, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import {
   SalaryStructure,
   PayrollRecord,
@@ -71,26 +70,38 @@ export default function HRPayrollDashboard() {
   useEffect(() => {
     if (!profile) return;
 
-    const q = collection(db, "users");
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const emps: any[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        emps.push({
-          uid: doc.id,
-          id: data.employeeId || "N/A",
-          name: data.fullName || "Unnamed",
-          department: data.role === "OPS_HR" ? "HR" : (data.role || "Employee"),
-          jobRole: data.jobRole || "N/A",
-          createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
-        });
-      });
+    const supabase = createClient();
+
+    const fetchEmployees = async () => {
+      const { data, error } = await supabase.from("profiles").select("*");
+      if (error) {
+        console.error(error);
+        setLoading(false);
+        return;
+      }
+      const emps = (data || []).map((row: any) => ({
+        uid: row.id,
+        id: row.employee_id || "N/A",
+        name: row.full_name || "Unnamed",
+        department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
+        jobRole: row.job_role || "N/A",
+        createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
+      }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);
       setLoading(false);
-    });
-    
-    return () => unsubscribe();
+    };
+
+    fetchEmployees();
+
+    const channel = supabase
+      .channel(`profiles_payroll_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchEmployees)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile]);
 
   useEffect(() => {

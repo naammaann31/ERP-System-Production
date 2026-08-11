@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "firebase": "^12.15.0",
+    "firebase-admin": "^14.2.0",
     "framer-motion": "^12.42.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
@@ -35,6 +38,9 @@
     "docx": "^9.7.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "firebase-tools": "^15.26.0",
+    "playwright": "^1.62.1",
+    "supabase": "^2.113.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

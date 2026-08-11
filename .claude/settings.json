@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase *)",
+      "Bash(rm \"app/\\(auth\\)/register/page.tsx\")",
+      "Bash(rmdir \"app/\\(auth\\)/register\")",
+      "Bash(npx tsc *)",
+      "Bash(npx firebase *)",
+      "Bash(node -e ' *)",
+      "Bash(lsof -ti:3000 -sTCP:LISTEN)",
+      "Bash(xargs -r kill)"
+    ]
+  }
+}

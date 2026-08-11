@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { 
   Building2, 
@@ -71,20 +70,36 @@ export default function DepartmentPage() {
   useEffect(() => {
     if (!dept) return;
 
-    const q = collection(db, "users");
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const emps: any[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.role === dept.role) {
-          emps.push({ uid: doc.id, ...data });
-        }
-      });
+    const supabase = createClient();
+
+    const fetchEmployees = async () => {
+      const { data, error } = await supabase.from("profiles").select("*").eq("role", dept.role);
+      if (error) {
+        console.error(error);
+        setLoading(false);
+        return;
+      }
+      const emps = (data || []).map((row: any) => ({
+        uid: row.id,
+        fullName: row.full_name,
+        employeeId: row.employee_id,
+        jobRole: row.job_role,
+        designation: row.designation,
+      }));
       setEmployees(emps);
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchEmployees();
+
+    const channel = supabase
+      .channel(`profiles_dept_${dept.role}_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchEmployees)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [dept]);
 
   if (!dept) {
