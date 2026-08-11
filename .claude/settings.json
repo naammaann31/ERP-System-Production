@@ -9,7 +9,8 @@
       "Bash(node -e ' *)",
       "Bash(lsof -ti:3000 -sTCP:LISTEN)",
       "Bash(xargs -r kill)",
-      "Bash(grep -n \"channel\\(\\\\`profile_\" components/providers/AuthProvider.tsx)"
+      "Bash(grep -n \"channel\\(\\\\`profile_\" components/providers/AuthProvider.tsx)",
+      "Bash(node scripts/_inspect_sheet.mjs)"
     ]
   }
 }
