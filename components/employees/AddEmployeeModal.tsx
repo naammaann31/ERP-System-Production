@@ -15,7 +15,7 @@ export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalPr
     const [fullName, setFullName] = useState("");
     const [employeeId, setEmployeeId] = useState("");
     const [email, setEmail] = useState("");
-    const [role, setRole] = useState("Admin");
+    const [role, setRole] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [jobRole, setJobRole] = useState("");
@@ -76,7 +76,7 @@ export default function AddEmployeeModal({ isOpen, onClose }: AddEmployeeModalPr
         toast.success("Employee account created successfully!");
         setLoading(false);
         // Reset form
-        setFullName(""); setEmployeeId(""); setEmail(""); setRole("Admin");
+        setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
         setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee");
         onClose();
     };
