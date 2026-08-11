@@ -34,6 +34,7 @@ export default function EmployeesPage() {
   
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,6 +82,7 @@ export default function EmployeesPage() {
     } else {
       toast.success(`${count} employee(s) deleted successfully.`);
     }
+    setRefreshTrigger(prev => prev + 1);
   };
 
   const handleExportCSV = () => {
@@ -129,7 +131,7 @@ export default function EmployeesPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile]);
+  }, [profile, refreshTrigger]);
 
   const departments = useMemo(() => {
     const deps = new Set(employees.map(e => e.department));
@@ -167,6 +169,7 @@ export default function EmployeesPage() {
       toast.error("Failed to delete employee.");
     } else {
       toast.success(`${employeeToDelete.name} has been removed.`);
+      setRefreshTrigger(prev => prev + 1);
     }
     setEmployeeToDelete(null);
   };
@@ -387,6 +390,7 @@ export default function EmployeesPage() {
       <AddEmployeeModal 
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
+        onSuccess={() => setRefreshTrigger(prev => prev + 1)}
       />
 
       <ConfirmModal
