@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 export interface UserProfile {
@@ -37,46 +37,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        let unsubProfile: (() => void) | undefined;
+
+        const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
+
+            if (unsubProfile) {
+                unsubProfile();
+                unsubProfile = undefined;
+            }
 
             if (firebaseUser) {
                 try {
                     const docRef = doc(db, "users", firebaseUser.uid);
-                    let docSnap = await getDoc(docRef);
-
-                    // TODO(2026-10-01): Remove legacy 'Users' fallback and auto-migration code completely.
-                    // If not found in 'users', check legacy 'Users' table and auto-migrate
-                    if (!docSnap.exists()) {
-                        const legacyRef = doc(db, "Users", firebaseUser.uid);
-                        const legacySnap = await getDoc(legacyRef);
-                        if (legacySnap.exists()) {
-                            const data = legacySnap.data();
-                            // Copy to standard 'users' collection and remove legacy document
-                            await setDoc(docRef, data);
-                            await deleteDoc(legacyRef).catch(() => { });
-                            docSnap = await getDoc(docRef);
+                    
+                    unsubProfile = onSnapshot(docRef, async (docSnap) => {
+                        // TODO(2026-10-01): Remove legacy 'Users' fallback and auto-migration code completely.
+                        // If not found in 'users', check legacy 'Users' table and auto-migrate
+                        if (!docSnap.exists()) {
+                            const legacyRef = doc(db, "Users", firebaseUser.uid);
+                            const legacySnap = await getDoc(legacyRef);
+                            if (legacySnap.exists()) {
+                                const data = legacySnap.data();
+                                // Copy to standard 'users' collection and remove legacy document
+                                await setDoc(docRef, data);
+                                await deleteDoc(legacyRef).catch(() => { });
+                                return; // The snapshot will re-fire once created
+                            }
+                            setProfile(null);
+                        } else {
+                            const profileData = { uid: firebaseUser.uid, ...docSnap.data() } as UserProfile;
+                            setProfile(profileData);
                         }
-                    }
-
-                    if (docSnap.exists()) {
-                        const profileData = { uid: firebaseUser.uid, ...docSnap.data() } as UserProfile;
-                        setProfile(profileData);
-                    } else {
+                        
+                        setLoading(false);
+                    }, (error) => {
+                        console.error("Error fetching user profile:", error);
                         setProfile(null);
-                    }
+                        setLoading(false);
+                    });
                 } catch (error) {
-                    console.error("Error fetching user profile:", error);
+                    console.error("Error setting up profile snapshot:", error);
                     setProfile(null);
+                    setLoading(false);
                 }
             } else {
                 setProfile(null);
+                setLoading(false);
             }
-
-            setLoading(false);
         });
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribeAuth();
+            if (unsubProfile) unsubProfile();
+        };
     }, []);
 
     return (

@@ -208,6 +208,7 @@ export default function EmployeeProfilePage() {
   const infoFields = [
     { label: "Full Name", value: employee.fullName, icon: User },
     { label: "Email", value: employee.email, icon: Mail },
+    { label: "Phone", value: employee.phone || "Not provided", icon: Phone },
     { label: "Employee ID", value: employee.employeeId || "N/A", icon: Hash },
     { label: "Department", value: employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role || "General"), icon: Building2 },
     { label: "Job Role", value: employee.jobRole || "N/A", icon: Briefcase },
