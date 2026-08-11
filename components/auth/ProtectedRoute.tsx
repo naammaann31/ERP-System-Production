@@ -5,11 +5,18 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
 
-const checkUnauthorized = (pathname: string, role: string = "Employee"): boolean => {
+const checkUnauthorized = (pathname: string, role: string = "Employee", designation: string = ""): boolean => {
     const isAdmin = role === "Admin";
     const isAdminOrHR = isAdmin || role === "HR" || role === "OPS_HR";
+    const isTeamLead = designation === "Team-Lead";
 
-    if (pathname.startsWith("/dashboard/employees") && !isAdminOrHR) {
+    // The full company-wide directory stays Admin/HR-only.
+    if (pathname === "/dashboard/employees" && !isAdminOrHR) {
+        return true;
+    }
+    // Individual employee profiles: Team-Leads can also view these (their
+    // own team, reached via "My Team"), even though they aren't Admin/HR.
+    if (pathname.startsWith("/dashboard/employees/") && !isAdminOrHR && !isTeamLead) {
         return true;
     }
     if (pathname.startsWith("/dashboard/departments") && !isAdmin) {
@@ -24,7 +31,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     const pathname = usePathname();
     const hasToastedRef = useRef(false);
 
-    const unauthorized = !loading && !!profile && checkUnauthorized(pathname, profile.role);
+    const unauthorized = !loading && !!profile && checkUnauthorized(pathname, profile.role, profile.designation);
 
     useEffect(() => {
         if (!loading && (!user || !profile)) {
