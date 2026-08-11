@@ -23,10 +23,9 @@ import {
 
 const formatTime = (dateObj: any) => {
   if (!dateObj) return "-";
-  if (dateObj.toDate) {
-    return dateObj.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  }
-  return "-";
+  const date = new Date(dateObj);
+  if (isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
 const getStatusBadge = (status: string) => {
@@ -80,7 +79,7 @@ export default function HRAttendanceDashboard() {
     if (filteredEmployees.length === 0) return;
     const headers = ["Employee", "Date", "Clock In", "Clock Out", "Status"];
     const csvRows = [headers.join(",")];
-    
+
     filteredEmployees.forEach(emp => {
       const row = [
         `"${emp.fullName}"`,
@@ -91,7 +90,7 @@ export default function HRAttendanceDashboard() {
       ];
       csvRows.push(row.join(","));
     });
-    
+
     const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");

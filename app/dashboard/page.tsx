@@ -36,7 +36,7 @@ export default function DashboardPage() {
       animate="show"
     >
       {/* 1. Welcome Header spanning full width */}
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} className="relative z-20">
         <WelcomeHeader />
       </motion.div>
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, LogOut, LogIn, Info, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { toast } from "sonner";
 import { 
   checkIn, 
   checkOut, 
@@ -87,8 +88,9 @@ export default function LiveAttendanceCard() {
         const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role);
         setAttendanceRecord(record);
         setIsCheckedIn(true);
-      } catch (error) {
-        console.error("Error during check in:", error);
+      } catch (error: any) {
+        console.error("Error during check in:", error, error.message, error.details);
+        toast.error(`Check in failed: ${error.message || JSON.stringify(error)}`);
       }
     } else {
       setShowClockOutConfirm(true);
