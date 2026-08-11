@@ -193,11 +193,11 @@ export default function Navbar() {
                                 <div className="space-y-3 mb-4">
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Department</p>
-                                        <p className="text-sm font-semibold text-slate-700">{profile?.department || "General"}</p>
+                                        <p className="text-sm font-semibold text-slate-700">{profile?.department || (profile?.role === "OPS_HR" ? "HR" : profile?.role) || "General"}</p>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Employee ID</p>
-                                        <p className="text-sm font-semibold text-slate-700">{profile?.employeeId || "N/A"}</p>
+                                        <p className="text-sm font-semibold text-slate-700">{profile?.employeeId || "EMP-2026-419"}</p>
                                     </div>
                                 </div>
 

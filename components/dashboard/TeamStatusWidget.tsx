@@ -1,53 +1,178 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { getLocalDateString } from "@/lib/attendance";
+import { useRouter } from "next/navigation";
 
-const team: { id: number; name: string; role: string; status: string; label?: string }[] = [];
+type TeamMember = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  label?: string;
+  isMe?: boolean;
+};
 
 export default function TeamStatusWidget() {
+  const { profile } = useAuth();
+  const router = useRouter();
+  const isAdmin = profile?.role === "Admin";
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profile?.role) {
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createClient();
+    const todayDate = getLocalDateString();
+    let usersData: any[] = [];
+    let attendanceData: Record<string, string> = {};
+
+    const updateTeam = () => {
+      const members: TeamMember[] = [];
+      usersData.forEach((row) => {
+        const isMe = row.id === profile.uid;
+        const attStatus = attendanceData[row.id];
+
+        let finalStatus = "offline";
+        if (attStatus === "Checked In" || attStatus === "Present") {
+          finalStatus = "online";
+        } else if (row.status === "Active" || !row.status) {
+          finalStatus = "online";
+        }
+
+        members.push({
+          id: row.id,
+          name: row.full_name || "Unknown",
+          role: row.job_role || row.role || "Employee",
+          status: finalStatus,
+          label: row.status === "On Leave" ? "On Leave" : undefined,
+          isMe
+        });
+      });
+
+      // Sort so the logged-in user is at the top, then alphabetically
+      members.sort((a, b) => {
+        if (a.isMe) return -1;
+        if (b.isMe) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setTeam(members);
+      setLoading(false);
+    };
+
+    const fetchUsers = async () => {
+      let q = supabase.from("profiles").select("*");
+      if (!isAdmin) q = q.eq("role", profile.role);
+      const { data, error } = await q;
+      if (error) {
+        console.error("Error fetching team users:", error);
+        setLoading(false);
+        return;
+      }
+      usersData = data || [];
+      updateTeam();
+    };
+
+    const fetchAttendance = async () => {
+      const { data, error } = await supabase.from("attendance").select("*").eq("date", todayDate);
+      if (error) {
+        console.error("Error fetching attendance:", error);
+        return;
+      }
+      const newAtt: Record<string, string> = {};
+      (data || []).forEach((row) => {
+        newAtt[row.user_id] = row.status;
+      });
+      attendanceData = newAtt;
+      updateTeam();
+    };
+
+    fetchUsers();
+    fetchAttendance();
+
+    const usersChannel = supabase
+      .channel(`team_status_profiles_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchUsers)
+      .subscribe();
+
+    const attChannel = supabase
+      .channel(`team_status_attendance_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, fetchAttendance)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(usersChannel);
+      supabase.removeChannel(attChannel);
+    };
+  }, [profile]);
+
   return (
     <Card className="h-full">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Users className="h-5 w-5 text-slate-500" />
-            Team Status
+          <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Users className="h-5 w-5 text-indigo-500" />
+            {profile?.role === "Admin" ? "Company Directory" : "Team Status"}
           </CardTitle>
           <span className="text-xs font-semibold text-slate-500">{team.length} Members</span>
         </div>
       </CardHeader>
       <CardContent>
         {team.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {team.map((member) => (
-              <div key={member.id} className="flex items-center gap-3">
+              <div 
+                key={member.id} 
+                onClick={() => {
+                  if (isAdmin) {
+                    router.push(`/dashboard/employees/${member.id}`);
+                  }
+                }}
+                className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-300 ${isAdmin ? "cursor-pointer" : ""} ${member.isMe ? "bg-indigo-50/80 border border-indigo-100 shadow-sm" : "hover:bg-slate-50 border border-transparent hover:-translate-y-0.5 hover:shadow-sm"}`}
+              >
                 <Avatar 
                   size="default" 
                   fallback={member.name.charAt(0)} 
                   status={member.status as any}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 truncate">{member.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{member.role}</p>
+                  <p className={`text-base font-black tracking-tight truncate flex items-center gap-1.5 ${member.isMe ? "text-indigo-900" : "text-slate-800"}`}>
+                    {member.name} 
+                    {member.isMe && <span className="text-[9px] font-black bg-indigo-200/50 text-indigo-700 px-1.5 py-0.5 rounded uppercase tracking-wider">You</span>}
+                  </p>
+                  <p className={`text-[11px] font-semibold truncate ${member.isMe ? "text-indigo-600/70" : "text-slate-500"}`}>{member.role}</p>
                 </div>
                 {member.label && (
-                  <Badge variant={member.label === "On Leave" ? "secondary" : "info"} className="text-[9px] px-1.5 py-0 uppercase tracking-wider h-4 leading-4">
+                  <Badge variant={member.label === "On Leave" ? "secondary" : "info"} className="text-[9px] px-1.5 py-0 uppercase tracking-wider h-4 leading-4 font-bold">
                     {member.label}
                   </Badge>
                 )}
               </div>
             ))}
           </div>
+        ) : loading ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-400 mb-3"></div>
+            <p className="text-sm font-semibold text-slate-700">Loading Team...</p>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
             <div className="bg-slate-50 p-3 rounded-full mb-3 border border-slate-100">
               <Users className="h-6 w-6 text-slate-400" />
             </div>
-            <p className="text-sm font-semibold text-slate-700">No Team Members</p>
-            <p className="text-xs mt-1">Your team directory is currently empty.</p>
+            <p className="text-sm font-semibold text-slate-700">No Other Team Members</p>
+            <p className="text-xs mt-1">You are currently the only one in this department.</p>
           </div>
         )}
       </CardContent>

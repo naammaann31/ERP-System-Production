@@ -4,30 +4,21 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Bell, Lock, User, Globe, Moon, Save, Check } from "lucide-react";
+import { Bell, Lock, User, Globe, Moon, Save, Check, ChevronDown } from "lucide-react";
 import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings";
 import { toast, Toaster } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 const tabs = [
   { id: "profile", label: "Profile", icon: User },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "security", label: "Security", icon: Lock },
-  { id: "language", label: "Language", icon: Globe },
-  { id: "appearance", label: "Appearance", icon: Moon },
 ];
 
 const timezones = [
-  "Asia/Kolkata",
-  "America/New_York",
-  "America/Los_Angeles",
-  "America/Chicago",
-  "Europe/London",
-  "Europe/Berlin",
-  "Asia/Tokyo",
-  "Asia/Dubai",
-  "Australia/Sydney",
-  "UTC",
+  "Indian",
+  "Eastern",
+  "Pacific",
+  "Central",
+  "Mountain",
 ];
 
 export default function SettingsPage() {
@@ -39,7 +30,8 @@ export default function SettingsPage() {
   // Profile form
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [timezone, setTimezone] = useState("Asia/Kolkata");
+  const [timezone, setTimezone] = useState("Indian");
+  const [timezoneOpen, setTimezoneOpen] = useState(false);
 
   // Security form
   const [currentPassword, setCurrentPassword] = useState("");
@@ -61,7 +53,7 @@ export default function SettingsPage() {
     getUserSettings(profile.uid).then((settings) => {
       setFullName(settings.fullName || profile.fullName || "");
       setPhone(settings.phone || "");
-      setTimezone(settings.timezone || "Asia/Kolkata");
+      setTimezone(settings.timezone || "Indian");
       setNotifEmail(settings.notificationsEmail ?? true);
       setNotifLeave(settings.notificationsLeave ?? true);
       setNotifPayroll(settings.notificationsPayroll ?? true);
@@ -189,157 +181,46 @@ export default function SettingsPage() {
                     <label className="text-xs font-semibold uppercase text-slate-500">Email Address</label>
                     <input type="email" disabled className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-500 outline-none cursor-not-allowed" defaultValue={profile?.email || ""} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-slate-500">Phone Number</label>
-                    <input type="text" className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="+91 98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
+
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase text-slate-500">Timezone</label>
-                    <select className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-                      {timezones.map((tz) => (
-                        <option key={tz} value={tz}>{tz}</option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <button 
+                        type="button"
+                        onClick={() => setTimezoneOpen(!timezoneOpen)}
+                        className="w-full flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-left"
+                      >
+                        <span className="truncate">{timezone}</span>
+                        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${timezoneOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      
+                      {timezoneOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setTimezoneOpen(false)} />
+                          <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                            {timezones.map((tz) => (
+                              <button
+                                key={tz}
+                                type="button"
+                                onClick={() => {
+                                  setTimezone(tz);
+                                  setTimezoneOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-2.5 text-sm transition-colors ${timezone === tz ? 'bg-blue-50/50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
+                              >
+                                {tz}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="pt-4 flex justify-end">
                   <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
                     {saved ? <><Check className="h-4 w-4" /> Saved!</> : saving ? "Saving..." : <><Save className="h-4 w-4" /> Save Changes</>}
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Notifications Tab */}
-          {activeTab === "notifications" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>Choose what notifications you receive.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  { label: "Email Notifications", desc: "Receive notifications via email", value: notifEmail, setter: setNotifEmail },
-                  { label: "Leave Updates", desc: "Get notified when your leave status changes", value: notifLeave, setter: setNotifLeave },
-                  { label: "Payroll Alerts", desc: "Get notified when your payslip is generated", value: notifPayroll, setter: setNotifPayroll },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{item.label}</p>
-                      <p className="text-xs text-slate-500">{item.desc}</p>
-                    </div>
-                    <button
-                      onClick={() => item.setter(!item.value)}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${item.value ? "bg-blue-600" : "bg-slate-200"}`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${item.value ? "left-6" : "left-1"}`} />
-                    </button>
-                  </div>
-                ))}
-                <div className="pt-4 flex justify-end">
-                  <Button onClick={handleSaveProfile} disabled={saving}>
-                    {saved ? "Saved!" : "Save Preferences"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Security Tab */}
-          {activeTab === "security" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Security</CardTitle>
-                <CardDescription>Manage your account security settings.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Current Password</label>
-                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-slate-500">New Password</label>
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-slate-500">Confirm Password</label>
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" />
-                  </div>
-                </div>
-                <div className="pt-4 flex justify-end">
-                  <Button onClick={handleUpdatePassword} disabled={updatingPassword}>
-                    {updatingPassword ? "Updating..." : "Update Password"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Language Tab */}
-          {activeTab === "language" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Language & Region</CardTitle>
-                <CardDescription>Set your preferred language and regional settings.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Interface Language</label>
-                  <select className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option>English (US)</option>
-                    <option>Hindi (हिन्दी)</option>
-                    <option>Spanish (Español)</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Date Format</label>
-                  <select className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option>DD/MM/YYYY</option>
-                    <option>MM/DD/YYYY</option>
-                    <option>YYYY-MM-DD</option>
-                  </select>
-                </div>
-                <div className="pt-4 flex justify-end">
-                  <Button>Save Changes</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Appearance Tab */}
-          {activeTab === "appearance" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Appearance</CardTitle>
-                <CardDescription>Customize how the application looks.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-slate-500 mb-3 block">Theme</label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => handleThemeChange("light")}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${theme === "light" ? "border-blue-500 bg-blue-50/50 shadow-md" : "border-slate-200 hover:border-slate-300"}`}
-                    >
-                      <div className="w-full h-16 rounded-lg bg-white border border-slate-200 mb-3 flex items-center justify-center">
-                        <div className="w-8 h-1.5 bg-slate-300 rounded-full" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-800">Light</p>
-                      <p className="text-xs text-slate-500">Clean and bright interface</p>
-                    </button>
-                    <button
-                      onClick={() => handleThemeChange("dark")}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${theme === "dark" ? "border-blue-500 bg-blue-50/50 shadow-md" : "border-slate-200 hover:border-slate-300"}`}
-                    >
-                      <div className="w-full h-16 rounded-lg bg-slate-800 border border-slate-700 mb-3 flex items-center justify-center">
-                        <div className="w-8 h-1.5 bg-slate-600 rounded-full" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-800">Dark</p>
-                      <p className="text-xs text-slate-500">Easy on the eyes</p>
-                    </button>
-                  </div>
                 </div>
               </CardContent>
             </Card>

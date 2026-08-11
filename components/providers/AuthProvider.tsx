@@ -51,40 +51,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const supabase = createClient();
+        let profileChannel: ReturnType<typeof supabase.channel> | undefined;
 
         const loadProfile = async (authUser: User | null) => {
             setUser(authUser);
 
-            if (authUser) {
-                try {
-                    const { data, error } = await supabase
-                        .from("profiles")
-                        .select("*")
-                        .eq("id", authUser.id)
-                        .single();
-
-                    if (error) throw error;
-                    setProfile(data ? toProfile(data) : null);
-                } catch (error) {
-                    console.error("Error fetching user profile:", error);
-                    setProfile(null);
-                }
-            } else {
-                setProfile(null);
+            if (profileChannel) {
+                supabase.removeChannel(profileChannel);
+                profileChannel = undefined;
             }
 
-            setLoading(false);
+            if (authUser) {
+                const fetchProfile = async () => {
+                    try {
+                        const { data, error } = await supabase
+                            .from("profiles")
+                            .select("*")
+                            .eq("id", authUser.id)
+                            .single();
+
+                        if (error) throw error;
+                        setProfile(data ? toProfile(data) : null);
+                    } catch (error) {
+                        console.error("Error fetching user profile:", error);
+                        setProfile(null);
+                    }
+                    setLoading(false);
+                };
+
+                await fetchProfile();
+
+                // Keep the profile live-synced — e.g. if an Admin changes
+                // this user's role/status while they're logged in, their
+                // UI reflects it immediately without a reload.
+                profileChannel = supabase
+                    .channel(`profile_${authUser.id}_${Math.random().toString(36).slice(2)}`)
+                    .on(
+                        "postgres_changes",
+                        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` },
+                        fetchProfile
+                    )
+                    .subscribe();
+            } else {
+                setProfile(null);
+                setLoading(false);
+            }
         };
 
-        supabase.auth.getUser().then(({ data }) => loadProfile(data.user));
-
+        // onAuthStateChange fires immediately with the current session on
+        // subscribe, so a separate getUser() call isn't needed — calling
+        // both raced two concurrent loadProfile() calls against the same
+        // realtime channel name and threw "cannot add postgres_changes
+        // callbacks ... after subscribe()".
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
             loadProfile(session?.user ?? null);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            subscription.unsubscribe();
+            if (profileChannel) supabase.removeChannel(profileChannel);
+        };
     }, []);
 
     return (

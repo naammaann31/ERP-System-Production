@@ -26,6 +26,7 @@ const itemVariants: Variants = {
 
 export default function DashboardPage() {
   const { profile } = useAuth();
+  const isAdmin = profile?.role === "Admin";
 
   return (
     <motion.div
@@ -45,27 +46,44 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* 3. Main Dashboard Grid - Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <motion.div variants={itemVariants} className="h-full">
-          <LiveAttendanceCard />
-        </motion.div>
-        <motion.div variants={itemVariants} className="h-full">
-          <WeeklyOverview />
-        </motion.div>
+      <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4`}>
+        {!isAdmin && (
+          <>
+            <motion.div variants={itemVariants} className="h-full">
+              <LiveAttendanceCard />
+            </motion.div>
+            <motion.div variants={itemVariants} className="h-full">
+              <WeeklyOverview />
+            </motion.div>
+          </>
+        )}
+        {isAdmin && (
+          <motion.div variants={itemVariants} className="h-full">
+            <TeamStatusWidget />
+          </motion.div>
+        )}
         <motion.div variants={itemVariants} className="h-full">
           <CalendarWidget />
         </motion.div>
       </div>
 
       {/* 4. Main Dashboard Grid - Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <motion.div variants={itemVariants}>
-          <TeamStatusWidget />
-        </motion.div>
-        <motion.div variants={itemVariants}>
-          <RecentNotifications />
-        </motion.div>
-      </div>
+      {!isAdmin ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <motion.div variants={itemVariants}>
+            <TeamStatusWidget />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <RecentNotifications />
+          </motion.div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          <motion.div variants={itemVariants}>
+            <RecentNotifications />
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }

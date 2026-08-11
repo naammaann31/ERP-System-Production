@@ -26,7 +26,7 @@ function fromRow(row: any): AttendanceRecord {
   };
 }
 
-const getLocalDateString = () => {
+export const getLocalDateString = () => {
   const now = new Date();
 
   // The shift starts at 7:30 PM (19:30).
