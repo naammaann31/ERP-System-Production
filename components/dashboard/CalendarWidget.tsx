@@ -3,6 +3,28 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+const HOLIDAYS = [
+  // US Holidays
+  { month: 0, date: 1, name: "New Year's Day", type: "us" },
+  { month: 0, date: 19, name: "Martin Luther King Jr. Day", type: "us" },
+  { month: 4, date: 25, name: "Memorial Day", type: "us" },
+  { month: 6, date: 3, name: "Independence Day (Observed)", type: "us" },
+  { month: 8, date: 7, name: "Labor Day", type: "us" },
+  { month: 10, date: 11, name: "Veterans Day", type: "us" },
+  { month: 10, date: 26, name: "Thanksgiving Day", type: "us" },
+  { month: 11, date: 25, name: "Christmas Day", type: "us" },
+  // Indian Holidays
+  { month: 2, date: 4, name: "Holi", type: "indian" },
+  { month: 9, date: 2, name: "Gandhi Jayanti", type: "indian" },
+  { month: 9, date: 20, name: "Dussehra", type: "indian" },
+  { month: 10, date: 9, name: "New Year (Gujarati)", type: "indian" },
+  // Optional Holidays
+  { month: 0, date: 14, name: "Makar Sankrant", type: "optional" },
+  { month: 2, date: 21, name: "Eid", type: "optional" },
+  { month: 4, date: 27, name: "Bakri Eid", type: "optional" },
+  { month: 7, date: 28, name: "Raksha bandhan", type: "optional" }
+];
+
 export default function CalendarWidget() {
   const days = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
   
@@ -20,7 +42,7 @@ export default function CalendarWidget() {
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => {
     const day = new Date(year, month, 1).getDay();
-    return day === 0 ? 6 : day - 1; // Convert Sunday(0) -> 6, Monday(1) -> 0
+    return day === 0 ? 6 : day - 1;
   };
 
   const currentYear = viewDate.getFullYear();
@@ -39,7 +61,7 @@ export default function CalendarWidget() {
       date: prevMonthDays - firstDay + i + 1, 
       currentMonth: false, 
       isToday: false, 
-      event: null 
+      holiday: null 
     });
   }
   
@@ -47,17 +69,14 @@ export default function CalendarWidget() {
   for (let i = 1; i <= daysInMonth; i++) {
     const isToday = today.getDate() === i && today.getMonth() === currentMonth && today.getFullYear() === currentYear;
     
-    // Dummy events for demonstration
-    let event = null;
-    if (i === 15 || i === 22) event = 'meeting';
-    else if (i === 24) event = 'leave';
-    else if (i === 4) event = 'holiday';
+    // Find holiday
+    const holiday = HOLIDAYS.find(h => h.month === currentMonth && h.date === i);
     
     dates.push({ 
       date: i, 
       currentMonth: true, 
       isToday, 
-      event: isToday ? 'today' : event 
+      holiday: holiday || null
     });
   }
   
@@ -68,7 +87,7 @@ export default function CalendarWidget() {
       date: i, 
       currentMonth: false, 
       isToday: false, 
-      event: null 
+      holiday: null 
     });
   }
 
@@ -93,17 +112,20 @@ export default function CalendarWidget() {
         ))}
         {dates.map((d, i) => (
           <div key={i} className="flex justify-center items-center">
-            <div className={`
-              w-9 h-9 flex flex-col items-center justify-center rounded-xl text-xs font-semibold relative transition-all duration-200
-              ${!d.currentMonth ? 'text-slate-300' : 'text-slate-700'}
-              ${d.isToday ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30' : 'hover:bg-slate-50 cursor-pointer'}
-            `}>
-              <span className={d.event && !d.isToday ? "-translate-y-1" : ""}>{d.date}</span>
-              {d.event && !d.isToday && (
+            <div 
+              className={`
+                w-9 h-9 flex flex-col items-center justify-center rounded-xl text-xs font-semibold relative transition-all duration-200
+                ${!d.currentMonth ? 'text-slate-300' : 'text-slate-700'}
+                ${d.isToday ? 'bg-slate-900 text-white font-black shadow-lg' : 'hover:bg-slate-50 cursor-pointer'}
+              `}
+              title={d.holiday ? d.holiday.name : undefined}
+            >
+              <span className={d.holiday && !d.isToday ? "-translate-y-1" : ""}>{d.date}</span>
+              {d.holiday && !d.isToday && (
                 <div className={`absolute bottom-1.5 w-1.5 h-1.5 rounded-full ${
-                  d.event === 'meeting' ? 'bg-purple-500' :
-                  d.event === 'leave' ? 'bg-green-500' :
-                  d.event === 'holiday' ? 'bg-red-500' : ''
+                  d.holiday.type === 'us' ? 'bg-blue-500' :
+                  d.holiday.type === 'indian' ? 'bg-pink-500' :
+                  d.holiday.type === 'optional' ? 'bg-amber-500' : ''
                 }`} />
               )}
             </div>
@@ -111,11 +133,10 @@ export default function CalendarWidget() {
         ))}
       </div>
 
-      <div className="mt-auto flex items-center justify-between px-2 pt-4 border-t border-slate-100">
-        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-blue-600" /> Today</div>
-        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-purple-500" /> Meeting</div>
-        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-green-500" /> Leave</div>
-        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-red-500" /> Holiday</div>
+      <div className="mt-auto flex justify-between px-2 pt-4 border-t border-slate-100">
+        <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-blue-500" /> US Holiday</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-pink-500" /> Indian Holiday</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-amber-500" /> Optional</div>
       </div>
     </div>
   );
