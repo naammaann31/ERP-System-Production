@@ -18,7 +18,7 @@ import {
     Briefcase,
     Settings,
     Megaphone,
-    ClipboardCheck,
+    UserSearch,
 } from "lucide-react";
 
 const NAV_LINKS = [
@@ -32,8 +32,8 @@ const NAV_LINKS = [
     { name: "Payroll", href: "/dashboard/payroll", icon: CircleDollarSign, roles: ["Admin", "HR", "Employee"] },
     { name: "Announcements", href: "/dashboard/announcements", icon: Megaphone, roles: ["Admin", "HR", "Employee"] },
     { name: "Documents", href: "/dashboard/documents", icon: FileText, roles: ["Admin", "HR", "Employee"] },
-    { name: "Daily Task", href: "/dashboard/daily-task", icon: ClipboardCheck, roles: ["Admin", "HR", "Employee"], department: "Marketing" },
     { name: "Data", href: "/dashboard/data", icon: BarChart3, roles: ["Admin", "HR", "Employee"], department: "Marketing" },
+    { name: "Candidates", href: "/dashboard/candidates", icon: UserSearch, roles: ["Admin", "HR", "Employee"], department: "Marketing" },
     { name: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["Admin", "HR", "Employee"] },
 ];
 

@@ -110,6 +110,16 @@ export default function EmployeeProfilePage() {
       let empData: EmployeeData | null = null;
       const supabase = createClient();
       const { data: row } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+
+      // Statutory/bank details moved to employee_private (migration 14).
+      // Its policy is self-or-Admin/HR, so for anyone else this simply comes
+      // back empty and the fields render as "Not provided" — no error.
+      const { data: priv } = await supabase
+        .from("employee_private")
+        .select("aadhar, pan, bank_account_name, bank_details")
+        .eq("id", uid)
+        .maybeSingle();
+
       if (row) {
         empData = {
           uid: row.id,
@@ -122,10 +132,10 @@ export default function EmployeeProfilePage() {
           department: row.department,
           phone: row.phone,
           status: row.status,
-          aadhar: row.aadhar,
-          pan: row.pan,
-          bankAccountName: row.bank_account_name,
-          bankDetails: row.bank_details,
+          aadhar: priv?.aadhar,
+          pan: priv?.pan,
+          bankAccountName: priv?.bank_account_name,
+          bankDetails: priv?.bank_details,
         } as EmployeeData;
       }
       setEmployee(empData);

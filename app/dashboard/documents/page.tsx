@@ -85,8 +85,11 @@ export default function DocumentsPage() {
       }
       try {
         const supabase = createClient();
+        // Statutory/bank details live in employee_private, not profiles:
+        // every authenticated user can read a profile row in full, so these
+        // columns were moved behind a self-or-Admin/HR policy (migration 14).
         const { data } = await supabase
-          .from("profiles")
+          .from("employee_private")
           .select("aadhar, pan, bank_account_name, bank_details")
           .eq("id", uidToFetch)
           .maybeSingle();
@@ -136,15 +139,20 @@ export default function DocumentsPage() {
     setSavingDetails(true);
     try {
       const supabase = createClient();
+      // upsert rather than update: a row is created for every profile by
+      // trigger, but upserting keeps this working even if one is ever missing.
       const { error } = await supabase
-        .from("profiles")
-        .update({
-          aadhar,
-          pan,
-          bank_account_name: bankAccountName,
-          bank_details: bankDetails,
-        })
-        .eq("id", uidToSave);
+        .from("employee_private")
+        .upsert(
+          {
+            id: uidToSave,
+            aadhar,
+            pan,
+            bank_account_name: bankAccountName,
+            bank_details: bankDetails,
+          },
+          { onConflict: "id" }
+        );
       if (error) throw error;
       setIsEditing(false);
       toast.success("Details saved successfully!");
