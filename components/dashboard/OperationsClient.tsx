@@ -34,10 +34,21 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
 
 
     useEffect(() => {
-        if (view === "table") {
-            fetchData();
-        }
-    }, [view]);
+        if (view !== "table") return;
+
+        fetchData();
+
+        // Live-sync so candidate records stay current without a manual refresh.
+        const supabase = createClient();
+        const channel = supabase
+            .channel(`${collectionName}_live_${Math.random().toString(36).slice(2)}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: collectionName }, () => fetchData())
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [view, collectionName, profile?.uid, profile?.role]);
 
     const fetchData = async () => {
         setLoading(true);

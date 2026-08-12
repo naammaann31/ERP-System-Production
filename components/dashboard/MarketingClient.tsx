@@ -59,7 +59,20 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
 
     useEffect(() => {
         fetchData();
-    }, []);
+
+        // Live-sync: refetch whenever anyone inserts/updates/deletes a lead,
+        // so the table stays current without a manual page refresh.
+        const supabase = createClient();
+        const channel = supabase
+            .channel(`marketing_live_${Math.random().toString(36).slice(2)}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "marketing" }, () => fetchData())
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+        // Re-runs once the profile loads, since fetchData filters on it.
+    }, [profile?.uid, profile?.role, filterByUid, filterByName]);
 
     const fetchData = async () => {
         setLoading(true);

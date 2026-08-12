@@ -205,6 +205,22 @@ export default function InterviewScreeningClient() {
 
     useEffect(() => {
         loadData();
+
+        // Live-sync so records added/edited/removed by anyone appear without
+        // a manual page refresh.
+        const supabase = createClient();
+        const channel = supabase
+            .channel(`interview_screening_live_${Math.random().toString(36).slice(2)}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "interview_screening_entries" },
+                () => loadData()
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const buildRows = (section: Section): Row[] =>
