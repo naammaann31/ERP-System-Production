@@ -27,6 +27,7 @@ const formatTimestamp = (ts: any) => {
 
 export default function HRLeaveDashboard() {
   const { profile } = useAuth();
+  const isAdmin = profile?.role === "Admin";
   const [allRequests, setAllRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
@@ -98,9 +99,11 @@ export default function HRLeaveDashboard() {
               <LayoutGrid className="h-4 w-4" />
             </button>
           </div>
-          <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-sm text-sm text-white">
-            <Plus className="h-4 w-4 mr-1.5" /> Apply Leave
-          </Button>
+          {!isAdmin && (
+            <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-sm text-sm text-white">
+              <Plus className="h-4 w-4 mr-1.5" /> Apply Leave
+            </Button>
+          )}
         </div>
       </div>
 
@@ -157,14 +160,15 @@ export default function HRLeaveDashboard() {
                     <th className="px-5 py-3 font-bold tracking-wider">Duration</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Days</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Applied On</th>
+                    <th className="px-5 py-3 font-bold tracking-wider">Reason</th>
                     <th className="px-5 py-3 font-bold tracking-wider text-right">Status / Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {loading ? (
-                    <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500 font-medium">Loading leave requests...</td></tr>
+                    <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500 font-medium">Loading leave requests...</td></tr>
                   ) : allRequests.length === 0 ? (
-                    <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500 font-medium">No leave requests found.</td></tr>
+                    <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500 font-medium">No leave requests found.</td></tr>
                   ) : allRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-5 py-3">
@@ -179,6 +183,14 @@ export default function HRLeaveDashboard() {
                       </td>
                       <td className="px-5 py-3 font-bold text-slate-800">{req.days}</td>
                       <td className="px-5 py-3 font-medium text-slate-500">{formatTimestamp(req.appliedOn)}</td>
+                      <td className="px-5 py-3 max-w-[180px]">
+                        <p
+                          title={req.reason}
+                          className="text-sm text-slate-600 font-medium truncate max-w-[160px]"
+                        >
+                          {req.reason || <span className="text-slate-400 italic text-xs">No reason given</span>}
+                        </p>
+                      </td>
                       <td className="px-5 py-3 flex items-center justify-end gap-2">
                         {req.status === "Pending" ? (
                           <>

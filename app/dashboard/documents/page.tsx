@@ -202,7 +202,7 @@ export default function DocumentsPage() {
           </div>
           <CardContent className="p-0">
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-                {employees.map(emp => (
+                {employees.filter(emp => emp.role !== "Admin").map(emp => (
                    <div key={emp.uid} onClick={() => setSelectedEmployeeId(emp.uid)} className="p-4 border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all">
                      <p className="font-bold text-slate-800">{emp.fullName || "Unnamed"}</p>
                      <p className="text-xs text-slate-500">{emp.email}</p>

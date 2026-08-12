@@ -42,6 +42,7 @@ export default function Sidebar() {
     const { profile } = useAuth();
     const { isOpen } = useSidebar();
     const [unreadCount, setUnreadCount] = useState(0);
+    const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
     useEffect(() => {
         if (!profile) return;
@@ -82,10 +83,26 @@ export default function Sidebar() {
             });
         }
 
+        // Listen to pending leaves for Admin/HR
+        const isAdminOrHR = userRole === "Admin" || userRole === "HR";
+        let unsubscribeLeaves: (() => void) | undefined;
+        if (isAdminOrHR) {
+            import("@/lib/leave").then(({ listenToAllLeaves }) => {
+                if (!isMounted) return;
+                unsubscribeLeaves = listenToAllLeaves((leaves) => {
+                    const pending = leaves.filter(l =>
+                        l.status === "Pending" && l.userId !== profile.uid
+                    ).length;
+                    setPendingLeavesCount(pending);
+                });
+            });
+        }
+
         return () => {
             isMounted = false;
             if (unsubscribeAnnouncements) unsubscribeAnnouncements();
             if (unsubscribeNotifs) unsubscribeNotifs();
+            if (unsubscribeLeaves) unsubscribeLeaves();
         };
     }, [profile]);
 
@@ -95,6 +112,9 @@ export default function Sidebar() {
             import("@/lib/notifications").then(({ markTypeAsRead }) => {
                 markTypeAsRead(profile.uid, "announcement");
             });
+        }
+        if (pathname === '/dashboard/leave') {
+            setPendingLeavesCount(0);
         }
     }, [pathname, profile]);
 
@@ -151,6 +171,11 @@ export default function Sidebar() {
                                 {link.name === "Announcements" && unreadCount > 0 && (
                                     <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
                                         {unreadCount}
+                                    </span>
+                                )}
+                                {link.name === "Leave" && pendingLeavesCount > 0 && (
+                                    <span className="shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
+                                        {pendingLeavesCount}
                                     </span>
                                 )}
                             </Link>

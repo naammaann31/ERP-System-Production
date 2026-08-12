@@ -30,6 +30,19 @@ const formatRelativeTime = (ts: any) => {
   return ts.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
+const formatExactDateTime = (ts: any) => {
+  if (!ts || !ts.toDate) return "";
+  const date = ts.toDate();
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  });
+};
+
 export default function AnnouncementsPage() {
   const { profile } = useAuth();
   const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
@@ -145,7 +158,7 @@ export default function AnnouncementsPage() {
                       </div>
                       <h3 className="text-base font-bold text-slate-800 mb-1">{ann.title}</h3>
                       <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{ann.body}</p>
-                      <p className="text-xs font-semibold text-slate-400 mt-3">— {ann.authorName}</p>
+                      <p className="text-xs font-semibold text-slate-400 mt-3">Sent by {ann.authorName} on {formatExactDateTime(ann.createdAt)}</p>
                     </div>
                     {isAdminOrHR && (
                       <div className="flex items-center gap-1 shrink-0">
