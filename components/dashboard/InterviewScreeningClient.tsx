@@ -159,7 +159,7 @@ export default function InterviewScreeningClient() {
     const [addSaving, setAddSaving] = useState(false);
     const [form, setForm] = useState({
         section: "screening" as Section,
-        date: "",
+        date: new Date().toISOString().split("T")[0],
         candidate: "",
         client: "",
         stage: "",
@@ -750,11 +750,10 @@ export default function InterviewScreeningClient() {
                                 <div>
                                     <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Date</label>
                                     <input
-                                        type="text"
+                                        type="date"
                                         value={form.date}
                                         onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                                        placeholder="e.g. Aug 14"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                        className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm cursor-pointer"
                                     />
                                 </div>
                                 <div>
