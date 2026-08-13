@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { FileText, Download, Upload, ShieldCheck, Clock, Trash2, X, Building2, User, ExternalLink } from "lucide-react";
+import { FileText, Download, Upload, ShieldCheck, Clock, Trash2, X, Building2, User, ExternalLink, Search } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import {
   DocumentRecord,
@@ -38,6 +38,8 @@ export default function DocumentsPage() {
   // Employees list for Admin/HR
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [docSearch, setDocSearch] = useState("");
 
   // Text fields for statutory details
   const [aadhar, setAadhar] = useState("");
@@ -77,22 +79,32 @@ export default function DocumentsPage() {
     setLoading(true);
 
     const uidToFetch = isAdminOrHR ? selectedEmployeeId : profile?.uid;
-    
+
+    // Admin/HR switch between employees without the component unmounting, so a
+    // stale in-flight response must never win over a newer selection — it would
+    // put one employee's Aadhaar/PAN into the form that saves onto another's row.
+    let cancelled = false;
+
     const fetchUserDetails = async () => {
-      if (!uidToFetch) {
-        setAadhar(""); setPan(""); setBankAccountName(""); setBankDetails("");
-        return;
-      }
+      // Clear first, unconditionally: every path below either fills these in or
+      // leaves them blank. Carrying the previous employee's values forward is
+      // what makes a wrong-row save possible.
+      setAadhar(""); setPan(""); setBankAccountName(""); setBankDetails("");
+      if (!uidToFetch) return;
+
       try {
         const supabase = createClient();
         // Statutory/bank details live in employee_private, not profiles:
         // every authenticated user can read a profile row in full, so these
         // columns were moved behind a self-or-Admin/HR policy (migration 14).
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("employee_private")
           .select("aadhar, pan, bank_account_name, bank_details")
           .eq("id", uidToFetch)
           .maybeSingle();
+
+        if (cancelled) return;
+        if (error) throw error;
 
         if (data) {
           setAadhar(data.aadhar || "");
@@ -109,7 +121,12 @@ export default function DocumentsPage() {
           setIsEditing(true);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error("Error fetching user details:", error);
+        // We don't know the stored values, so don't open a form primed to
+        // overwrite them with blanks.
+        setIsEditing(false);
+        toast.error("Could not load statutory details.");
       }
     };
     fetchUserDetails();
@@ -119,7 +136,10 @@ export default function DocumentsPage() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [profile?.uid, isAdminOrHR, selectedEmployeeId]);
 
   const handleSaveDetails = async () => {
@@ -193,6 +213,26 @@ export default function DocumentsPage() {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
+  const directoryEmployees = employees.filter((emp) => {
+    if (emp.role === "Admin") return false;
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [emp.fullName, emp.email, emp.department, emp.role === "OPS_HR" ? "HR" : emp.role]
+      .some((field) => (field || "").toLowerCase().includes(q));
+  });
+
+  // Admin/HR browse one employee at a time; everyone else sees their own set.
+  const scopedDocuments = isAdminOrHR && selectedEmployeeId
+    ? documents.filter((d) => d.uploadedBy === selectedEmployeeId)
+    : documents;
+
+  const visibleDocuments = scopedDocuments.filter((doc) => {
+    const q = docSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [doc.name, doc.type, doc.status, doc.scope === "company" ? "Company" : "Personal"]
+      .some((field) => (field || "").toLowerCase().includes(q));
+  });
+
   return (
     <div className="max-w-[1400px] mx-auto space-y-4 pb-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
@@ -204,13 +244,28 @@ export default function DocumentsPage() {
 
       {isAdminOrHR && !selectedEmployeeId && (
         <Card className="border-slate-100 shadow-sm rounded-2xl overflow-hidden mb-6">
-          <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
-            <h2 className="text-lg font-bold text-slate-800">Employees Directory</h2>
-            <p className="text-xs text-slate-500">Select an employee to view their statutory documents.</p>
+          <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Employees Directory</h2>
+              <p className="text-xs text-slate-500">Select an employee to view their statutory documents.</p>
+            </div>
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={employeeSearch}
+                onChange={(e) => setEmployeeSearch(e.target.value)}
+                placeholder="Search employees..."
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
           <CardContent className="p-0">
+             {directoryEmployees.length === 0 ? (
+               <p className="text-sm text-slate-400 text-center py-10">No employees match &quot;{employeeSearch}&quot;.</p>
+             ) : (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-                {employees.filter(emp => emp.role !== "Admin").map(emp => (
+                {directoryEmployees.map(emp => (
                    <div key={emp.uid} onClick={() => setSelectedEmployeeId(emp.uid)} className="p-4 border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all">
                      <p className="font-bold text-slate-800">{emp.fullName || "Unnamed"}</p>
                      <p className="text-xs text-slate-500">{emp.email}</p>
@@ -218,6 +273,7 @@ export default function DocumentsPage() {
                    </div>
                 ))}
              </div>
+             )}
           </CardContent>
         </Card>
       )}
@@ -238,7 +294,7 @@ export default function DocumentsPage() {
             )}
           </div>
           <CardContent className="p-6">
-            {(isAdminOrHR && selectedEmployeeId && selectedEmployeeId !== profile?.uid) || !isEditing ? (
+            {!isEditing ? (
               <div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
@@ -258,13 +314,11 @@ export default function DocumentsPage() {
                     <p className="text-sm font-medium text-slate-800 mt-1">{bankDetails || "Not provided"}</p>
                   </div>
                 </div>
-                {!(isAdminOrHR && selectedEmployeeId && selectedEmployeeId !== profile?.uid) && (
-                  <div className="mt-4 flex justify-end">
-                    <Button variant="outline" onClick={() => setIsEditing(true)} className="border-slate-200 text-slate-600 hover:bg-slate-50">
-                      Edit Details
-                    </Button>
-                  </div>
-                )}
+                <div className="mt-4 flex justify-end">
+                  <Button variant="outline" onClick={() => setIsEditing(true)} className="border-slate-200 text-slate-600 hover:bg-slate-50">
+                    Edit Details
+                  </Button>
+                </div>
               </div>
             ) : (
               <>
@@ -307,15 +361,37 @@ export default function DocumentsPage() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
         </div>
-      ) : documents.length === 0 ? (
+      ) : scopedDocuments.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
           <p className="font-semibold">No documents yet</p>
           <p className="text-sm mt-1">Upload your first document to get started.</p>
         </div>
       ) : (
+        <>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-slate-800">Files</h2>
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={docSearch}
+              onChange={(e) => setDocSearch(e.target.value)}
+              placeholder="Search documents by name, type or status..."
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        {visibleDocuments.length === 0 ? (
+          <div className="text-center py-16 text-slate-400">
+            <Search className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+            <p className="font-semibold">No documents found</p>
+            <p className="text-sm mt-1">Nothing matches &quot;{docSearch}&quot;.</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {((isAdminOrHR && selectedEmployeeId) ? documents.filter(d => d.uploadedBy === selectedEmployeeId) : documents).map((doc, i) => {
+          {visibleDocuments.map((doc, i) => {
             const { icon: DocIcon, color, bg } = getDocIcon(doc.status);
             return (
               <motion.div key={doc.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}>
@@ -355,6 +431,8 @@ export default function DocumentsPage() {
             );
           })}
         </div>
+        )}
+        </>
       )}
 
       {/* Upload Modal */}
