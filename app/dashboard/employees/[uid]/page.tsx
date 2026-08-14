@@ -25,7 +25,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { getUserAttendanceForMonth, AttendanceRecord } from "@/lib/attendance";
+import { getUserAttendanceForMonth, formatAttendanceTime, AttendanceRecord } from "@/lib/attendance";
 import { getUserLeaves, LeaveRequest } from "@/lib/leave";
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
 import MarketingClient from "@/components/dashboard/MarketingClient";
@@ -63,12 +63,7 @@ const formatDate = (dateStr: string) => {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-const formatTime = (isoString: string | null) => {
-  if (!isoString) return "-";
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-};
+const formatTime = formatAttendanceTime;
 
 export default function EmployeeProfilePage() {
   const params = useParams();

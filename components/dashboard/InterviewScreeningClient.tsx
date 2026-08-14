@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { compareDatesDesc } from "@/lib/dateSort";
 import { toast } from "sonner";
 
 type Section = "interview" | "screening";
@@ -153,6 +154,11 @@ export default function InterviewScreeningClient() {
     const [importing, setImporting] = useState(false);
     const [importSummary, setImportSummary] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Set when a file turns out to be one unlabelled table, so we cannot tell
+    // from the file itself which of the two tables it belongs in.
+    const [sectionPrompt, setSectionPrompt] = useState<
+        { rows: any[]; guess: Section; fileName: string } | null
+    >(null);
 
     // Add Data modal
     const [addOpen, setAddOpen] = useState(false);
@@ -191,6 +197,8 @@ export default function InterviewScreeningClient() {
         const { data, error: err } = await supabase
             .from("interview_screening_entries")
             .select("*")
+            // Descending so that rows sharing a date show the most recently
+            // added first, once buildRows' stable sort runs over them.
             .order("created_at", { ascending: false });
 
         if (err) {
@@ -236,7 +244,12 @@ export default function InterviewScreeningClient() {
                 recruiter: e.recruiter || "",
                 remarks: e.remarks || "",
                 createdBy: e.created_by ?? null,
-            }));
+            }))
+            // Most recent first. entry_date is yearless text ("Apr-30"), so
+            // this goes through dateSortKey rather than new Date(); sort is
+            // stable, so rows sharing a date keep the created_at order the
+            // query returned them in.
+            .sort((a, b) => compareDatesDesc(a.date, b.date));
 
     const allInterviewRows = useMemo(() => buildRows("interview"), [localEntries]);
     const allScreeningRows = useMemo(() => buildRows("screening"), [localEntries]);
@@ -378,20 +391,54 @@ export default function InterviewScreeningClient() {
     const handleImportClick = () => fileInputRef.current?.click();
 
     /**
+     * Writes parsed rows and reports what landed where. Shared by the normal
+     * path and by the section prompt, so both report identically.
+     */
+    const commitImport = async (rows: any[], invalid: number) => {
+        const supabase = createClient();
+        if (!(await requireSession(supabase))) return;
+
+        const { data: inserted, error: err } = await supabase
+            .from("interview_screening_entries")
+            .insert(rows)
+            .select();
+
+        if (err) {
+            console.error("Import failed:", err.message, err);
+            toast.error(err.message || "Could not import entries.");
+            return;
+        }
+
+        setLocalEntries((prev) => [...(inserted || []), ...prev]);
+        const iCount = rows.filter((p) => p.section === "interview").length;
+        const sCount = rows.length - iCount;
+        setImportSummary(
+            `Import Complete!\n\nInterview rows imported: ${iCount}\nScreening rows imported: ${sCount}\nSkipped (no candidate name): ${invalid}`
+        );
+        toast.success(`Imported ${rows.length} row(s).`);
+    };
+
+    /**
      * Imports Interview / Screening rows from Excel into Supabase.
      *
-     * Accepts either shape:
+     * Accepts three shapes:
      *  1. A workbook with sheets named "Interview" and/or "Screening" —
      *     i.e. exactly what this page's Export XL produces, so an
      *     export → edit → import round trip works.
      *  2. A single sheet laid out like the source Google Sheet, with the
-     *     two tables side by side (cols A–F Interview, G–L Screening) under
-     *     an "Interview"/"Screening" group header row.
+     *     two tables side by side under an "Interview"/"Screening" group
+     *     header row. Each block is located by its own Date+Candidate header
+     *     pair rather than assumed to start at a fixed column.
+     *  3. One bare 6-column table (Date, Candidate, Client, Stage/Method,
+     *     Recruiter, Remarks) with no headers at all — what you get when a
+     *     single table is copied out of the sheet on its own. Nothing in the
+     *     file says which of the two tables it is, so the user is asked.
      */
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        const fileName = file.name;
         setImporting(true);
         const reader = new FileReader();
 
@@ -401,35 +448,43 @@ export default function InterviewScreeningClient() {
                 const pick = (row: any, keys: string[]) => {
                     for (const k of keys) {
                         const hit = Object.keys(row).find((c) => c.trim().toLowerCase() === k.toLowerCase());
-                        if (hit && String(row[hit]).trim() !== "") return String(row[hit]).trim();
+                        if (hit && String(row[hit] ?? "").trim() !== "") return row[hit];
                     }
                     return "";
                 };
-                const excelDate = (v: string) => {
-                    if (/^\d+$/.test(v)) {
-                        const d = new Date(Math.round((Number(v) - 25569) * 86400 * 1000));
-                        if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-                    }
-                    return v;
-                };
+
+                /**
+                 * Dates are taken as the cell's DISPLAYED text, never its
+                 * underlying value.
+                 *
+                 * In the real exports the two disagree: a cell showing
+                 * "May-01" stores 2001-04-30, because whatever produced the
+                 * file read the sheet's "May 1" as May *2001*. The displayed
+                 * text is the only surviving record of the intended date, and
+                 * it also matches how rows pulled from the Google Sheet are
+                 * already stored (entry_date is free text). So no year is
+                 * invented and no serial-number conversion is needed —
+                 * `raw: false` below hands us the formatted string directly.
+                 */
+                const text = (v: any) => String(v ?? "").trim();
 
                 const pending: any[] = [];
                 let invalid = 0;
 
                 const pushRow = (section: Section, r: any) => {
-                    const candidate = pick(r, ["Candidate", "Candidate Name", "Name"]);
+                    const candidate = text(pick(r, ["Candidate", "Candidate Name", "Name"]));
                     if (!candidate) { invalid++; return; }
                     pending.push({
                         section,
-                        entry_date: excelDate(pick(r, ["Date"])),
+                        entry_date: text(pick(r, ["Date"])),
                         candidate,
-                        client: pick(r, ["Client", "Company", "Company Name"]),
+                        client: text(pick(r, ["Client", "Company", "Company Name"])),
                         stage:
                             section === "interview"
-                                ? pick(r, ["Stage (No of Round)", "Stage(No of Round)", "Stage", "Round"])
-                                : pick(r, ["Screening/AI", "Screening / AI", "Screening", "Method"]),
-                        recruiter: pick(r, ["Recruiter"]),
-                        remarks: pick(r, ["Remarks", "Remark"]),
+                                ? text(pick(r, ["Stage (No of Round)", "Stage(No of Round)", "Stage", "Round"]))
+                                : text(pick(r, ["Screening/AI", "Screening / AI", "Screening", "Method"])),
+                        recruiter: text(pick(r, ["Recruiter"])),
+                        remarks: text(pick(r, ["Remarks", "Remark"])),
                         created_by_name: profile?.fullName || null,
                     });
                 };
@@ -443,33 +498,99 @@ export default function InterviewScreeningClient() {
                     for (const name of named) {
                         const section: Section =
                             name.trim().toLowerCase() === "interview" ? "interview" : "screening";
-                        const rows = xlsx.utils.sheet_to_json(workbook.Sheets[name], { defval: "" });
+                        const rows = xlsx.utils.sheet_to_json(workbook.Sheets[name], {
+                            defval: "", raw: false,
+                        });
                         (rows as any[]).forEach((r) => pushRow(section, r));
                     }
                 } else {
-                    // Shape 2: the sheet's side-by-side layout
                     const ws = workbook.Sheets[workbook.SheetNames[0]];
-                    const grid = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "", blankrows: true });
-                    const cell = (row: any[], i: number) => String(row?.[i] ?? "").trim();
-                    const headerRow = grid.findIndex((r) =>
-                        (r || []).some((c) => String(c).trim().toLowerCase() === "candidate")
-                    );
-                    const start = headerRow >= 0 ? headerRow + 1 : 1;
+                    // raw: false yields each cell's displayed text — see the
+                    // note on `text` above for why that matters for dates.
+                    const grid = xlsx.utils.sheet_to_json<any[]>(ws, {
+                        header: 1, defval: "", blankrows: true, raw: false,
+                    });
+                    const cell = (row: any[], i: number) => row?.[i] ?? "";
+                    const norm = (v: any) => String(v ?? "").trim().toLowerCase();
 
-                    for (let i = start; i < grid.length; i++) {
-                        const row = grid[i] || [];
-                        if ([0, 1, 2, 3, 4, 5].some((c) => cell(row, c) !== "")) {
-                            pushRow("interview", {
-                                Date: cell(row, 0), Candidate: cell(row, 1), Client: cell(row, 2),
-                                Stage: cell(row, 3), Recruiter: cell(row, 4), Remarks: cell(row, 5),
-                            });
+                    const headerRow = grid.findIndex((r) =>
+                        (r || []).some((c) => norm(c) === "candidate")
+                    );
+
+                    // Each block starts at its own Date+Candidate header pair.
+                    // Locating them beats assuming fixed columns 0 and 6: a
+                    // spacer or extra leading column would otherwise shift every
+                    // field silently (client into stage, stage into recruiter).
+                    const blocks: { section: Section; base: number }[] = [];
+
+                    if (headerRow !== -1) {
+                        const header = grid[headerRow] || [];
+                        // The group header row above carries "Interview" /
+                        // "Screening"; merged cells put the label on the
+                        // block's first column, so scan leftwards for it.
+                        const groupRow = headerRow > 0 ? grid[headerRow - 1] || [] : [];
+
+                        header.forEach((h: any, i: number) => {
+                            if (norm(h) !== "date") return;
+                            if (norm(header[i + 1]) !== "candidate") return;
+                            let section: Section | null = null;
+                            for (let c = i; c >= 0 && section === null; c--) {
+                                const g = norm(groupRow[c]);
+                                if (g.includes("interview")) section = "interview";
+                                else if (g.includes("screening")) section = "screening";
+                            }
+                            // Fall back on the block's own 4th column, which is
+                            // "Stage (No of Round)" vs "Screening/AI".
+                            if (section === null) {
+                                section = norm(header[i + 3]).includes("screening") ? "screening" : "interview";
+                            }
+                            blocks.push({ section, base: i });
+                        });
+                    }
+
+                    const readBlocks = (from: number, into: { section: Section; base: number }[]) => {
+                        for (let i = from; i < grid.length; i++) {
+                            const row = grid[i] || [];
+                            for (const { section, base } of into) {
+                                const span = [0, 1, 2, 3, 4, 5].map((o) => base + o);
+                                // Blocks pad each other with blanks when one
+                                // table is longer, so skip a block that is
+                                // empty on this row.
+                                if (!span.some((c) => String(cell(row, c)).trim() !== "")) continue;
+                                pushRow(section, {
+                                    Date: cell(row, base),
+                                    Candidate: cell(row, base + 1),
+                                    Client: cell(row, base + 2),
+                                    [section === "interview" ? "Stage" : "Screening"]: cell(row, base + 3),
+                                    Recruiter: cell(row, base + 4),
+                                    Remarks: cell(row, base + 5),
+                                });
+                            }
                         }
-                        if ([6, 7, 8, 9, 10, 11].some((c) => cell(row, c) !== "")) {
-                            pushRow("screening", {
-                                Date: cell(row, 6), Candidate: cell(row, 7), Client: cell(row, 8),
-                                Screening: cell(row, 9), Recruiter: cell(row, 10), Remarks: cell(row, 11),
-                            });
+                    };
+
+                    if (blocks.length > 0) {
+                        // Shape 2: labelled, one or both tables present.
+                        readBlocks(headerRow + 1, blocks);
+                    } else {
+                        // Shape 3: a bare table with no headers whatsoever, so
+                        // the file cannot say which section it is. Parse it
+                        // into staged rows and let the user pick.
+                        const staged: any[] = [];
+                        const sink = pending.length;
+                        readBlocks(0, [{ section: "screening", base: 0 }]);
+                        staged.push(...pending.splice(sink));
+
+                        if (staged.length === 0) {
+                            toast.error("No valid rows found. Each row needs at least a Candidate name.");
+                            return;
                         }
+
+                        // The filename is the only hint available, so it seeds
+                        // the default choice rather than deciding silently.
+                        const guess: Section = /interview/i.test(fileName) ? "interview" : "screening";
+                        setSectionPrompt({ rows: staged, guess, fileName });
+                        return;
                     }
                 }
 
@@ -478,27 +599,7 @@ export default function InterviewScreeningClient() {
                     return;
                 }
 
-                const supabase = createClient();
-                if (!(await requireSession(supabase))) return;
-
-                const { data: inserted, error: err } = await supabase
-                    .from("interview_screening_entries")
-                    .insert(pending)
-                    .select();
-
-                if (err) {
-                    console.error("Import failed:", err.message, err);
-                    toast.error(err.message || "Could not import entries.");
-                    return;
-                }
-
-                setLocalEntries((prev) => [...(inserted || []), ...prev]);
-                const iCount = pending.filter((p) => p.section === "interview").length;
-                const sCount = pending.length - iCount;
-                setImportSummary(
-                    `Import Complete!\n\nInterview rows imported: ${iCount}\nScreening rows imported: ${sCount}\nSkipped (no candidate name): ${invalid}`
-                );
-                toast.success(`Imported ${pending.length} row(s).`);
+                await commitImport(pending, invalid);
             } catch (error) {
                 console.error("Error during import:", error);
                 toast.error("Failed to import file. Please check the format.");
@@ -709,6 +810,56 @@ export default function InterviewScreeningClient() {
                 cancelText="Close"
                 variant="success"
             />
+
+            {/* Section picker — shown only when the file is one bare table
+                with no Interview/Screening headers to route it by. */}
+            {sectionPrompt && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+                    >
+                        <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100">
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight">Which table?</h2>
+                            <p className="text-xs font-semibold text-slate-500 mt-1">
+                                <span className="font-mono">{sectionPrompt.fileName}</span> has no
+                                Interview/Screening headers, so it can&apos;t be routed automatically.
+                            </p>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-600">
+                                Put all <span className="font-bold">{sectionPrompt.rows.length}</span> rows into:
+                            </p>
+                            <div className="flex gap-3">
+                                {(["interview", "screening"] as Section[]).map((s) => (
+                                    <button
+                                        key={s}
+                                        onClick={() => {
+                                            const rows = sectionPrompt.rows.map((r) => ({ ...r, section: s }));
+                                            setSectionPrompt(null);
+                                            commitImport(rows, 0);
+                                        }}
+                                        className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all capitalize ${
+                                            sectionPrompt.guess === s
+                                                ? "bg-slate-900 text-white shadow-md hover:bg-slate-800"
+                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                        }`}
+                                    >
+                                        {s}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={() => setSectionPrompt(null)}
+                                className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             <ConfirmModal
                 isOpen={!!rowToDelete}

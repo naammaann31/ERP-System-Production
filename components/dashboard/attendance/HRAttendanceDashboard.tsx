@@ -18,15 +18,12 @@ import {
 } from "lucide-react";
 import {
   getAttendanceByDate,
+  formatAttendanceTime,
+  getLocalDateString,
   AttendanceRecord
 } from "@/lib/attendance";
 
-const formatTime = (dateObj: any) => {
-  if (!dateObj) return "-";
-  const date = new Date(dateObj);
-  if (isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-};
+const formatTime = formatAttendanceTime;
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -51,10 +48,11 @@ const hrStats = [
 export default function HRAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
+  // Indian calendar date, matching how attendance rows are filed.
+  // toISOString() would give the UTC date, which before 05:30 IST is still
+  // YESTERDAY — so an early-morning shift showed an empty table because it
+  // was querying the wrong day.
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);

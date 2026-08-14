@@ -10,7 +10,9 @@ import {
   checkOut, 
   getTodayAttendance, 
   updateWorkingSeconds,
-  AttendanceRecord 
+  computeWorkedSeconds,
+  formatISTClock,
+  AttendanceRecord
 } from "@/lib/attendance";
 
 export default function LiveAttendanceCard() {
@@ -22,6 +24,7 @@ export default function LiveAttendanceCard() {
   const [loading, setLoading] = useState(true);
   const [showClockOutConfirm, setShowClockOutConfirm] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recordRef = useRef<AttendanceRecord | null>(null);
 
   useEffect(() => {
     setCurrentTime(new Date());
@@ -33,19 +36,11 @@ export default function LiveAttendanceCard() {
           setAttendanceRecord(record);
           if (record.status === "Checked In") {
             setIsCheckedIn(true);
-            
-            // Calculate elapsed time since check-in
-            let elapsed = 0;
-            if (record.checkInTime) {
-              const checkInDate = new Date(record.checkInTime);
-              elapsed = Math.floor((new Date().getTime() - checkInDate.getTime()) / 1000);
-            }
-            // We use the elapsed time plus whatever was previously saved, although usually it starts at 0.
-            setWorkingSeconds(record.workingSeconds + elapsed);
+            setWorkingSeconds(computeWorkedSeconds(record));
           } else if (record.status === "Present") {
             // Already checked out for the day
             setIsCheckedIn(false);
-            setWorkingSeconds(record.workingSeconds);
+            setWorkingSeconds(computeWorkedSeconds(record));
           }
         }
       }
@@ -54,18 +49,29 @@ export default function LiveAttendanceCard() {
 
     loadAttendance();
 
+    // Recompute from the check-in timestamp each tick rather than adding a
+    // second. The old version called setWorkingSeconds INSIDE a
+    // setIsCheckedIn updater; updater functions must be pure, and React
+    // double-invokes them in development to surface exactly this — which is
+    // what made the clock run at two seconds per second.
+    //
+    // The record is read through a ref so the tick stays pure and the
+    // interval does not need to be town down and rebuilt on every change.
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-      setIsCheckedIn((prev) => {
-        if (prev) {
-          setWorkingSeconds((s) => s + 1);
-        }
-        return prev;
-      });
+      const rec = recordRef.current;
+      if (rec && rec.status === "Checked In") {
+        setWorkingSeconds(computeWorkedSeconds(rec));
+      }
     }, 1000);
 
     return () => clearInterval(interval);
   }, [profile]);
+
+  // Mirror of attendanceRecord for the interval above to read.
+  useEffect(() => {
+    recordRef.current = attendanceRecord;
+  }, [attendanceRecord]);
 
   // Sync working seconds to Firestore every minute to prevent data loss on unexpected refresh
   useEffect(() => {
@@ -115,10 +121,8 @@ export default function LiveAttendanceCard() {
     }
   };
 
-  const formatTime = (date: Date | null) => {
-    if (!date) return "--:-- --";
-    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-  };
+  // Always Indian time, never the device's — see formatISTClock.
+  const formatTime = formatISTClock;
 
   const renderDuration = (totalSeconds: number) => {
     const hrs = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');

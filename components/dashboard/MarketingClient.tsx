@@ -5,6 +5,7 @@ import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } f
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { marketingRowToUi, marketingUiToRow } from "@/lib/salesMarketingMap";
+import { compareDatesDesc } from "@/lib/dateSort";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -231,10 +232,12 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         return true;
     });
 
+    // Most recent first, by the row's own Date rather than when it was
+    // entered. Rows sharing a date fall back to entry order, newest first.
     const displayData = [...filteredData].sort((a, b) => {
-        const createdA = a.createdAt?.seconds || 0;
-        const createdB = b.createdAt?.seconds || 0;
-        return createdB - createdA;
+        const byDate = compareDatesDesc(a["Date"], b["Date"]);
+        if (byDate !== 0) return byDate;
+        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
     });
 
     const handleExport = () => {

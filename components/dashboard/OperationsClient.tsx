@@ -5,6 +5,7 @@ import { Plus, Table as TableIcon, Trash2, Download, Upload, Search } from "luci
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { salesRowToUi, salesUiToRow } from "@/lib/salesMarketingMap";
+import { compareDatesDesc } from "@/lib/dateSort";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import OperationsForm from "@/components/dashboard/operations/OperationsForm";
@@ -208,19 +209,11 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
         return true;
     });
 
-    // Sort data by Date (newest first), then by createdAt (newest first) if dates are equal
+    // Sort by Date (most recent first), then by createdAt (newest first) on ties.
     const displayData = [...filteredData].sort((a, b) => {
-        const dateA = new Date(a["Date"] || 0).getTime();
-        const dateB = new Date(b["Date"] || 0).getTime();
-        
-        if (dateB !== dateA) {
-            return dateB - dateA;
-        }
-
-        // Secondary sort by createdAt timestamp
-        const createdA = a.createdAt?.seconds || 0;
-        const createdB = b.createdAt?.seconds || 0;
-        return createdB - createdA;
+        const byDate = compareDatesDesc(a["Date"], b["Date"]);
+        if (byDate !== 0) return byDate;
+        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
     });
 
     // Helper colors

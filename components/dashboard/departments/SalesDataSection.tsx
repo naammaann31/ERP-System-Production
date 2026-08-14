@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { salesRowToUi } from "@/lib/salesMarketingMap";
+import { compareDatesDesc } from "@/lib/dateSort";
 import * as xlsx from "xlsx";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Card } from "@/components/ui/card";
@@ -37,11 +38,7 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
                 return;
             }
             const data = (rows || []).map(salesRowToUi);
-            data.sort((a, b) => {
-                const dateA = new Date(a["Date"] || 0).getTime();
-                const dateB = new Date(b["Date"] || 0).getTime();
-                return dateB - dateA;
-            });
+            data.sort((a, b) => compareDatesDesc(a["Date"], b["Date"]));
             if (filterByName) {
                 const targetName = filterByName.toLowerCase();
                 const filtered = data.filter(d =>
@@ -102,12 +99,9 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
         }
         return true;
     }).sort((a, b) => {
-        const dateA = new Date(a["Date"] || 0).getTime();
-        const dateB = new Date(b["Date"] || 0).getTime();
-        
-        if (dateB !== dateA) {
-            return dateB - dateA;
-        }
+        // Most recent first, ties broken by entry order (also newest first).
+        const byDate = compareDatesDesc(a["Date"], b["Date"]);
+        if (byDate !== 0) return byDate;
 
         const createdA = a.createdAt?.seconds || 0;
         const createdB = b.createdAt?.seconds || 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +22,14 @@ import {
   checkIn,
   checkOut,
   updateWorkingSeconds,
+  computeWorkedSeconds,
+  formatAttendanceTime,
+  getISTYearMonth,
+  getRecentMonthOptions,
   AttendanceRecord
 } from "@/lib/attendance";
 
-const formatTime = (isoString: string | null) => {
-  if (!isoString) return "-";
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-};
+const formatTime = formatAttendanceTime;
 
 const formatDuration = (totalSeconds: number) => {
   if (!totalSeconds) return "-";
@@ -59,12 +58,15 @@ const employeeStats = [
   { title: "Late Arrivals", value: "-", trend: "-", trendUp: true, icon: TrendingDown, color: "text-red-600", bg: "bg-red-100", accent: "bg-red-500" },
 ];
 
-const months = ["May 2026", "June 2026", "July 2026", "August 2026", "September 2026"];
-
 export default function EmployeeAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState("July 2026");
+  // Built from the current Indian month rather than a fixed list, and holding
+  // the "2026-08" value the query needs instead of a display label.
+  const months = useMemo(() => getRecentMonthOptions(12), []);
+  const [selectedMonth, setSelectedMonth] = useState(getISTYearMonth);
+  const selectedMonthLabel =
+    months.find((m) => m.value === selectedMonth)?.label ?? selectedMonth;
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -87,9 +89,7 @@ export default function EmployeeAttendanceDashboard() {
     getTodayAttendance(profile.uid).then((rec) => {
       setTodayRecord(rec);
       if (rec && rec.status === "Checked In" && rec.checkInTime) {
-        const checkInMs = new Date(rec.checkInTime).getTime();
-        const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
-        setLiveSeconds(elapsed);
+        setLiveSeconds(computeWorkedSeconds(rec));
       } else if (rec) {
         setLiveSeconds(rec.workingSeconds || 0);
       }
@@ -101,9 +101,7 @@ export default function EmployeeAttendanceDashboard() {
     if (!isClockedIn) return;
     const interval = setInterval(() => {
       if (todayRecord?.checkInTime) {
-        const checkInMs = new Date(todayRecord.checkInTime).getTime();
-        const elapsed = Math.floor((Date.now() - checkInMs) / 1000);
-        setLiveSeconds(elapsed);
+        setLiveSeconds(computeWorkedSeconds(todayRecord));
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -157,16 +155,7 @@ export default function EmployeeAttendanceDashboard() {
       if (!profile?.uid) return;
       setLoading(true);
 
-      const monthMap: Record<string, string> = {
-        "May 2026": "2026-05",
-        "June 2026": "2026-06",
-        "July 2026": "2026-07",
-        "August 2026": "2026-08",
-        "September 2026": "2026-09",
-      };
-      const yearMonth = monthMap[selectedMonth] || "2026-07";
-
-      const fetched = await getUserAttendanceForMonth(profile.uid, yearMonth);
+      const fetched = await getUserAttendanceForMonth(profile.uid, selectedMonth);
       setRecords(fetched);
       setLoading(false);
     };
@@ -194,7 +183,7 @@ export default function EmployeeAttendanceDashboard() {
               className="w-full bg-white text-slate-700 rounded-xl shadow-sm hover:bg-slate-50 hover:text-slate-900 border-slate-200"
             >
               <CalendarDays className="h-4 w-4 mr-2 text-slate-500" />
-              {selectedMonth}
+              {selectedMonthLabel}
               <ChevronDown className={`h-4 w-4 ml-2 text-slate-400 transition-transform ${isMonthDropdownOpen ? 'rotate-180' : ''}`} />
             </Button>
 
@@ -202,14 +191,14 @@ export default function EmployeeAttendanceDashboard() {
               <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-200/50 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-200">
                 {months.map((m) => (
                   <button
-                    key={m}
+                    key={m.value}
                     onClick={() => {
-                      setSelectedMonth(m);
+                      setSelectedMonth(m.value);
                       setIsMonthDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 transition-colors ${selectedMonth === m ? "text-blue-600 bg-blue-50/50" : "text-slate-600"}`}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 transition-colors ${selectedMonth === m.value ? "text-blue-600 bg-blue-50/50" : "text-slate-600"}`}
                   >
-                    {m}
+                    {m.label}
                   </button>
                 ))}
               </div>
