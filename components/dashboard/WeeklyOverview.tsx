@@ -5,11 +5,11 @@ import { ChevronDown, CalendarDays } from "lucide-react";
 
 const allData = {
   "This Week": [
-    { label: "Mon", value: 0 },
-    { label: "Tue", value: 0 },
-    { label: "Wed", value: 0 },
-    { label: "Thu", value: 0 },
-    { label: "Fri", value: 0 },
+    { label: "Mon", value: 100 },
+    { label: "Tue", value: 100 },
+    { label: "Wed", value: 100 },
+    { label: "Thu", value: 100 },
+    { label: "Fri", value: 50 },
     { label: "Sat", value: 0 },
     { label: "Sun", value: 0 },
   ],

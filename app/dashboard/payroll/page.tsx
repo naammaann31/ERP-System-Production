@@ -7,7 +7,7 @@ import EmployeePayrollDashboard from "@/components/dashboard/payroll/EmployeePay
 
 export default function PayrollPage() {
   const { profile } = useAuth();
-  const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
+  const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR";
   
   if (!profile) return null;
 

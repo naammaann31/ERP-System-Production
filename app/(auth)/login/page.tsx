@@ -139,6 +139,7 @@ export default function LoginPage() {
                                     type="button" 
                                     onClick={handleForgotPassword}
                                     disabled={resetLoading}
+                                    suppressHydrationWarning
                                     className="text-[10px] font-bold text-white/80 tracking-wider uppercase hover:text-white transition-colors disabled:opacity-50"
                                 >
                                     {resetLoading ? "Sending..." : "Forgot?"}
@@ -158,6 +159,7 @@ export default function LoginPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
+                                    suppressHydrationWarning
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -191,6 +193,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
+                            suppressHydrationWarning
                             className="w-full bg-[#1e5bfa] hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition-all disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 tracking-wider uppercase text-xs mt-2 shadow-lg shadow-blue-600/20"
                         >
                             {loading ? (
