@@ -10,6 +10,8 @@ export interface AttendanceRecord {
   checkOutTime: string | null; // ISO timestamp
   status: "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off";
   workingSeconds: number;
+  isLate?: boolean;
+  isHalfDay?: boolean;
 }
 
 function fromRow(row: any): AttendanceRecord {
@@ -23,6 +25,8 @@ function fromRow(row: any): AttendanceRecord {
     checkOutTime: row.check_out_time,
     status: row.status,
     workingSeconds: row.working_seconds,
+    isLate: row.is_late,
+    isHalfDay: row.is_half_day,
   };
 }
 
@@ -71,6 +75,16 @@ const istParts = (d: Date): Record<string, string> => {
 
   const out: Record<string, string> = {};
   for (const { type, value } of parts) out[type] = value;
+  
+  // Apple/WebKit bug workaround: Some browsers ignore hourCycle/hour12 and return 12-hour format anyway.
+  if (out.dayPeriod) {
+    let h = parseInt(out.hour, 10);
+    const isPM = out.dayPeriod.toLowerCase().includes("pm") || out.dayPeriod.toLowerCase().includes("p.m.");
+    if (isPM && h < 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+    out.hour = h.toString().padStart(2, "0");
+  }
+  
   return out;
 };
 
@@ -150,17 +164,20 @@ export const computeWorkedSeconds = (
   return Math.max(0, Math.floor((endMs - start.getTime()) / 1000));
 };
 
-/**
- * Today's date in India, as YYYY-MM-DD.
- *
- * Plain calendar date: a clock-in at 04:20 on 14 Aug is filed under 14 Aug.
- * There is deliberately no shift-window adjustment — the previous version
- * treated anything before 7:30 PM as belonging to the previous day's shift,
- * which filed daytime clock-ins under yesterday's date and only made sense
- * if every employee worked the night shift. It rolls over at IST midnight.
- */
 export const getLocalDateString = () => {
-  const p = istParts(new Date());
+  const now = new Date();
+  const p = istParts(now);
+  
+  // Shift Window Logic: 
+  // If the employee clocks in between midnight (12:00 AM) and 6:00 AM, 
+  // it logically belongs to the previous business day's night shift.
+  if (Number(p.hour) < 6) {
+    // Subtract 6 hours to safely roll the calendar date back by 1 day
+    const yesterday = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+    const yp = istParts(yesterday);
+    return `${yp.year}-${yp.month}-${yp.day}`;
+  }
+  
   return `${p.year}-${p.month}-${p.day}`;
 };
 
@@ -210,14 +227,27 @@ export const checkIn = async (userId: string, fullName: string, role?: string) =
 
   if (existing) return fromRow(existing);
 
+  const now = new Date();
+  const p = istParts(now);
+  const hour = Number(p.hour);
+  const minute = Number(p.minute);
+
+  // Late Comer Logic: Clock in after 7:45 PM or between 12:00 AM and 6:00 AM
+  let isLate = false;
+  if (hour > 19 || (hour === 19 && minute > 45) || hour < 6) {
+    isLate = true;
+  }
+
   const insertData: any = {
     user_id: userId,
     full_name: fullName,
     date: dateStr,
-    check_in_time: toLocalTimestamp(new Date()),
+    check_in_time: toLocalTimestamp(now),
     check_out_time: null,
     status: "Checked In",
     working_seconds: 0,
+    is_late: isLate,
+    is_half_day: isLate, // Late comers automatically get a half day penalty
   };
   if (role) insertData.role = role;
 
@@ -245,27 +275,53 @@ export const updateWorkingSeconds = async (docId: string, workingSeconds: number
 
 export const checkOut = async (docId: string, workingSeconds: number) => {
   const supabase = createClient();
+  
+  const updatePayload: any = {
+    check_out_time: toLocalTimestamp(new Date()),
+    status: "Present",
+    working_seconds: workingSeconds,
+  };
+
+  // Early Leaver Penalty: If total hours < 5 (18,000 seconds), mark as half day.
+  // We only set it if true so we don't overwrite an existing 'true' from a late check-in.
+  if (workingSeconds < 5 * 3600) {
+    updatePayload.is_half_day = true;
+  }
+
   await supabase
     .from("attendance")
-    .update({
-      check_out_time: toLocalTimestamp(new Date()),
-      status: "Present",
-      working_seconds: workingSeconds,
-    })
+    .update(updatePayload)
     .eq("id", docId);
 };
 
 export const getTodayAttendance = async (userId: string) => {
   const supabase = createClient();
   const dateStr = getLocalDateString();
+  
+  // Fetch the most recent attendance record for the user
   const { data } = await supabase
     .from("attendance")
     .select("*")
     .eq("user_id", userId)
-    .eq("date", dateStr)
+    .order("date", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  return data ? fromRow(data) : null;
+  if (!data) return null;
+
+  // 1. If the most recent shift is still active, return it (even if it started yesterday)
+  if (data.status === "Checked In") {
+    return fromRow(data);
+  }
+
+  // 2. If the shift is completed/closed, we only return it if it belongs to TODAY's date.
+  // This prevents clocking in multiple times on the same calendar day, while
+  // freeing up the 'Clock In' button for today if yesterday's shift is closed.
+  if (data.date === dateStr) {
+    return fromRow(data);
+  }
+
+  return null;
 };
 
 export const getAllTodayAttendance = async () => {

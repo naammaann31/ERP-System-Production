@@ -5,7 +5,6 @@ import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } f
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { marketingRowToUi, marketingUiToRow } from "@/lib/salesMarketingMap";
-import { compareDatesDesc } from "@/lib/dateSort";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -59,21 +58,30 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
     }, [searchQuery, startDate, endDate]);
 
     useEffect(() => {
+        let isMounted = true;
+
         fetchData();
 
-        // Live-sync: refetch whenever anyone inserts/updates/deletes a lead,
-        // so the table stays current without a manual page refresh.
-        let timeoutId: any;
+        // Live-sync: refetch whenever anyone inserts/updates/deletes a lead.
+        // We use a debounce timeout to prevent network flooding (TypeError: Failed to fetch)
+        // if thousands of bulk delete/update events arrive at once from Supabase.
         const supabase = createClient();
+        let timeoutId: NodeJS.Timeout;
+        
         const channel = supabase
             .channel(`marketing_live_${Math.random().toString(36).slice(2)}`)
             .on("postgres_changes", { event: "*", schema: "public", table: "marketing" }, () => {
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => fetchData(), 500);
+                if (isMounted) {
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => {
+                        if (isMounted) fetchData();
+                    }, 500);
+                }
             })
             .subscribe();
 
         return () => {
+            isMounted = false;
             clearTimeout(timeoutId);
             supabase.removeChannel(channel);
         };
@@ -84,17 +92,17 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         setLoading(true);
         try {
             const supabase = createClient();
-            const { data: rows, error } = await supabase.from("marketing").select("*");
+            const { data: rows, error } = await supabase
+                .from("marketing")
+                .select("*")
+                .order("date", { ascending: false })
+                .order("created_at", { ascending: true });
+
             if (error) throw error;
             const fetched = (rows || []).map(marketingRowToUi);
 
             let finalData = fetched;
             if (filterByUid || filterByName) {
-                // Match by uid when available, falling back to name — a
-                // lead's created_by uid is cleared (set null) if that
-                // employee's account is later deleted, but the
-                // created_by_name/candidate-name text survives, so name
-                // matching keeps historical leads visible on their profile.
                 const targetName = filterByName?.toLowerCase() || "";
                 finalData = fetched.filter(d =>
                     d["userId"] === filterByUid ||
@@ -114,8 +122,11 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
             }
 
             setData(finalData);
-        } catch (error) {
-            console.error("Failed to fetch data from Firestore", error);
+        } catch (error: any) {
+            // Ignore abort errors on navigation
+            if (error?.name !== "AbortError") {
+                console.error("Failed to fetch marketing data:", error);
+            }
         } finally {
             setLoading(false);
         }
@@ -195,9 +206,31 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
 
     const formatDisplayDate = (dateStr: any) => {
         if (!dateStr) return "-";
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+        const s = String(dateStr).trim();
+        
+        let year: number, month: number, day: number;
+        
+        // Handle DD/MM/YYYY format (from Excel)
+        const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (slashMatch) {
+            day = parseInt(slashMatch[1]);
+            month = parseInt(slashMatch[2]) - 1;
+            year = parseInt(slashMatch[3]);
+        }
+        // Handle YYYY-MM-DD format (from database)
+        else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            const parts = s.split('-');
+            year = parseInt(parts[0]);
+            month = parseInt(parts[1]) - 1;
+            day = parseInt(parts[2]);
+        }
+        else {
+            return s; // Return as-is if format is unrecognized
+        }
+        
+        const d = new Date(year!, month!, day!);
+        if (isNaN(d.getTime())) return s;
+        return d.toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     const filteredData = data.filter((row) => {
@@ -237,12 +270,15 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         return true;
     });
 
-    // Most recent first, by the row's own Date rather than when it was
-    // entered. Rows sharing a date fall back to entry order, newest first.
     const displayData = [...filteredData].sort((a, b) => {
-        const byDate = compareDatesDesc(a["Date"], b["Date"]);
-        if (byDate !== 0) return byDate;
-        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+        const dateA = new Date(a.Date || 0).getTime();
+        const dateB = new Date(b.Date || 0).getTime();
+        if (dateA !== dateB) {
+            return dateB - dateA; // Date DESC (newest at top)
+        }
+        const createdA = a.createdAt?.seconds || 0;
+        const createdB = b.createdAt?.seconds || 0;
+        return createdA - createdB; // CreatedAt ASC (Excel top-to-bottom order for identical dates)
     });
 
     const handleExport = () => {
@@ -275,12 +311,11 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         reader.onload = async (evt) => {
             try {
                 const bstr = evt.target?.result;
-                const workbook = xlsx.read(bstr, { type: "binary", cellDates: false });
+                const workbook = xlsx.read(bstr, { type: "binary", cellDates: true });
                 const wsname = workbook.SheetNames[0];
                 const ws = workbook.Sheets[wsname];
                 
-                // Using raw: true (default) so Excel dates come in as serial numbers
-                const rawData = xlsx.utils.sheet_to_json(ws, { defval: "", blankrows: true });
+                const rawData = xlsx.utils.sheet_to_json(ws, { defval: "", blankrows: false, raw: true });
 
                 let newCount = 0;
                 let dupCount = 0;
@@ -289,7 +324,6 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                 const supabase = createClient();
                 const BATCH_SIZE = 490;
                 let pending: any[] = [];
-                let firstParsedDate = "";
 
                 const flush = async () => {
                     if (pending.length === 0) return;
@@ -298,124 +332,86 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                     pending = [];
                 };
 
-                // Helper: try to convert any string/number to a valid YYYY-MM-DD. Returns null if invalid.
-                const extractValidDate = (val: any): string | null => {
-                    if (val === null || val === undefined || val === "") return null;
-                    
-                    // 1. Handle Excel Serial Numbers (e.g. 46210)
-                    if (typeof val === 'number' && val > 30000 && val < 60000) {
-                        return new Date(Math.round((val - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+                // Helper to parse various date formats into YYYY-MM-DD
+                const parseDate = (raw: any): string => {
+                    if (!raw || String(raw).trim() === "") {
+                        const today = new Date();
+                        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                     }
 
-                    const strVal = String(val).trim();
-                    if (!strVal) return null;
-
-                    // 2. Handle standard DD/MM/YYYY or DD-MM-YYYY or MM/DD/YYYY
-                    const parts = strVal.split(/[/\-\.]/);
-                    if (parts.length === 3) {
-                        let y = 0, m = 0, d = 0;
-                        if (parts[2].length === 4) { // DD-MM-YYYY or MM-DD-YYYY
-                            y = parseInt(parts[2]);
-                            // If first part > 12, it MUST be DD-MM-YYYY
-                            if (parseInt(parts[0]) > 12) {
-                                d = parseInt(parts[0]);
-                                m = parseInt(parts[1]);
-                            } else {
-                                // Default to MM-DD-YYYY if ambiguous, or DD-MM-YYYY if you prefer. 
-                                // We'll try MM-DD-YYYY first.
-                                m = parseInt(parts[0]);
-                                d = parseInt(parts[1]);
-                            }
-                        } else if (parts[0].length === 4) { // YYYY-MM-DD
-                            y = parseInt(parts[0]);
-                            m = parseInt(parts[1]);
-                            d = parseInt(parts[2]);
-                        }
-                        
-                        if (y > 1900 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-                            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                        }
+                    // If it's a Date object (from cellDates: true)
+                    if (raw instanceof Date && !isNaN(raw.getTime())) {
+                        // Excel parsed DD/MM as MM/DD for ambiguous dates (e.g. 12/08 became Dec 8 instead of Aug 12).
+                        // So we swap them back: getMonth() + 1 is the intended day, getDate() is the intended month.
+                        const intendedDay = raw.getMonth() + 1;
+                        const intendedMonth = raw.getDate();
+                        return `${raw.getFullYear()}-${String(intendedMonth).padStart(2, '0')}-${String(intendedDay).padStart(2, '0')}`;
                     }
 
-                    // 3. Fallback to Javascript's built-in Date parser (handles "17 Jun 2026", "August 16, 2026", etc)
-                    const parsed = new Date(strVal);
-                    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
-                        return parsed.toISOString().split('T')[0];
+                    const str = String(raw).trim();
+
+                    // Handle DD/MM/YYYY format (e.g., 21/07/2026 or 03/08/2026)
+                    const slashParts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                    if (slashParts) {
+                        const day = slashParts[1].padStart(2, '0');
+                        const month = slashParts[2].padStart(2, '0');
+                        const year = slashParts[3];
+                        return `${year}-${month}-${day}`;
                     }
 
-                    return null; // Not a valid date
+                    // Handle YYYY-MM-DD (already correct)
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                        return str;
+                    }
+
+                    // Fallback: try to parse with Date constructor
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) {
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    }
+
+                    // Last resort: return today's date
+                    const today = new Date();
+                    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                 };
 
+                let lastCandidateName = "";
+                let lastDate = "";
+
                 for (const row of rawData as any[]) {
-                    let originalName = "";
-                    let finalDate: string | null = null;
-                    let company = "";
-                    let link = "";
+                    const rawName = String(row["__EMPTY"] || row["Name"] || row["name"] || row["Candidate Name"] || "").trim();
+                    const rawDate = String(row["date "] || row["date"] || row["Date"] || "").trim();
+                    const company = String(row["company name"] || row["Company Name"] || "").trim();
+                    const link = String(row["link"] || row["Link"] || "").trim();
 
-                    // Step 1: Scan for obvious headers
-                    for (const k of Object.keys(row)) {
-                        const lowerK = k.toLowerCase().trim();
-                        const val = row[k];
-                        if (val === undefined || val === null || val === "") continue;
-                        
-                        const strVal = String(val).trim();
-                        if (!strVal) continue;
-
-                        if (lowerK.includes("date") || lowerK === "b") {
-                            if (!finalDate) finalDate = extractValidDate(val);
-                        } else if (lowerK.includes("company")) {
-                            if (!company) company = strVal;
-                        } else if (lowerK.includes("link") || lowerK.includes("url")) {
-                            if (!link) link = strVal;
-                        } else if (lowerK === "name" || lowerK === "candidate name" || lowerK === "__empty") {
-                            if (!originalName) originalName = strVal;
-                        }
-                    }
-
-                    // Step 2: If date STILL not found, scan all values in the row for a date-like value
-                    if (!finalDate) {
-                        for (const k of Object.keys(row)) {
-                            const val = row[k];
-                            const extracted = extractValidDate(val);
-                            if (extracted) {
-                                finalDate = extracted;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Step 3: If name still not found, take the first un-used string
-                    if (!originalName) {
-                        for (const k of Object.keys(row)) {
-                            const lowerK = k.toLowerCase().trim();
-                            const val = row[k];
-                            if (val === undefined || val === null || val === "") continue;
-                            const strVal = String(val).trim();
-                            if (!strVal) continue;
-                            
-                            // Skip known headers and dates
-                            if (lowerK.includes("date") || lowerK.includes("company") || lowerK.includes("link") || lowerK.includes("url") || lowerK === "id") continue;
-                            if (extractValidDate(val) !== null) continue; 
-                            
-                            originalName = strVal;
-                            break;
-                        }
+                    // Skip header row if it got caught in rawData
+                    if (company.toLowerCase() === "company name" && link.toLowerCase() === "link") {
+                        continue;
                     }
 
                     // Skip completely empty rows
-                    if (!originalName && !finalDate && !company && !link) continue;
+                    if (!rawName && !company && !link) {
+                        invalidCount++;
+                        continue;
+                    }
 
-                    // REMOVED: Fallback to new Date() if finalDate is null.
-                    // We don't want to insert today's date if the date is missing or malformed.
-                    // We let it be null, which will show as "-" in the UI.
+                    // If company and link are both empty, skip (no lead info)
+                    if (!company && !link) {
+                        invalidCount++;
+                        continue;
+                    }
 
-                    // Track first parsed date for feedback
-                    if (!firstParsedDate && finalDate) firstParsedDate = finalDate;
+                    if (rawName) {
+                        lastCandidateName = rawName;
+                    }
+
+                    const candidateName = rawName || lastCandidateName || "Unknown Candidate";
+                    const dateStr = parseDate(rawDate);
 
                     const row_ = marketingUiToRow(
                         {
-                            "Name": originalName || "Unknown Candidate",
-                            "Date": finalDate, // Might be null!
+                            "Name": candidateName,
+                            "Date": dateStr,
                             "Company Name": company,
                             "Link": link,
                         },
@@ -433,7 +429,7 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
 
                 await flush();
 
-                setImportSummary(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}\nFirst Parsed Date: ${firstParsedDate || "N/A"}`);
+                setImportSummary(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}`);
                 toast.success("Import processing completed!");
                 fetchData();
             } catch (error) {
@@ -869,3 +865,4 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         </>
     );
 }
+

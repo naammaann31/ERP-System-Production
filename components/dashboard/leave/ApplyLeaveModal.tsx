@@ -28,7 +28,7 @@ export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmittin
   const [reason, setReason] = useState("");
   const [isHalfDay, setIsHalfDay] = useState(false);
 
-  const leaveOptions = ["Paid Leave (PL)", "Casual Leave", "Sick Leave"];
+  const leaveOptions = ["Paid Leave (PL)", "Casual Leave"];
   const days = isHalfDay ? 0.5 : calcDays(startDate, endDate);
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -20,17 +20,46 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [resetLoading, setResetLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [failedAttempts, setFailedAttempts] = useState(0);
+    const [captchaQuestion, setCaptchaQuestion] = useState("");
+    const [captchaAnswer, setCaptchaAnswer] = useState(0);
+    const [userCaptchaInput, setUserCaptchaInput] = useState("");
     const router = useRouter();
 
     useEffect(() => {
         if (!authLoading && user) {
             router.replace("/dashboard");
         }
+        // Initialize captcha on mount
+        const n1 = Math.floor(Math.random() * 10) + 1;
+        const n2 = Math.floor(Math.random() * 10) + 1;
+        setCaptchaQuestion(`${n1} + ${n2} =`);
+        setCaptchaAnswer(n1 + n2);
     }, [user, authLoading, router]);
+
+    const refreshCaptcha = () => {
+        const n1 = Math.floor(Math.random() * 10) + 1;
+        const n2 = Math.floor(Math.random() * 10) + 1;
+        setCaptchaQuestion(`${n1} + ${n2} =`);
+        setCaptchaAnswer(n1 + n2);
+        setUserCaptchaInput("");
+    };
 
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         if (user && !authLoading) return;
         e.preventDefault();
+        
+        if (parseInt(userCaptchaInput) !== captchaAnswer) {
+            setError("Incorrect Captcha. Please try again.");
+            refreshCaptcha();
+            return;
+        }
+
+        if (failedAttempts >= 5) {
+            setError("Maximum login attempts exceeded. Please refresh your browser to try again.");
+            return;
+        }
+
         setLoading(true);
         setError("");
         setSuccess("");
@@ -43,9 +72,17 @@ export default function LoginPage() {
             toast.success("Login Successful!");
 
             // Redirect after login
-            router.push("/dashboard");
+            router.replace("/dashboard");
         } catch (err: any) {
-            setError(getAuthErrorMessage(err));
+            const newAttempts = failedAttempts + 1;
+            setFailedAttempts(newAttempts);
+            
+            if (newAttempts >= 5) {
+                setError("Maximum login attempts exceeded. Please refresh your browser to try again.");
+            } else {
+                setError(getAuthErrorMessage(err));
+            }
+            refreshCaptcha();
         } finally {
             setLoading(false);
         }
@@ -122,6 +159,7 @@ export default function LoginPage() {
                                     placeholder="name@vectragroup.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
+                                    disabled={failedAttempts >= 5}
                                     className="w-full bg-black/40 border border-white/10 text-white placeholder-white/40 rounded-xl pl-11 pr-4 py-2.5 focus:outline-none focus:border-white/30 transition-all text-sm shadow-inner"
                                     required
                                     suppressHydrationWarning
@@ -149,9 +187,10 @@ export default function LoginPage() {
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
                                 <input
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
+                                    placeholder="........"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
+                                    disabled={failedAttempts >= 5}
                                     className="w-full bg-black/40 border border-white/10 text-white placeholder-white/40 rounded-xl pl-11 pr-10 py-2.5 focus:outline-none focus:border-white/30 transition-all text-sm shadow-inner"
                                     required
                                     suppressHydrationWarning
@@ -166,6 +205,32 @@ export default function LoginPage() {
                                 </button>
                             </div>
                         </div>
+
+                        
+                        {/* Captcha */}
+                        {captchaQuestion && (
+                            <div>
+                                <label className="block mb-1.5 text-[10px] font-bold text-white/80 tracking-[0.2em] uppercase">
+                                    Security Check
+                                </label>
+                                <div className="flex gap-3">
+                                    <div className="flex-1 bg-black/40 border border-white/10 rounded-xl flex items-center justify-center font-mono text-lg font-bold tracking-[0.2em] text-white/90 shadow-inner select-none" style={{ backgroundImage: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.05) 50%, transparent 60%)', backgroundSize: '20px 20px' }}>
+                                        {captchaQuestion}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="?"
+                                        value={userCaptchaInput}
+                                        onChange={(e) => setUserCaptchaInput(e.target.value)}
+                                        disabled={failedAttempts >= 5}
+                                        className="w-24 bg-black/40 border border-white/10 text-white placeholder-white/40 rounded-xl px-4 py-2.5 focus:outline-none focus:border-white/30 transition-all text-center font-mono shadow-inner text-lg font-bold"
+                                        required
+                                        suppressHydrationWarning
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* Error Message */}
                         {error && (

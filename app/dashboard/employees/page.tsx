@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Search, Filter, Plus, Trash2, Download, CheckSquare } from "lucide-react";
+import { Users, Search, Filter, Plus, Trash2, Download, CheckSquare, Edit } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import AddEmployeeModal from "@/components/employees/AddEmployeeModal";
+import EditEmployeeModal from "@/components/employees/EditEmployeeModal";
 import { createClient } from "@/lib/supabase/client";
 import { deleteEmployeeAction } from "@/app/actions/employees";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -37,6 +38,8 @@ export default function EmployeesPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [employeeToEdit, setEmployeeToEdit] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -155,6 +158,13 @@ export default function EmployeesPage() {
     () => filteredEmployees.filter((e: any) => e.uid !== profile?.uid),
     [filteredEmployees, profile?.uid]
   );
+
+  
+  const handleEditEmployee = (employee: any) => {
+    if (!isAdminOrHR) return;
+    setEmployeeToEdit(employee);
+    setIsEditModalOpen(true);
+  };
 
   const handleDeleteEmployee = (uid: string, name: string) => {
     if (!isAdminOrHR) return;
@@ -335,16 +345,27 @@ export default function EmployeesPage() {
                       </td>
                       {isAdminOrHR && (
                         <td className="px-6 py-4 text-right">
-                          {employee.uid !== profile?.uid && (
-                            <button
-                              onClick={() => handleDeleteEmployee(employee.uid, employee.name)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                              title="Delete Employee & Revoke Access"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </td>
+                            {isAdminOrHR && (
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => handleEditEmployee(employee)}
+                                  className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                                  title="Edit Employee"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                {employee.uid !== profile?.uid && (
+                                  <button
+                                    onClick={() => handleDeleteEmployee(employee.uid, employee.name)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                                    title="Delete Employee & Revoke Access"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
                       )}
                     </motion.tr>
                   ))
@@ -390,7 +411,14 @@ export default function EmployeesPage() {
       <AddEmployeeModal 
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
-        onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+        onSuccess={() => setRefreshTrigger(prev => prev + 1)} 
+      />
+      
+      <EditEmployeeModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        onSuccess={() => setRefreshTrigger(prev => prev + 1)} 
+        employee={employeeToEdit}
       />
 
       <ConfirmModal

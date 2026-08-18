@@ -1,84 +1,79 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Plus, Check, ChevronDown, X } from "lucide-react";
-import { createEmployeeAction } from "@/app/actions/employees";
+import { X, Check, ChevronDown } from "lucide-react";
+import { updateEmployeeAction } from "@/app/actions/employees";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
-interface AddEmployeeModalProps {
+interface EditEmployeeModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
+    employee: any;
 }
 
-export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmployeeModalProps) {
+export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee }: EditEmployeeModalProps) {
     const [fullName, setFullName] = useState("");
     const [employeeId, setEmployeeId] = useState("");
     const [email, setEmail] = useState("");
     const [role, setRole] = useState("");
-    const [password, setPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [designation, setDesignation] = useState("Employee");
-
-    const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirm, setShowConfirm] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
+    
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
-    const validateEmail = (email: string) => {
-        return /\S+@\S+\.\S+/.test(email);
-    };
+    // Load initial data
+    useEffect(() => {
+        if (employee && isOpen) {
+            setFullName(employee.name || "");
+            setEmployeeId(employee.id || "");
+            setRole(employee.department === "HR" ? (employee.role === "OPS_HR" ? "OPS_HR" : "HR") : (employee.role || "Employee")); // Handle display logic
+            setRole(employee.role || "Employee");
+            setJobRole(employee.jobRole || "");
+            setDesignation(employee.designation || "Employee");
+            
+            const fetchEmail = async () => {
+              const supabase = createClient();
+              const { data, error } = await supabase.rpc('get_user_email', { target_uid: employee.uid }).single();
+              if (data) setEmail(data as string);
+            };
+            fetchEmail().catch(() => setEmail(""));
+        }
+    }, [employee, isOpen]);
 
-    const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
-
-        if (!fullName || !employeeId || !email || !password || !confirmPassword || !role || !jobRole || !designation) {
-            setError("All fields are required.");
-            return;
-        }
-
-        if (!validateEmail(email)) {
-            setError("Please enter a valid email address.");
-            return;
-        }
-
-        if (password.length < 8) {
-            setError("Password must be at least 8 characters long.");
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            setError("Authentication keys do not match.");
-            return;
-        }
-
         setLoading(true);
 
-        const { error: signUpError } = await createEmployeeAction({
-            fullName,
-            employeeId,
-            email,
-            role,
-            password,
-            jobRole,
-            designation,
-        });
-
-        if (signUpError) {
-            setError(signUpError);
+        if (!role) {
+            setError("Please select an access role");
             setLoading(false);
             return;
         }
 
-        toast.success("Employee account created successfully!");
+        const { error: updateError } = await updateEmployeeAction({
+            uid: employee.uid,
+            fullName,
+            employeeId,
+            email,
+            role,
+            jobRole,
+            designation
+        });
+
+        if (updateError) {
+            setError(updateError);
+            setLoading(false);
+            return;
+        }
+
+        toast.success("Employee details updated successfully!");
         setLoading(false);
-        // Reset form
-        setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
-        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee");
         onSuccess?.();
         onClose();
     };
@@ -87,15 +82,16 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                {/* Dark overlay backdrop */}
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={onClose}
-                    className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-                />
+            <div className="fixed inset-0 z-[100] overflow-y-auto custom-scrollbar">
+                <div className="flex min-h-full items-center justify-center p-4">
+                    {/* Dark overlay backdrop */}
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={onClose}
+                        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+                    />
                 
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -112,11 +108,11 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                     </button>
 
                     <div className="mb-6 text-center">
-                        <h2 className="text-xl font-bold text-slate-900 tracking-widest uppercase">Register Clearance</h2>
-                        <p className="text-slate-500 text-xs mt-1">Create a new employee system access</p>
+                        <h2 className="text-xl font-bold text-slate-900 tracking-widest uppercase">Edit Clearance</h2>
+                        <p className="text-slate-500 text-xs mt-1">Update employee details and system access</p>
                     </div>
 
-                    <form onSubmit={handleSignUp} className="space-y-4">
+                    <form onSubmit={handleUpdate} className="space-y-4">
                         {/* Full Name & Employee ID */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -177,11 +173,10 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                             <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Corporate Email</label>
                             <input
                                 type="email"
-                                placeholder="name@vectragroup.com"
+                                placeholder="Leave blank to keep current email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                required
                             />
                         </div>
 
@@ -260,82 +255,31 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                             </div>
                         </div>
 
-                        {/* Auth Key & Confirm Key */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Auth Key</label>
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        placeholder="8+ chars"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl pl-4 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                        required
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                                    >
-                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Confirm Key</label>
-                                <div className="relative">
-                                    <input
-                                        type={showConfirm ? "text" : "password"}
-                                        placeholder="Repeat"
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl pl-4 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                        required
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowConfirm(!showConfirm)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                                    >
-                                        {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
                         {error && (
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm shadow-sm"
-                            >
-                                {error}
-                            </motion.div>
+                            <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-100 flex items-center gap-2">
+                                <span className="font-semibold uppercase tracking-wider text-[10px]">Error:</span> {error}
+                            </div>
                         )}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full mt-6 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 tracking-wider uppercase text-sm shadow-md hover:shadow-lg"
-                        >
-                            {loading ? (
-                                <>
-                                    <svg className="animate-spin h-5 w-5 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Processing...
-                                </>
-                            ) : (
-                                <>
-                                    Create Employee
-                                    <Plus className="h-4 w-4" />
-                                </>
-                            )}
-                        </button>
+                        <div className="pt-2">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                        Saving Changes...
+                                    </>
+                                ) : (
+                                    'Update Employee'
+                                )}
+                            </button>
+                        </div>
                     </form>
                 </motion.div>
+                </div>
             </div>
         </AnimatePresence>
     );

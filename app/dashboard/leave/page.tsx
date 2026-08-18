@@ -8,7 +8,7 @@ export default function LeavePage() {
   const { profile } = useAuth();
 
   const role = profile?.role?.toUpperCase();
-  const isAdminOrHR = role === "ADMIN" || role === "HR" || role === "OPS_HR";
+  const isAdminOrHR = role === "ADMIN" || role === "HR" ;
 
   if (isAdminOrHR) {
     return <HRLeaveDashboard />;

@@ -79,7 +79,7 @@ export default function TopStats() {
       const plUsed = leaves.filter((l) => l.leaveType === "Paid Leave (PL)" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const clUsed = leaves.filter((l) => l.leaveType === "Casual Leave" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
       const totalUsed = plUsed + clUsed;
-      const totalAvailable = 18 - totalUsed; // 12 PL + 6 CL = 18 total
+      const totalAvailable = 24 - totalUsed; // 12 PL + 12 CL = 24 total
       setLeaveBalance(totalAvailable.toString());
     });
 

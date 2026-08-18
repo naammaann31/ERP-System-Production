@@ -130,8 +130,7 @@ export default function HRPayrollDashboard() {
       
       const limits: Record<string, number> = {
           "Paid Leave (PL)": 12,
-          "Casual Leave": 12,
-          "Sick Leave": 0
+          "Casual Leave": 12
       };
   
       for (const [type, limit] of Object.entries(limits)) {

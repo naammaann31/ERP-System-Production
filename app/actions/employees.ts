@@ -11,6 +11,17 @@ interface CreateEmployeeInput {
   jobRole: string;
   designation: string;
 }
+export interface UpdateEmployeeInput {
+  uid: string;
+  fullName: string;
+  employeeId: string;
+  email: string;
+  role: string;
+  jobRole: string;
+  designation: string;
+}
+
+
 
 async function assertCallerIsAdminOrHR() {
   const supabase = await createClient();
@@ -86,5 +97,49 @@ export async function deleteEmployeeAction(employeeUid: string): Promise<{ error
   const supabase = await createClient();
   const { error } = await supabase.rpc("delete_employee", { p_employee_uid: employeeUid });
   if (error) return { error: error.message };
+  return {};
+}
+
+
+export async function updateEmployeeAction(
+  input: UpdateEmployeeInput
+): Promise<{ error?: string }> {
+  const check = await assertCallerIsAdminOrHR();
+  if (!check.ok) return { error: check.error };
+
+  const email = input.email ? input.email.trim().toLowerCase() : null;
+  const admin = createServiceRoleClient();
+
+  const updateData: any = {
+    user_metadata: { full_name: input.fullName.trim() },
+  };
+  if (email) {
+    updateData.email = email;
+    updateData.email_confirm = true;
+  }
+
+  // Update Auth layer (email and metadata)
+  const { error: updateAuthError } = await admin.auth.admin.updateUserById(input.uid, updateData);
+
+  if (updateAuthError) {
+    return { error: updateAuthError.message || "Failed to update employee auth account." };
+  }
+
+  // Update Profiles table
+  const { error: updateProfileError } = await admin
+    .from("profiles")
+    .update({
+      full_name: input.fullName.trim(),
+      role: input.role,
+      employee_id: input.employeeId.trim(),
+      job_role: input.jobRole.trim(),
+      designation: input.designation,
+    })
+    .eq("id", input.uid);
+
+  if (updateProfileError) {
+    return { error: updateProfileError.message };
+  }
+
   return {};
 }

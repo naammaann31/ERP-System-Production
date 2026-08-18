@@ -38,24 +38,35 @@ const formatDuration = (totalSeconds: number) => {
   return `${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
 };
 
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: string, isHalfDay?: boolean, isLate?: boolean) => {
+  let mainBadge;
   switch (status) {
-    case "Present": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>;
-    case "Checked In": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>;
-    case "Leave": return <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>;
-    case "WFH": return <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>;
-    case "Absent": return <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>;
-    case "Late": return <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>;
-    case "Week Off": return <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>;
-    default: return <Badge>{status}</Badge>;
+    case "Present": mainBadge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>; break;
+    case "Checked In": mainBadge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>; break;
+    case "Leave": mainBadge = <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>; break;
+    case "WFH": mainBadge = <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>; break;
+    case "Absent": mainBadge = <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>; break;
+    case "Late": mainBadge = <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>; break;
+    case "Week Off": mainBadge = <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>; break;
+    default: mainBadge = <Badge>{status}</Badge>;
   }
+
+  if (isHalfDay || isLate) {
+    return (
+      <div className="flex items-center gap-2">
+        {mainBadge}
+        {isHalfDay && <Badge variant="warning" className="bg-amber-50 text-amber-700 border-amber-200">Half Day</Badge>}
+      </div>
+    );
+  }
+  return mainBadge;
 };
 
 const employeeStats = [
   { title: "Attendance Rate", value: "-", trend: "-", trendUp: true, icon: TrendingUp, color: "text-green-600", bg: "bg-green-100", accent: "bg-green-500" },
   { title: "Avg. Login Time", value: "-", trend: "-", trendUp: true, icon: Clock, color: "text-blue-600", bg: "bg-blue-100", accent: "bg-blue-500" },
   { title: "Avg. Logout Time", value: "-", trend: "-", trendUp: true, icon: Clock, color: "text-purple-600", bg: "bg-purple-100", accent: "bg-purple-500" },
-  { title: "Late Arrivals", value: "-", trend: "-", trendUp: true, icon: TrendingDown, color: "text-red-600", bg: "bg-red-100", accent: "bg-red-500" },
+  { title: "Late Arrivals", value: "-", trend: "-", trendUp: false, icon: TrendingDown, color: "text-red-600", bg: "bg-red-100", accent: "bg-red-500" },
 ];
 
 export default function EmployeeAttendanceDashboard() {
@@ -129,53 +140,46 @@ export default function EmployeeAttendanceDashboard() {
     if (!profile?.uid || !todayRecord?.id) return;
     setClockLoading(true);
     await checkOut(todayRecord.id, liveSeconds);
-    setTodayRecord({ ...todayRecord, status: "Present", workingSeconds: liveSeconds });
+    setTodayRecord((prev) => prev ? { ...prev, status: "Present", workingSeconds: liveSeconds } : null);
     setClockLoading(false);
   };
 
-  const formatLiveTimer = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
+  // Fetch month's attendance
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    if (!profile?.uid) return;
+    setLoading(true);
+    getUserAttendanceForMonth(profile.uid, selectedMonth).then((data) => {
+      setRecords(data);
+      setLoading(false);
+    });
+  }, [profile, selectedMonth]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsMonthDropdownOpen(false);
       }
-    }
+    };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    const fetchRecords = async () => {
-      if (!profile?.uid) return;
-      setLoading(true);
-
-      const fetched = await getUserAttendanceForMonth(profile.uid, selectedMonth);
-      setRecords(fetched);
-      setLoading(false);
-    };
-
-    fetchRecords();
-  }, [profile, selectedMonth]);
-
-  const displayRecords = records.filter(r =>
-    r.date.includes(searchTerm) || r.status.toLowerCase().includes(searchTerm.toLowerCase())
+  const displayRecords = records.filter(record => 
+    record.date.includes(searchTerm) || 
+    record.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 pb-6">
-      {/* Header Area */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6">
+      {/* Header & Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Attendance Management</h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Track your daily attendance, working hours, and history.</p>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">My Attendance</h1>
+          <p className="text-slate-500 mt-1 text-sm font-medium">Track your daily clock-ins and working hours</p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+
+        <div className="flex flex-col md:flex-row w-full md:w-auto items-stretch md:items-center gap-3">
           <div className="relative w-full md:w-auto" ref={dropdownRef}>
             <Button
               variant="outline"
@@ -212,31 +216,38 @@ export default function EmployeeAttendanceDashboard() {
 
       {/* Premium Analytics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        {employeeStats.map((stat, i) => (
-          <motion.div
-            key={stat.title}
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: i * 0.1, ease: "easeOut" }}
-            className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group cursor-pointer relative overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />
+        {employeeStats.map((stat, i) => {
+          let val = stat.value;
+          if (stat.title === "Late Arrivals") {
+            val = records.filter(r => r.isLate).length.toString();
+          }
 
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className={`p-2 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ease-out`}>
-                <stat.icon className="h-4 w-4" />
+          return (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.1, ease: "easeOut" }}
+              className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group cursor-pointer relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />
+
+              <div className="flex items-center justify-between mb-3 relative z-10">
+                <div className={`p-2 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ease-out`}>
+                  <stat.icon className="h-4 w-4" />
+                </div>
+                <div className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors duration-300 ${stat.trendUp ? 'bg-green-50 text-green-700 border-green-200 group-hover:bg-green-100' : 'bg-red-50 text-red-700 border-red-200 group-hover:bg-red-100'}`}>
+                  {stat.trend}
+                </div>
               </div>
-              <div className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border shadow-sm transition-colors duration-300 ${stat.trendUp ? 'bg-green-50 text-green-700 border-green-200 group-hover:bg-green-100' : 'bg-red-50 text-red-700 border-red-200 group-hover:bg-red-100'}`}>
-                {stat.trend}
+              <div className="relative z-10">
+                <p className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight group-hover:text-slate-900 transition-colors duration-300">{val}</p>
+                <p className="text-[11px] md:text-xs font-semibold text-slate-500 mt-0.5">{stat.title}</p>
               </div>
-            </div>
-            <div className="relative z-10">
-              <p className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight group-hover:text-slate-900 transition-colors duration-300">{stat.value}</p>
-              <p className="text-[11px] md:text-xs font-semibold text-slate-500 mt-0.5">{stat.title}</p>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Main Data Table Area */}
@@ -303,7 +314,7 @@ export default function EmployeeAttendanceDashboard() {
                           <div className="font-bold text-slate-800">{formatDuration(record.workingSeconds)}</div>
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap">
-                          {getStatusBadge(record.status)}
+                          {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
                         </td>
                       </tr>
                     ))
