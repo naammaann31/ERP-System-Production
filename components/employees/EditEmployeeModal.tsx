@@ -22,6 +22,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [jobRole, setJobRole] = useState("");
     const [designation, setDesignation] = useState("Employee");
     const [showDropdown, setShowDropdown] = useState(false);
+    const [phone, setPhone] = useState("");
+    const [dateOfJoining, setDateOfJoining] = useState("");
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -35,6 +37,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setRole(employee.role || "Employee");
             setJobRole(employee.jobRole || "");
             setDesignation(employee.designation || "Employee");
+            setPhone(employee.phone || "");
+            setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
             
             const fetchEmail = async () => {
               const supabase = createClient();
@@ -63,7 +67,9 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             email,
             role,
             jobRole,
-            designation
+            designation,
+            phone,
+            dateOfJoining
         });
 
         if (updateError) {
@@ -168,16 +174,39 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                             </div>
                         </div>
 
-                        {/* Corporate Email */}
+                        {/* Corporate Email & Phone Number */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Corporate Email</label>
+                                <input
+                                    type="email"
+                                    placeholder="Leave blank to keep current email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    placeholder="+1 234 567 8900"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Date Of Joining */}
                         <div>
-                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Corporate Email</label>
-                            <input
-                                type="email"
-                                placeholder="Leave blank to keep current email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                            />
+                             <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Date Of Joining</label>
+                             <input
+                                 type="date"
+                                 value={dateOfJoining}
+                                 onChange={(e) => setDateOfJoining(e.target.value)}
+                                 className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm text-slate-500"
+                             />
                         </div>
 
                         {/* Access Role */}

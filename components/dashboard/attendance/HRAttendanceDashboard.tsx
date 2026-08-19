@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
-import { getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime } from "@/lib/attendance";
+import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime } from "@/lib/attendance";
+import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -54,6 +55,8 @@ export default function HRAttendanceDashboard() {
   // was querying the wrong day.
   const [selectedDate, setSelectedDate] = useState(getLocalDateString);
   const [filterLate, setFilterLate] = useState(false);
+  const [filterAbsent, setFilterAbsent] = useState(false);
+  const [filterPresent, setFilterPresent] = useState(false);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,8 +64,38 @@ export default function HRAttendanceDashboard() {
   useEffect(() => {
     const fetchRecords = async () => {
       setLoading(true);
-      const data = await getAllTodayAttendance();
-      setRecords(data);
+      const supabase = createClient();
+      
+      // Fetch today's records
+      const data = await getAttendanceByDate(selectedDate);
+      
+      // Fetch all employees
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role").neq("role", "Admin");
+      
+      let mergedRecords = data;
+      
+      if (profiles) {
+         mergedRecords = profiles.map(profile => {
+           const existing = data.find(r => r.userId === profile.id);
+           if (existing) return existing;
+           
+           return {
+             id: "absent-" + profile.id,
+             userId: profile.id,
+             fullName: profile.full_name,
+             role: profile.role,
+             date: selectedDate,
+             checkInTime: null,
+             checkOutTime: null,
+             status: "Absent",
+             workingSeconds: 0,
+             isLate: false,
+             isHalfDay: false,
+           };
+         });
+      }
+      
+      setRecords(mergedRecords);
       setLoading(false);
     };
     fetchRecords();
@@ -72,9 +105,15 @@ export default function HRAttendanceDashboard() {
     const matchesSearch = emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.status.toLowerCase().includes(searchTerm.toLowerCase());
     
-    if (filterLate) {
-      return matchesSearch && emp.isLate;
+    // We treat filters as mutually exclusive for best UX
+    if (filterPresent) {
+        return matchesSearch && emp.status !== "Absent";
+    } else if (filterAbsent) {
+        return matchesSearch && emp.status === "Absent";
+    } else if (filterLate) {
+        return matchesSearch && emp.isLate;
     }
+    
     return matchesSearch;
   });
 
@@ -114,21 +153,27 @@ export default function HRAttendanceDashboard() {
         {hrStats.map((stat, i) => {
           let val = stat.value;
           if (stat.title === "Total Present Today") {
-            val = records.length.toString();
+            val = records.filter(r => r.status !== "Absent").length.toString();
+          } else if (stat.title === "Total Absent") {
+            val = records.filter(r => r.status === "Absent").length.toString();
           } else if (stat.title === "Late Arrivals") {
             val = records.filter(r => r.isLate).length.toString();
           }
 
-          const isFilterActive = filterLate && stat.title === "Late Arrivals";
+          const isFilterActive = (filterLate && stat.title === "Late Arrivals") || (filterAbsent && stat.title === "Total Absent") || (filterPresent && stat.title === "Total Present Today");
 
           return (
             <motion.div
               key={stat.title}
-              onClick={() => stat.title === "Late Arrivals" ? setFilterLate(!filterLate) : null}
+              onClick={() => {
+        if (stat.title === "Late Arrivals") { setFilterLate(!filterLate); setFilterAbsent(false); setFilterPresent(false); }
+        if (stat.title === "Total Absent") { setFilterAbsent(!filterAbsent); setFilterLate(false); setFilterPresent(false); }
+        if (stat.title === "Total Present Today") { setFilterPresent(!filterPresent); setFilterLate(false); setFilterAbsent(false); }
+    }}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: i * 0.1, ease: "easeOut" }}
-              className={`bg-white rounded-2xl p-4 border shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group ${stat.title === "Late Arrivals" ? "cursor-pointer" : "cursor-default"} relative overflow-hidden ${isFilterActive ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-100"}`}
+              className={`bg-white rounded-2xl p-4 border shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group ${(stat.title === "Late Arrivals" || stat.title === "Total Absent" || stat.title === "Total Present Today") ? "cursor-pointer" : "cursor-default"} relative overflow-hidden ${isFilterActive ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-100"}`}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
               <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />

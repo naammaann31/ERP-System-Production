@@ -30,7 +30,7 @@ export default function TopStats() {
     const supabase = createClient();
 
     const fetchCounts = async () => {
-      const { data, error } = await supabase.from("profiles").select("status");
+      const { data, error } = await supabase.from("profiles").select("status").neq("role", "Admin");
       if (error) {
         console.error("Error fetching employee counts:", error);
         return;

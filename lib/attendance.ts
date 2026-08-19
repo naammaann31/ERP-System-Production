@@ -234,8 +234,15 @@ export const checkIn = async (userId: string, fullName: string, role?: string) =
 
   // Late Comer Logic: Clock in after 7:45 PM or between 12:00 AM and 6:00 AM
   let isLate = false;
+  let isAbsent = false;
+
   if (hour > 19 || (hour === 19 && minute > 45) || hour < 6) {
     isLate = true;
+  }
+  
+  // Absent Logic: If user clocks in after 11:59 PM (between 12:00 AM and 6:00 AM)
+  if (hour < 6) {
+    isAbsent = true;
   }
 
   const insertData: any = {
@@ -244,7 +251,7 @@ export const checkIn = async (userId: string, fullName: string, role?: string) =
     date: dateStr,
     check_in_time: toLocalTimestamp(now),
     check_out_time: null,
-    status: "Checked In",
+    status: isAbsent ? "Absent" : "Checked In",
     working_seconds: 0,
     is_late: isLate,
     is_half_day: isLate, // Late comers automatically get a half day penalty
@@ -329,14 +336,14 @@ export const getAllTodayAttendance = async () => {
   const dateStr = getLocalDateString();
   const { data, error } = await supabase.from("attendance").select("*").eq("date", dateStr);
   if (error) throw error;
-  return (data || []).map(fromRow);
+  return (data || []).map(fromRow).filter(r => r.role !== "Admin");
 };
 
 export const getAttendanceByDate = async (dateStr: string) => {
   const supabase = createClient();
   const { data, error } = await supabase.from("attendance").select("*").eq("date", dateStr);
   if (error) throw error;
-  return (data || []).map(fromRow);
+  return (data || []).map(fromRow).filter(r => r.role !== "Admin");
 };
 
 export const getUserAttendanceForMonth = async (userId: string, yearMonth: string) => {
@@ -353,5 +360,5 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     .order("date", { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(fromRow);
+  return (data || []).map(fromRow).filter(r => r.role !== "Admin");
 };

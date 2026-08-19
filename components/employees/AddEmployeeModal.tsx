@@ -21,6 +21,8 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
     const [confirmPassword, setConfirmPassword] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [designation, setDesignation] = useState("Employee");
+    const [phone, setPhone] = useState("");
+    const [dateOfJoining, setDateOfJoining] = useState("");
 
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -78,7 +80,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
         setLoading(false);
         // Reset form
         setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
-        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee");
+        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee"); setPhone(""); setDateOfJoining("");
         onSuccess?.();
         onClose();
     };
@@ -172,17 +174,40 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                             </div>
                         </div>
 
-                        {/* Corporate Email */}
+                        {/* Corporate Email & Phone Number */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Corporate Email</label>
+                                <input
+                                    type="email"
+                                    placeholder="name@vectragroup.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    placeholder="+1 234 567 8900"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Date Of Joining */}
                         <div>
-                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Corporate Email</label>
-                            <input
-                                type="email"
-                                placeholder="name@vectragroup.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                required
-                            />
+                             <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Date Of Joining</label>
+                             <input
+                                 type="date"
+                                 value={dateOfJoining}
+                                 onChange={(e) => setDateOfJoining(e.target.value)}
+                                 className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                             />
                         </div>
 
                         {/* Access Role */}
