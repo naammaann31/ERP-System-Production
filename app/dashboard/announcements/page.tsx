@@ -18,8 +18,10 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 
 const formatRelativeTime = (ts: any) => {
-  if (!ts || !ts.toDate) return "";
-  const diff = Date.now() - ts.toDate().getTime();
+  if (!ts) return "";
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(date.getTime())) return "";
+  const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "Just now";
   if (mins < 60) return `${mins}m ago`;
@@ -27,13 +29,15 @@ const formatRelativeTime = (ts: any) => {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return ts.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
 const formatExactDateTime = (ts: any) => {
-  if (!ts || !ts.toDate) return "";
-  const date = ts.toDate();
+  if (!ts) return "";
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(date.getTime())) return "";
   return date.toLocaleString("en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -142,42 +146,62 @@ export default function AnnouncementsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
             >
-              <Card className={`rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md ${ann.pinned ? "border-blue-200 bg-blue-50/30 ring-1 ring-blue-100" : "border-slate-100"}`}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        {ann.pinned && (
-                          <Badge className="bg-blue-100 text-blue-700 border-blue-200 font-semibold text-[9px] py-0">
-                            <Pin className="h-2.5 w-2.5 mr-0.5 rotate-45" /> Pinned
-                          </Badge>
+              <Card className={`rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md ${ann.pinned ? "border-blue-200 bg-gradient-to-r from-blue-50/60 to-indigo-50/40 ring-1 ring-blue-100" : "border-slate-100 bg-white"}`}>
+                <CardContent className="p-0">
+                  <div className="flex items-stretch">
+                    {/* Left accent bar */}
+                    <div className={`w-1.5 shrink-0 ${ann.pinned ? "bg-gradient-to-b from-blue-500 to-indigo-500" : "bg-gradient-to-b from-slate-300 to-slate-200"}`} />
+                    <div className="flex-1 p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          {/* Header row: badges + relative time */}
+                          <div className="flex items-center gap-2 mb-3">
+                            {ann.pinned && (
+                              <Badge className="bg-blue-100 text-blue-700 border-blue-200 font-bold text-[9px] py-0.5 px-2">
+                                <Pin className="h-2.5 w-2.5 mr-0.5 rotate-45" /> Pinned
+                              </Badge>
+                            )}
+                          </div>
+                          {/* Title */}
+                          <h3 className="text-lg font-bold text-slate-900 mb-1.5 tracking-tight">{ann.title}</h3>
+                          {/* Body */}
+                          <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{ann.body}</p>
+                          {/* Footer: author + exact date/time */}
+                          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-slate-100">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-slate-600">{(ann.authorName || "?").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()}</span>
+                              </div>
+                              <span className="text-xs font-semibold text-slate-500">{ann.authorName}</span>
+                            </div>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> {formatExactDateTime(ann.createdAt)}
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-[10px] font-semibold text-slate-400">{formatRelativeTime(ann.createdAt)}</span>
+                          </div>
+                        </div>
+                        {isAdminOrHR && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => handleTogglePin(ann.id!, ann.pinned)}
+                              className={`p-2 rounded-lg transition-colors ${ann.pinned ? "text-blue-600 bg-blue-100 hover:bg-blue-200" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
+                              title={ann.pinned ? "Unpin" : "Pin"}
+                            >
+                              <Pin className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(ann.id!)}
+                              className="p-2 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         )}
-                        <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
-                          <Clock className="h-3 w-3" /> {formatRelativeTime(ann.createdAt)}
-                        </span>
                       </div>
-                      <h3 className="text-base font-bold text-slate-800 mb-1">{ann.title}</h3>
-                      <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{ann.body}</p>
-                      <p className="text-xs font-semibold text-slate-400 mt-3">Sent by {ann.authorName} on {formatExactDateTime(ann.createdAt)}</p>
                     </div>
-                    {isAdminOrHR && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleTogglePin(ann.id!, ann.pinned)}
-                          className={`p-2 rounded-lg transition-colors ${ann.pinned ? "text-blue-600 bg-blue-100 hover:bg-blue-200" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
-                          title={ann.pinned ? "Unpin" : "Pin"}
-                        >
-                          <Pin className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(ann.id!)}
-                          className="p-2 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>

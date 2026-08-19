@@ -642,7 +642,8 @@ export default function CandidatesClient() {
                     </div>
 
                     <div className="overflow-auto max-h-[620px] custom-scrollbar">
-                        <table className="w-full text-sm text-left relative">
+                        <div className="overflow-x-auto w-full max-w-full">
+<table className="w-full text-sm text-left relative">
                             <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Name</th>
@@ -748,6 +749,7 @@ export default function CandidatesClient() {
                                 )}
                             </tbody>
                         </table>
+</div>
                     </div>
                 </Card>
             </motion.div>

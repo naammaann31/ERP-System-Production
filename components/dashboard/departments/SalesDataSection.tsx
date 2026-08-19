@@ -275,7 +275,8 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
                     </div>
                     
                     <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
-                        <table className="w-full text-sm text-left relative">
+                        <div className="overflow-x-auto w-full max-w-full">
+<table className="w-full text-sm text-left relative">
                             <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     {profile?.role === "Admin" && (
@@ -418,6 +419,7 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
                                 )}
                             </tbody>
                         </table>
+</div>
                     </div>
                 </Card>
             </motion.div>

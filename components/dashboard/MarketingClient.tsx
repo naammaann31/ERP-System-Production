@@ -585,7 +585,8 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                 <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden bg-white">
                 {/* Table */}
                 <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
-                    <table className="w-full text-sm text-left relative">
+                    <div className="overflow-x-auto w-full max-w-full">
+<table className="w-full text-sm text-left relative">
                         <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 {profile?.role === "Admin" && (
@@ -767,6 +768,7 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                             )}
                         </tbody>
                     </table>
+</div>
                     
                     {!loading && !isAddingNew && visibleCount < displayData.length && (
                         <div className="py-6 flex justify-center border-t border-slate-100">

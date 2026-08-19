@@ -46,7 +46,7 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* 3. Main Dashboard Grid - Row 1 */}
-      <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4`}>
+      <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-2 xl:grid-cols-3'} gap-4`}>
         {!isAdmin && (
           <>
             <motion.div variants={itemVariants} className="h-full">

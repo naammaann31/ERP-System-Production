@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { CalendarCheck, Clock, Palmtree, Users, Wallet, Activity } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
-import { getTodayAttendance } from "@/lib/attendance";
+import { getTodayAttendance, computeWorkedSeconds } from "@/lib/attendance";
 import { getUserLeaves } from "@/lib/leave";
 import { getEmployeePayrolls } from "@/lib/payroll";
 
@@ -173,7 +173,7 @@ export default function TopStats() {
     ]
     : [
       { title: "Attendance", value: attendanceStatus, subtitle: "Today", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-100/50", accent: "bg-green-500" },
-      { title: "Working Hours", value: workingHrs, subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
+      { title: "Total Working Hours", value: workingHrs, subtitle: "Today", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-100/50", accent: "bg-indigo-500" },
       { title: "Leave Balance", value: leaveBalance, subtitle: "Days", icon: Palmtree, color: "text-emerald-600", bg: "bg-emerald-100/50", accent: "bg-emerald-500" },
       { title: "Salary Status", value: salaryStatus, subtitle: salarySubtitle, icon: Wallet, color: "text-purple-600", bg: "bg-purple-100/50", accent: "bg-purple-500" },
     ];

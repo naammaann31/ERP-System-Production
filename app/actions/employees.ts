@@ -10,6 +10,8 @@ interface CreateEmployeeInput {
   password: string;
   jobRole: string;
   designation: string;
+  phone?: string;
+  dateOfJoining?: string;
 }
 export interface UpdateEmployeeInput {
   uid: string;
@@ -80,6 +82,8 @@ export async function createEmployeeAction(
       employee_id: input.employeeId.trim(),
       job_role: input.jobRole.trim(),
       designation: input.designation,
+      phone: input.phone || null,
+      date_of_joining: input.dateOfJoining || null,
     })
     .eq("id", created.user.id);
 

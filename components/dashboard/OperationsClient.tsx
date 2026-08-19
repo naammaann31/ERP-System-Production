@@ -464,7 +464,8 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
             {view === "table" ? (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
-                        <table className="w-full text-sm text-left whitespace-nowrap relative">
+                        <div className="overflow-x-auto w-full max-w-full">
+<table className="w-full text-sm text-left whitespace-nowrap relative">
                             <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase text-slate-500 font-bold tracking-wider sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-6 py-4">Date</th>
@@ -585,6 +586,7 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                                 )}
                             </tbody>
                         </table>
+</div>
                     </div>
                 </div>
             ) : (

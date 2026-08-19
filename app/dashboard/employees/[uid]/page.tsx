@@ -24,8 +24,9 @@ import {
   LineChart,
   ChevronDown,
 } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { getUserAttendanceForMonth, formatAttendanceTime, AttendanceRecord } from "@/lib/attendance";
+import { getUserAttendanceForMonth, formatAttendanceTime, AttendanceRecord, updateAttendanceStatus } from "@/lib/attendance";
 import { getUserLeaves, LeaveRequest } from "@/lib/leave";
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
 import MarketingClient from "@/components/dashboard/MarketingClient";
@@ -41,11 +42,13 @@ interface EmployeeData {
   designation?: string;
   department?: string;
   phone?: string;
+  dateOfJoining?: string;
   status?: string;
   aadhar?: string;
   pan?: string;
   bankAccountName?: string;
   bankDetails?: string;
+  ifscCode?: string;
 }
 
 const containerVariants: Variants = {
@@ -111,7 +114,7 @@ export default function EmployeeProfilePage() {
       // back empty and the fields render as "Not provided" — no error.
       const { data: priv } = await supabase
         .from("employee_private")
-        .select("aadhar, pan, bank_account_name, bank_details")
+        .select("aadhar, pan, bank_account_name, bank_details, ifsc_code")
         .eq("id", uid)
         .maybeSingle();
 
@@ -126,11 +129,13 @@ export default function EmployeeProfilePage() {
           designation: row.designation,
           department: row.department,
           phone: row.phone,
+            dateOfJoining: row.date_of_joining,
           status: row.status,
           aadhar: priv?.aadhar,
           pan: priv?.pan,
           bankAccountName: priv?.bank_account_name,
           bankDetails: priv?.bank_details,
+            ifscCode: priv?.ifsc_code,
         } as EmployeeData;
       }
       setEmployee(empData);
@@ -237,13 +242,15 @@ export default function EmployeeProfilePage() {
     { label: "Department", value: employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role || "General"), icon: Building2 },
     { label: "Job Role", value: employee.jobRole || "N/A", icon: Briefcase },
     { label: "Designation", value: employee.designation || "Employee", icon: Clock },
+    { label: "Date of Joining", value: employee.dateOfJoining ? new Date(employee.dateOfJoining).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not provided", icon: CalendarCheck },
   ];
 
   const statutoryFields = [
     { label: "Aadhar Number", value: employee.aadhar || "Not provided" },
     { label: "PAN Number", value: employee.pan || "Not provided" },
     { label: "Bank Account Name", value: employee.bankAccountName || "Not provided" },
-    { label: "Bank Details", value: employee.bankDetails || "Not provided" },
+    { label: "Account Number", value: employee.bankDetails || "Not provided" },
+    { label: "IFSC Code", value: employee.ifscCode || "Not provided" },
   ];
 
   return (

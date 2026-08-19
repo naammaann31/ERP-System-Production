@@ -66,13 +66,13 @@ export default function SalaryConfigModal({
           <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
             <h4 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2"><Calculator className="w-4 h-4 text-blue-500" /> Live Breakup Preview</h4>
             <div className="space-y-3">
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Basic (50%)</span><span className="font-bold text-slate-700">₹{preview.basic.toLocaleString()}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">HRA (20%)</span><span className="font-bold text-slate-700">₹{preview.hra.toLocaleString()}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Travel</span><span className="font-bold text-slate-700">₹{preview.travelAllowance.toLocaleString()}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Special</span><span className="font-bold text-slate-700">₹{preview.specialAllowance.toLocaleString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Basic (50%)</span><span className="font-bold text-slate-700">{preview.basic.toLocaleString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">HRA (20%)</span><span className="font-bold text-slate-700">{preview.hra.toLocaleString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Travel</span><span className="font-bold text-slate-700">{preview.travelAllowance.toLocaleString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Special</span><span className="font-bold text-slate-700">{preview.specialAllowance.toLocaleString()}</span></div>
 
               <div className="border-t border-slate-200 my-2 pt-2 flex justify-between font-bold text-slate-900">
-                <span>Total Earnings</span><span>₹{preview.totalEarnings.toLocaleString()}</span>
+                <span>Total Earnings</span><span>{preview.totalEarnings.toLocaleString()}</span>
               </div>
             </div>
           </div>

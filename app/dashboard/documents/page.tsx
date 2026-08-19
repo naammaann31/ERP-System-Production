@@ -46,6 +46,7 @@ export default function DocumentsPage() {
   const [pan, setPan] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
   const [bankDetails, setBankDetails] = useState("");
+  const [ifscCode, setIfscCode] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
   const [isEditing, setIsEditing] = useState(true);
 
@@ -89,7 +90,7 @@ export default function DocumentsPage() {
       // Clear first, unconditionally: every path below either fills these in or
       // leaves them blank. Carrying the previous employee's values forward is
       // what makes a wrong-row save possible.
-      setAadhar(""); setPan(""); setBankAccountName(""); setBankDetails("");
+      setAadhar(""); setPan(""); setBankAccountName(""); setBankDetails(""); setIfscCode("");
       if (!uidToFetch) return;
 
       try {
@@ -99,7 +100,7 @@ export default function DocumentsPage() {
         // columns were moved behind a self-or-Admin/HR policy (migration 14).
         const { data, error } = await supabase
           .from("employee_private")
-          .select("aadhar, pan, bank_account_name, bank_details")
+          .select("aadhar, pan, bank_account_name, bank_details, ifsc_code")
           .eq("id", uidToFetch)
           .maybeSingle();
 
@@ -111,6 +112,7 @@ export default function DocumentsPage() {
           setPan(data.pan || "");
           setBankAccountName(data.bank_account_name || "");
           setBankDetails(data.bank_details || "");
+          setIfscCode(data.ifsc_code || "");
 
           if (data.aadhar || data.pan) {
             setIsEditing(false);
@@ -170,6 +172,7 @@ export default function DocumentsPage() {
             pan,
             bank_account_name: bankAccountName,
             bank_details: bankDetails,
+            ifsc_code: ifscCode,
           },
           { onConflict: "id" }
         );
@@ -264,7 +267,7 @@ export default function DocumentsPage() {
              {directoryEmployees.length === 0 ? (
                <p className="text-sm text-slate-400 text-center py-10">No employees match &quot;{employeeSearch}&quot;.</p>
              ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-6">
                 {directoryEmployees.map(emp => (
                    <div key={emp.uid} onClick={() => setSelectedEmployeeId(emp.uid)} className="p-4 border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all">
                      <p className="font-bold text-slate-800">{emp.fullName || "Unnamed"}</p>
@@ -296,7 +299,7 @@ export default function DocumentsPage() {
           <CardContent className="p-6">
             {!isEditing ? (
               <div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
                   <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aadhar Number</p>
                     <p className="text-sm font-medium text-slate-800 mt-1">{aadhar || "Not provided"}</p>
@@ -310,8 +313,12 @@ export default function DocumentsPage() {
                     <p className="text-sm font-medium text-slate-800 mt-1">{bankAccountName || "Not provided"}</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Details (A/c & IFSC)</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Number</p>
                     <p className="text-sm font-medium text-slate-800 mt-1">{bankDetails || "Not provided"}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">IFSC Code</p>
+                    <p className="text-sm font-medium text-slate-800 mt-1">{ifscCode || "Not provided"}</p>
                   </div>
                 </div>
                 <div className="mt-4 flex justify-end">
@@ -322,7 +329,7 @@ export default function DocumentsPage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Aadhar Number</label>
                     <input type="text" maxLength={12} value={aadhar} onChange={(e) => setAadhar(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter 12-digit Aadhar" />
@@ -336,8 +343,12 @@ export default function DocumentsPage() {
                     <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Name as per bank" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Bank Details (A/c & IFSC)</label>
-                    <input type="text" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Account Number, IFSC" />
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Account Number</label>
+                    <input type="text" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter Account Number" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">IFSC Code</label>
+                    <input type="text" value={ifscCode} onChange={(e) => setIfscCode(e.target.value.toUpperCase())} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter IFSC Code" />
                   </div>
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
@@ -390,7 +401,7 @@ export default function DocumentsPage() {
             <p className="text-sm mt-1">Nothing matches &quot;{docSearch}&quot;.</p>
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
           {visibleDocuments.map((doc, i) => {
             const { icon: DocIcon, color, bg } = getDocIcon(doc.status);
             return (

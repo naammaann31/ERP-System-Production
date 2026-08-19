@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, LogOut, LogIn, Info, X } from "lucide-react";
@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { 
   checkIn, 
   checkOut, 
-  getTodayAttendance, 
+  getTodayAttendance,
+  istParts, 
   updateWorkingSeconds,
   computeWorkedSeconds,
   formatISTClock,
@@ -23,6 +24,7 @@ export default function LiveAttendanceCard() {
   const [attendanceRecord, setAttendanceRecord] = useState<AttendanceRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [showClockOutConfirm, setShowClockOutConfirm] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const recordRef = useRef<AttendanceRecord | null>(null);
 
@@ -52,7 +54,7 @@ export default function LiveAttendanceCard() {
     // Recompute from the check-in timestamp each tick rather than adding a
     // second. The old version called setWorkingSeconds INSIDE a
     // setIsCheckedIn updater; updater functions must be pure, and React
-    // double-invokes them in development to surface exactly this — which is
+    // double-invokes them in development to surface exactly this â€” which is
     // what made the clock run at two seconds per second.
     //
     // The record is read through a ref so the tick stays pure and the
@@ -121,7 +123,7 @@ export default function LiveAttendanceCard() {
     }
   };
 
-  // Always Indian time, never the device's — see formatISTClock.
+  // Always Indian time, never the device's â€” see formatISTClock.
   const formatTime = formatISTClock;
 
   const renderDuration = (totalSeconds: number) => {
@@ -154,6 +156,12 @@ export default function LiveAttendanceCard() {
   const progressPercentage = Math.min(100, (workingSeconds / shiftTotalSeconds) * 100);
 
   const alreadyCheckedOut = attendanceRecord?.status === "Present";
+
+  const isTooLateToClockIn = !isCheckedIn && !alreadyCheckedOut && !!currentTime && (() => {
+    const p = istParts(currentTime);
+    const hour = Number(p.hour);
+    return hour >= 0 && hour < 6;
+  })();
 
   return (
     <>
@@ -214,10 +222,9 @@ export default function LiveAttendanceCard() {
       <div className="flex flex-col gap-2 mt-4">
         <button
           onClick={handleToggleCheckIn}
-          disabled={loading || alreadyCheckedOut}
+          disabled={loading || alreadyCheckedOut || isTooLateToClockIn}
           className={`w-full flex items-center justify-center gap-2 text-white text-[11px] font-bold py-2.5 rounded-lg transition-all shadow-md active:scale-[0.98] ${
-            alreadyCheckedOut 
-              ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
+            (alreadyCheckedOut || isTooLateToClockIn) ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
               : isCheckedIn 
                 ? 'bg-[#4f46e5] hover:bg-indigo-700' 
                 : 'bg-[#4f46e5] hover:bg-indigo-700'
@@ -231,7 +238,7 @@ export default function LiveAttendanceCard() {
             <><span>&rarr;</span> Clock In Now</>
           )}
         </button>
-        <button className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-[10px] font-semibold py-2 rounded-lg transition-colors">
+        <button onClick={() => setShowRules(true)} className="w-full flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-[10px] font-semibold py-2 rounded-lg transition-colors">
           <Info className="h-3 w-3 text-slate-400" /> View Details
         </button>
       </div>
@@ -273,6 +280,53 @@ export default function LiveAttendanceCard() {
           </div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showRules && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
+            >
+              <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight">Attendance Rules</h2>
+                  <p className="text-xs font-semibold text-slate-500 mt-1">Company policies & guidelines</p>
+                </div>
+                <button onClick={() => setShowRules(false)} className="p-2 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 max-h-[60vh] overflow-y-auto">
+                <div className="space-y-4 text-sm text-slate-600">
+                  <div>
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
+                    <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                      <li>Standard shift starts before <span className="font-semibold text-slate-800">7:45 PM IST</span>.</li>
+                      <li>Clocking in after 7:45 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                      <li>Clock In is <span className="font-semibold text-slate-800">disabled after 11:59 PM</span>. You will automatically be marked Absent.</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="pt-2">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
+                    <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                      <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
+                      <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 5:00 AM</span> and mark you Absent for the entire day.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </>
   );
 }
+
+

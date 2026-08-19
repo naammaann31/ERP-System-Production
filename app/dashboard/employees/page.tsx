@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -117,6 +117,8 @@ export default function EmployeesPage() {
         department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
         jobRole: row.job_role || "N/A",
         designation: row.designation || "Employee",
+        phone: row.phone || "",
+        dateOfJoining: row.date_of_joining || "",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
       }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
@@ -443,3 +445,4 @@ export default function EmployeesPage() {
     </div>
   );
 }
+

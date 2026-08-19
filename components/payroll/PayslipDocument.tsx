@@ -164,7 +164,8 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
 
         {/* Employee Details Table */}
         <div style={{ padding: '0 40px', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
+          <div className="overflow-x-auto w-full max-w-full">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
             <tbody>
               <tr>
                 <td style={{ textAlign: 'center', border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, width: '25%', color: '#000000', verticalAlign: 'middle' }}>Employee Name</td>
@@ -192,11 +193,13 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
               </tr>
             </tbody>
           </table>
+</div>
         </div>
 
         {/* Earnings & Deductions Table */}
         <div style={{ padding: '0 40px', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
+          <div className="overflow-x-auto w-full max-w-full">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
             <thead>
               <tr>
                 <td style={{ textAlign: 'center', border: '1px solid #000000', padding: '6px 10px', fontWeight: 700, backgroundColor: 'rgba(224,224,224,0.7)', width: '25%', color: '#000000', verticalAlign: 'middle' }}>Earnings</td>
@@ -244,11 +247,13 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
               </tr>
             </tbody>
           </table>
+</div>
         </div>
 
         {/* Net Salary Payable */}
         <div style={{ padding: '0 40px', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
+          <div className="overflow-x-auto w-full max-w-full">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'center', lineHeight: '1.6' }}>
             <tbody>
               <tr>
                 <td style={{ textAlign: 'center', border: '1px solid #000000', padding: '8px 10px', fontWeight: 700, color: '#000000', backgroundColor: 'rgba(229,229,229,0.7)', verticalAlign: 'middle' }}>
@@ -257,11 +262,13 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
               </tr>
             </tbody>
           </table>
+</div>
         </div>
 
         {/* Payment Disbursement Details */}
         <div style={{ padding: '0 40px', marginBottom: '20px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', lineHeight: '1.6' }}>
+          <div className="overflow-x-auto w-full max-w-full">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', lineHeight: '1.6' }}>
             <tbody>
               <tr>
                 <td style={{ border: '1px dashed #000000', padding: '10px', color: '#000000' }}>
@@ -272,6 +279,7 @@ export default function PayslipDocument({ payroll }: { payroll: PayrollRecord })
               </tr>
             </tbody>
           </table>
+</div>
         </div>
 
         {/* Authorized Signatory */}

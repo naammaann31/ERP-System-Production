@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -120,15 +120,10 @@ function HRDepartmentsDashboard() {
           <p className="text-slate-500 text-sm mt-1">Manage organizational structure and departments across the company.</p>
         </div>
         
-        <div className="flex items-center gap-3">
-          <button className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
-            <UserPlus className="w-4 h-4" />
-            <span>Add Department</span>
-          </button>
-        </div>
+        
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {departments.map((dept, index) => (
           <motion.div
             key={dept.id}
@@ -267,7 +262,7 @@ function EmployeeDepartmentDashboard() {
           <Users className="w-5 h-5 text-indigo-600" />
           Team Directory
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {teamMembers.map((member, i) => (
             <motion.div
               key={member.name}
@@ -320,3 +315,4 @@ export default function DepartmentsPage() {
 
   return <EmployeeDepartmentDashboard />;
 }
+

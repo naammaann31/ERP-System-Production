@@ -42,7 +42,7 @@ export default function EmployeePayrollDashboard() {
                   payrolls.map(pr => (
                     <tr key={pr.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-slate-900">{new Date(0, pr.month - 1).toLocaleString('default', { month: 'long' })} {pr.year}</td>
-                      <td className="px-6 py-4 font-bold text-slate-700">₹{pr.netSalary.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-bold text-slate-700">{pr.netSalary.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">Paid</Badge>
                       </td>

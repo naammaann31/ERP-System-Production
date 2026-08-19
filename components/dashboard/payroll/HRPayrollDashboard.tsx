@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
@@ -29,6 +29,7 @@ interface Employee {
   name: string;
   department: string;
   jobRole: string;
+  isConfigured?: boolean;
 }
 
 export default function HRPayrollDashboard() {
@@ -73,12 +74,15 @@ export default function HRPayrollDashboard() {
     const supabase = createClient();
 
     const fetchEmployees = async () => {
-      const { data, error } = await supabase.from("profiles").select("*");
+      const { data, error } = await supabase.from("profiles").select("*").neq("role", "Admin");
       if (error) {
         console.error(error);
         setLoading(false);
         return;
       }
+      
+      
+
       const emps = (data || []).map((row: any) => ({
         uid: row.id,
         id: row.employee_id || "N/A",
@@ -86,6 +90,7 @@ export default function HRPayrollDashboard() {
         department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
         jobRole: row.job_role || "N/A",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
+        isConfigured: false,
       }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);
@@ -183,13 +188,18 @@ export default function HRPayrollDashboard() {
   const handleSaveStructure = async () => {
     if (!selectedEmployee) return;
     await saveSalaryStructure(selectedEmployee.uid, {
-      grossSalary,
-      travelAllowance,
-      otherAllowances: 0,
-      otherDeductions
-    });
-    setIsConfigModalOpen(false);
-    toast.success("Salary structure updated successfully!");
+        grossSalary,
+        travelAllowance,
+        otherAllowances: 0,
+        otherDeductions
+      });
+      
+      setEmployees(prev => prev.map(emp => 
+        emp.uid === selectedEmployee.uid ? { ...emp, isConfigured: true } : emp
+      ));
+      
+      setIsConfigModalOpen(false);
+      toast.success("Salary structure updated successfully!");
   };
 
   const openGenerateModal = async (emp: Employee) => {
@@ -245,10 +255,15 @@ export default function HRPayrollDashboard() {
     }
   };
 
-  const executeDeletePayroll = async () => {
+    const executeDeletePayroll = async () => {
     if (!payrollToDelete || !payrollToDelete.id) return;
     await deletePayroll(payrollToDelete.id);
     getAllPayrolls().then(setAllPayrolls);
+    
+    setEmployees(prev => prev.map(emp => 
+      emp.uid === payrollToDelete.userId ? { ...emp, isConfigured: false } : emp
+    ));
+    
     setPayrollToDelete(null);
     toast.success("Payroll record deleted");
   };
@@ -305,11 +320,15 @@ export default function HRPayrollDashboard() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
                             <button 
-                              onClick={() => openConfigModal(emp)}
-                              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5"
-                            >
-                              <Edit className="w-3.5 h-3.5 text-slate-500" /> Configure Salary
-                            </button>
+                                onClick={() => openConfigModal(emp)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 border ${
+                                  emp.isConfigured && !hasPayrollThisMonth
+                                    ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                }`}
+                              >
+                                <Edit className={`w-3.5 h-3.5 ${emp.isConfigured && !hasPayrollThisMonth ? "text-green-600" : "text-slate-500"}`} /> Configure Salary
+                              </button>
                             {hasPayrollThisMonth ? (
                               <button 
                                 onClick={() => openGenerateModal(emp)}
@@ -339,7 +358,7 @@ export default function HRPayrollDashboard() {
 
       <div>
         <h3 className="font-bold text-lg text-slate-800 mb-4">Recent Payrolls Generated</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {allPayrolls.map(pr => (
             <Card key={pr.id} className="border border-slate-200 shadow-sm p-4 relative group">
               <div className="flex justify-between items-start mb-2">
@@ -361,7 +380,7 @@ export default function HRPayrollDashboard() {
               <div className="flex justify-between items-end mt-4">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Net Salary</p>
-                  <p className="font-black text-xl text-slate-800">₹{pr.netSalary.toLocaleString()}</p>
+                  <p className="font-black text-xl text-slate-800">{pr.netSalary.toLocaleString()}</p>
                 </div>
                 <PayslipDocument payroll={pr} />
               </div>
@@ -428,3 +447,7 @@ export default function HRPayrollDashboard() {
     </div>
   );
 }
+
+
+
+

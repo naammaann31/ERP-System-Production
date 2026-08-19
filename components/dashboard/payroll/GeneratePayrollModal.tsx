@@ -225,18 +225,18 @@ export default function GeneratePayrollModal({
             <p className="text-[10px] font-bold text-amber-700/60 uppercase tracking-[0.12em] mb-3">Payroll Summary</p>
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-medium text-amber-800">
-                <span>LOP Deduction</span><span>?{preview.lopDeduction.toLocaleString()}</span>
+                <span>LOP Deduction</span><span>{preview.lopDeduction.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-amber-800">
-                <span>Tax (PT + TDS)</span><span>?{(preview.taxDeduction + preview.incomeTax).toLocaleString()}</span>
+                <span>Tax (PT + TDS)</span><span>{(preview.taxDeduction + preview.incomeTax).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xs font-semibold text-amber-800">
-                <span>Total Deductions</span><span>?{preview.totalDeductions.toLocaleString()}</span>
+                <span>Total Deductions</span><span>{preview.totalDeductions.toLocaleString()}</span>
               </div>
             </div>
             <div className="border-t border-amber-200/80 mt-3 pt-3 flex justify-between items-center">
               <span className="text-sm font-bold text-amber-900">Net Payable</span>
-              <span className="text-xl font-black text-amber-900">?{preview.netSalary.toLocaleString()}</span>
+              <span className="text-xl font-black text-amber-900">{preview.netSalary.toLocaleString()}</span>
             </div>
           </div>
         </div>

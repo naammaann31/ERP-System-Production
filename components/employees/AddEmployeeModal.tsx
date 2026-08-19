@@ -68,6 +68,8 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
             password,
             jobRole,
             designation,
+            phone,
+            dateOfJoining,
         });
 
         if (signUpError) {

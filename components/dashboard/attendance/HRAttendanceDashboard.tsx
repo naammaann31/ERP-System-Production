@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
-import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime } from "@/lib/attendance";
+import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime, updateAttendanceStatus } from "@/lib/attendance";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,32 @@ const hrStats = [
 export default function HRAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+
+  const handleStatusChange = async (record: AttendanceRecord, newStatusOption: string) => {
+    let newStatus: AttendanceRecord["status"] = "Present";
+    let isHalfDay = false;
+    if (newStatusOption === "present") {
+      newStatus = "Present";
+    } else if (newStatusOption === "half-day") {
+      newStatus = "Present";
+      isHalfDay = true;
+    } else if (newStatusOption === "absent") {
+      newStatus = "Absent";
+    }
+    
+    try {
+      await updateAttendanceStatus(record.id as string, newStatus, isHalfDay, record.userId, record.date, record.fullName, record.role);
+      toast.success("Attendance status updated");
+      // update local state
+      setRecords(prev => prev.map(emp => 
+        emp.id === record.id ? { ...emp, status: newStatus, isHalfDay } : emp
+      ));
+    } catch (e) {
+      toast.error("Failed to update status");
+      console.error(e);
+    }
+  };
+
   // Always query by the current business day. The app stores timestamps in IST
   // wall-clock, but JS Date() is local. getLocalDateString wraps istParts() to
   // give the true Indian date, shifted back to yesterday if it's before 6:00 AM
@@ -149,7 +176,7 @@ export default function HRAttendanceDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
         {hrStats.map((stat, i) => {
           let val = stat.value;
           if (stat.title === "Total Present Today") {
@@ -182,15 +209,7 @@ export default function HRAttendanceDashboard() {
                 <div className={`p-2 rounded-xl ${stat.bg} ${stat.color} shadow-inner`}>
                   <stat.icon className="w-5 h-5" />
                 </div>
-                {stat.trendUp ? (
-                  <span className="text-emerald-600 bg-emerald-50 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-100/50">
-                    {stat.trend}
-                  </span>
-                ) : (
-                  <span className="text-red-600 bg-red-50 text-[10px] font-bold px-2 py-1 rounded-full border border-red-100/50">
-                    {stat.trend}
-                  </span>
-                )}
+                
               </div>
               <div className="relative z-10">
                 <h3 className="text-slate-500 text-xs font-semibold mb-0.5">{stat.title}</h3>
@@ -227,13 +246,15 @@ export default function HRAttendanceDashboard() {
               <p className="font-medium">Loading records...</p>
             </div>
           ) : (
-            <table className="w-full text-sm text-left">
+            <div className="overflow-x-auto w-full max-w-full">
+<table className="w-full text-sm text-left">
               <thead className="text-[11px] text-slate-500 uppercase bg-white border-b border-slate-100 tracking-wider">
                 <tr>
                   <th className="px-5 py-4 font-bold">Employee</th>
                   <th className="px-5 py-4 font-bold">Check In</th>
                   <th className="px-5 py-4 font-bold">Check Out</th>
                   <th className="px-5 py-4 font-bold">Status</th>
+                  <th className="px-5 py-4 font-bold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -264,11 +285,23 @@ export default function HRAttendanceDashboard() {
                       <td className="px-5 py-3 whitespace-nowrap">
                         {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
                       </td>
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <select
+                          className="text-xs border-slate-200 rounded-md py-1 px-2"
+                          value={record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
+                          onChange={(e) => handleStatusChange(record, e.target.value)}
+                        >
+                          <option value="present">Present</option>
+                          <option value="half-day">Half Day</option>
+                          <option value="absent">Absent</option>
+                        </select>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+</div>
           )}
         </div>
       </Card>
