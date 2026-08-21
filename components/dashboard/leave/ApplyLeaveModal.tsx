@@ -22,13 +22,13 @@ interface ApplyLeaveModalProps {
 
 export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: ApplyLeaveModalProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [leaveType, setLeaveType] = useState("Paid Leave (PL)");
+  const [leaveType, setLeaveType] = useState("Leave");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
   const [isHalfDay, setIsHalfDay] = useState(false);
 
-  const leaveOptions = ["Paid Leave (PL)", "Casual Leave"];
+  const leaveOptions = ["Leave"];
   const days = isHalfDay ? 0.5 : calcDays(startDate, endDate);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -61,42 +61,7 @@ export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmittin
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div>
-            <label className="block text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Leave Type</label>
-            <div className="relative">
-              <div
-                className={`w-full bg-slate-50 border ${isDropdownOpen ? 'border-blue-500 ring-4 ring-blue-500/10 bg-white' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm text-slate-800 font-semibold transition-all cursor-pointer flex items-center justify-between`}
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              >
-                {leaveType}
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-              </div>
 
-              {isDropdownOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] overflow-hidden"
-                >
-                  {leaveOptions.map((option) => (
-                    <div
-                      key={option}
-                      onClick={() => {
-                        setLeaveType(option);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`px-4 py-3 text-sm font-semibold cursor-pointer transition-colors ${leaveType === option
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
-                        }`}
-                    >
-                      {option}
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-            </div>
-          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>

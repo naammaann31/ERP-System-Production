@@ -35,6 +35,8 @@ interface GeneratePayrollModalProps {
   modeOfPayment: string;
   setModeOfPayment: (val: string) => void;
   preview: any;
+  leavesTakenThisMonth?: number;
+  paidLeavesThisMonth?: number;
 }
 
 const MONTHS = [
@@ -119,7 +121,7 @@ export default function GeneratePayrollModal({
   providentFund, setProvidentFund,
   paymentDate, setPaymentDate,
   modeOfPayment, setModeOfPayment,
-  preview
+  preview, leavesTakenThisMonth = 0, paidLeavesThisMonth = 0
 }: GeneratePayrollModalProps) {
   if (!isOpen) return null;
 
@@ -160,7 +162,29 @@ export default function GeneratePayrollModal({
             </div>
           </div>
 
+          
+          {/* Leaves Summary */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Leave & Attendance</p>
+              <p className="text-sm font-semibold text-slate-800">
+                {leavesTakenThisMonth} Total Leaves Taken
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-center px-3 py-1.5 bg-green-100 rounded-lg border border-green-200">
+                <p className="text-[10px] font-bold text-green-700 uppercase">Paid Leaves</p>
+                <p className="text-lg font-black text-green-700">{paidLeavesThisMonth}</p>
+              </div>
+              <div className="text-center px-3 py-1.5 bg-red-100 rounded-lg border border-red-200">
+                <p className="text-[10px] font-bold text-red-700 uppercase">Unpaid (LOP)</p>
+                <p className="text-lg font-black text-red-700">{Math.max(0, leavesTakenThisMonth - paidLeavesThisMonth)}</p>
+              </div>
+            </div>
+          </div>
+
           {/* LOP Days + Days in Month */}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>LOP Days</label>

@@ -30,6 +30,7 @@ interface Employee {
   department: string;
   jobRole: string;
   isConfigured?: boolean;
+  dateOfJoining?: string;
 }
 
 export default function HRPayrollDashboard() {
@@ -51,6 +52,8 @@ export default function HRPayrollDashboard() {
   
   // Generate Form State
   const [lopDays, setLopDays] = useState<number>(0);
+  const [leavesTakenThisMonth, setLeavesTakenThisMonth] = useState<number>(0);
+  const [paidLeavesThisMonth, setPaidLeavesThisMonth] = useState<number>(0);
   const [daysInMonth, setDaysInMonth] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [year, setYear] = useState<number>(new Date().getFullYear());
@@ -131,36 +134,52 @@ export default function HRPayrollDashboard() {
           return start.getFullYear() === year && l.status === "Approved";
       });
   
-      let lopTotal = 0;
       
-      const limits: Record<string, number> = {
-          "Paid Leave (PL)": 12,
-          "Casual Leave": 12
-      };
-  
-      for (const [type, limit] of Object.entries(limits)) {
-          const typeLeaves = yearLeaves.filter(l => l.leaveType === type);
-          
-          let previousLeaves = 0;
-          let currentLeaves = 0;
-          
-          typeLeaves.forEach(l => {
-              const start = new Date(l.startDate);
-              if (start.getMonth() + 1 < month) {
-                  previousLeaves += l.days;
-              } else if (start.getMonth() + 1 === month) {
-                  currentLeaves += l.days;
-              }
-          });
-  
-          if (previousLeaves >= limit) {
-              lopTotal += currentLeaves;
-          } else {
-              lopTotal += Math.max(0, (previousLeaves + currentLeaves) - limit);
-          }
-      }
-      
-      setLopDays(lopTotal);
+        let totalLeavesTakenBeforeMonth = 0;
+        let leavesTakenInMonth = 0;
+
+        yearLeaves.forEach(l => {
+            const start = new Date(l.startDate);
+            if (start.getFullYear() < year || (start.getFullYear() === year && start.getMonth() + 1 < month)) {
+                totalLeavesTakenBeforeMonth += l.days;
+            } else if (start.getFullYear() === year && start.getMonth() + 1 === month) {
+                leavesTakenInMonth += l.days;
+            }
+        });
+        
+        // Use the helper from lib/leave (we need to import it!)
+        // Wait, calculateMonthsEmployed isn't imported here yet. Let's just inline the logic or import it.
+        // I will add the import at the top later.
+        const calculateAccrued = () => {
+            if (!selectedEmployee.dateOfJoining) return 2; // Default 2 for 1st month
+            const joinDate = new Date(selectedEmployee.dateOfJoining);
+            if (isNaN(joinDate.getTime())) return 2;
+            
+            const targetDate = new Date(year, month - 1, 1);
+            
+            // If they are generating payroll for a month BEFORE they joined, this is weird but we handle it
+            if (targetDate < joinDate) return 0;
+            
+            const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
+            const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
+            const totalMonths = (yearsDiff * 12) + monthsDiff;
+            return Math.max(1, totalMonths + 1) * 2;
+        };
+        
+        const totalAccruedUpToMonth = calculateAccrued();
+        const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
+        
+        // If they took more leaves in this month than their available balance, the rest is LOP
+        const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
+        
+        // Save these to state so we can show them in the modal
+        setLopDays(unpaidLeaves);
+        setLeavesTakenThisMonth(leavesTakenInMonth);
+        setPaidLeavesThisMonth(Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth));
+        
+        // Wait, we also need to pass leavesTakenInMonth and availableBalanceAtStartOfMonth to the modal!
+        // We can add state for them.
+
     };
 
     fetchAndCalculateLop();
@@ -413,6 +432,8 @@ export default function HRPayrollDashboard() {
         setYear={setYear}
         lopDays={lopDays}
         setLopDays={setLopDays}
+          leavesTakenThisMonth={leavesTakenThisMonth}
+          paidLeavesThisMonth={paidLeavesThisMonth}
         daysInMonth={daysInMonth}
         dateOfJoining={dateOfJoining}
         setDateOfJoining={setDateOfJoining}

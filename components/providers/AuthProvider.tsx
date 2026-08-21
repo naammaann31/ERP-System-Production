@@ -5,15 +5,16 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 export interface UserProfile {
-    uid: string;
-    fullName: string;
-    email: string;
-    role: string;
-    status?: string;
-    jobRole?: string;
-    employeeId?: string;
-    designation?: string;
-    department?: string;
+  uid: string;
+  fullName: string;
+  email: string;
+  role: string;
+  status?: string;
+  jobRole?: string;
+  employeeId?: string;
+  designation?: string;
+  department?: string;
+  dateOfJoining?: string;
 }
 
 interface AuthContextType {
@@ -31,17 +32,18 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 function toProfile(row: any): UserProfile {
-    return {
-        uid: row.id,
-        fullName: row.full_name,
-        email: row.email,
-        role: row.role,
-        status: row.status,
-        jobRole: row.job_role,
-        employeeId: row.employee_id,
-        designation: row.designation,
-        department: row.department,
-    };
+  return {
+    uid: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    jobRole: row.job_role,
+    employeeId: row.employee_id,
+    designation: row.designation,
+    department: row.department,
+    dateOfJoining: row.date_of_joining,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

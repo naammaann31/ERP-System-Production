@@ -6,7 +6,7 @@ import { CalendarCheck, Clock, Palmtree, Users, Wallet, Activity } from "lucide-
 import { useAuth } from "@/components/providers/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
 import { getTodayAttendance, computeWorkedSeconds } from "@/lib/attendance";
-import { getUserLeaves } from "@/lib/leave";
+import { getUserLeaves, calculateAccruedLeaves } from "@/lib/leave";
 import { getEmployeePayrolls } from "@/lib/payroll";
 
 export default function TopStats() {
@@ -76,10 +76,9 @@ export default function TopStats() {
 
     // Get leave balance
     getUserLeaves(profile.uid).then((leaves) => {
-      const plUsed = leaves.filter((l) => l.leaveType === "Paid Leave (PL)" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
-      const clUsed = leaves.filter((l) => l.leaveType === "Casual Leave" && l.status === "Approved").reduce((s, l) => s + l.days, 0);
-      const totalUsed = plUsed + clUsed;
-      const totalAvailable = 24 - totalUsed; // 12 PL + 12 CL = 24 total
+      const totalUsed = leaves.filter((l) => l.status === "Approved").reduce((s, l) => s + l.days, 0);
+      const totalAccrued = calculateAccruedLeaves(profile.dateOfJoining);
+      const totalAvailable = totalAccrued - totalUsed;
       setLeaveBalance(totalAvailable.toString());
     });
 

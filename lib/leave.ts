@@ -86,8 +86,39 @@ export const getAllPendingLeaves = async () => {
 
 export const updateLeaveStatus = async (leaveId: string, status: "Approved" | "Rejected") => {
   const supabase = createClient();
+  
+  // Fetch leave details
+  const { data: leave } = await supabase.from("leave_requests").select("*").eq("id", leaveId).single();
+  
   const { error } = await supabase.from("leave_requests").update({ status }).eq("id", leaveId);
   if (error) throw error;
+  
+  if (leave) {
+    try {
+      const formatDate = (dateStr: string) => {
+          if (!dateStr) return "-";
+          const d = new Date(dateStr);
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      };
+      const duration = `${formatDate(leave.start_date)} - ${formatDate(leave.end_date)}`;
+      
+      await fetch("/api/send-leave-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: leave.user_id,
+          employeeName: leave.full_name,
+          leaveType: leave.leave_type,
+          duration: duration,
+          days: leave.days,
+          reason: leave.reason,
+          status: status
+        })
+      });
+    } catch (e) {
+      console.error("Failed to trigger email", e);
+    }
+  }
 };
 
 function listenToQuery(
@@ -130,4 +161,24 @@ export const listenToPendingLeaves = (callback: (leaves: LeaveRequest[]) => void
 
 export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) => {
   return listenToQuery((q) => q, callback);
+};
+
+export const calculateMonthsEmployed = (dateOfJoining: string | undefined): number => {
+  if (!dateOfJoining) return 1; // Default to 1 month if no date is set
+  const joinDate = new Date(dateOfJoining);
+  const now = new Date();
+  
+  if (isNaN(joinDate.getTime())) return 1;
+  
+  const yearsDiff = now.getFullYear() - joinDate.getFullYear();
+  const monthsDiff = now.getMonth() - joinDate.getMonth();
+  const totalMonths = (yearsDiff * 12) + monthsDiff;
+  
+  // They get 2 leaves for the current month they are in as well, so we add 1.
+  return Math.max(1, totalMonths + 1);
+};
+
+export const calculateAccruedLeaves = (dateOfJoining: string | undefined): number => {
+  const months = calculateMonthsEmployed(dateOfJoining);
+  return months * 2;
 };

@@ -41,7 +41,7 @@ export default function HRLeaveDashboard() {
       const filtered = fetched.filter(req => {
         const myRole = profile?.role?.toUpperCase();
         const reqRole = req.role?.toUpperCase();
-        if (myRole === "HR" && (reqRole === "HR" || reqRole === "ADMIN" || reqRole === "OPS_HR")) {
+        if (myRole === "HR" && (reqRole === "HR" || reqRole === "ADMIN")) {
           return false;
         }
         return true;

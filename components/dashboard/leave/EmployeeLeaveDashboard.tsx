@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Plus, Calendar, Clock, CheckCircle2, LayoutGrid, List } from "lucide-react";
-import { applyLeave, listenToUserLeaves, LeaveRequest } from "@/lib/leave";
+import { applyLeave, listenToUserLeaves, LeaveRequest, calculateAccruedLeaves } from "@/lib/leave";
 import LeaveCalendar from "./LeaveCalendar";
 import ApplyLeaveModal from "./ApplyLeaveModal";
 
@@ -26,8 +26,8 @@ const formatTimestamp = (ts: any) => {
 };
 
 const initialLeaveBalances = [
-  { type: "Paid Leave (PL)", total: 12, used: 0, pending: 0, icon: Calendar, color: "text-blue-500", bg: "bg-blue-50" },
-  { type: "Casual Leave", total: 12, used: 0, pending: 0, icon: Clock, color: "text-orange-500", bg: "bg-orange-50" },
+  { type: "Total Leaves", total: 0, used: 0, pending: 0, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-50" },
+  { type: "Leaves This Month", total: 0, used: 0, pending: 0, icon: Calendar, color: "text-blue-500", bg: "bg-blue-50" }
 ];
 
 export default function EmployeeLeaveDashboard() {
@@ -48,23 +48,36 @@ export default function EmployeeLeaveDashboard() {
       setLeaves(fetched);
 
       const updatedBalances = initialLeaveBalances.map(bal => ({ ...bal, used: 0, pending: 0 }));
-      let plUsed = 0, plPending = 0;
-      let clUsed = 0, clPending = 0;
+      
+      const totalAccrued = calculateAccruedLeaves(profile?.dateOfJoining);
+      updatedBalances[0].total = totalAccrued;
+      
+      let totalUsed = 0, totalPending = 0;
+      let usedThisMonth = 0;
+      
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
 
       fetched.forEach(l => {
-        if (l.leaveType === "Paid Leave (PL)") {
-          if (l.status === "Approved") plUsed += l.days;
-          if (l.status === "Pending") plPending += l.days;
-        } else if (l.leaveType === "Casual Leave") {
-          if (l.status === "Approved") clUsed += l.days;
-          if (l.status === "Pending") clPending += l.days;
+        if (l.status === "Approved") {
+            totalUsed += l.days;
+            const start = new Date(l.startDate);
+            if (start.getMonth() === currentMonth && start.getFullYear() === currentYear) {
+                usedThisMonth += l.days;
+            }
         }
+        if (l.status === "Pending") totalPending += l.days;
       });
 
-      updatedBalances[0].used = plUsed;
-      updatedBalances[0].pending = plPending;
-      updatedBalances[1].used = clUsed;
-      updatedBalances[1].pending = clPending;
+      
+      updatedBalances[0].used = totalUsed;
+      updatedBalances[0].pending = totalPending;
+      updatedBalances[1].used = usedThisMonth;
+
+      
+      // We need a way to pass usedThisMonth to the state so we can render the second card.
+      // Let's modify initialLeaveBalances to hold two items instead!
+
 
       setBalances(updatedBalances);
       setLoading(false);
@@ -93,16 +106,6 @@ export default function EmployeeLeaveDashboard() {
     setIsSubmitting(false);
   };
 
-  const totalBalance = {
-    type: "Total Leaves",
-    total: balances[0].total + balances[1].total,
-    used: balances[0].used + balances[1].used,
-    pending: balances[0].pending + balances[1].pending,
-    icon: CheckCircle2,
-    color: "text-green-500",
-    bg: "bg-green-50"
-  };
-
   return (
     <div className="max-w-[1400px] mx-auto space-y-4 pb-4 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
@@ -126,8 +129,8 @@ export default function EmployeeLeaveDashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[...balances, totalBalance].map((leave, i) => {
-          const available = leave.total - leave.used - leave.pending;
+        {balances.map((leave, i) => {
+          const available = Math.max(0, leave.total - leave.used - leave.pending);
           return (
             <motion.div key={leave.type} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
               <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden">
@@ -138,10 +141,12 @@ export default function EmployeeLeaveDashboard() {
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">{leave.type}</h3>
                   </div>
-                  <div className="flex items-baseline gap-1.5 mb-3">
-                    <span className="text-3xl font-black text-slate-900 tracking-tight">{available}</span>
-                    <span className="text-slate-500 text-[11px] font-semibold">/ {leave.total} days</span>
+                  
+                                    <div className="flex items-baseline gap-1.5 mb-3">
+                    <span className="text-3xl font-black text-slate-900 tracking-tight">{leave.type === "Leaves This Month" ? leave.used : available}</span>
+                    {leave.type !== "Leaves This Month" && <span className="text-slate-500 text-[11px] font-semibold">/ {leave.total} days</span>}
                   </div>
+                  {leave.type !== "Leaves This Month" && (
                   <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                     <div>
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Used</p>
@@ -152,6 +157,7 @@ export default function EmployeeLeaveDashboard() {
                       <p className="text-base font-black text-slate-800">{leave.pending}</p>
                     </div>
                   </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>

@@ -76,7 +76,7 @@ export default function EmployeeProfilePage() {
 
   const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
   // A Team-Lead viewing a teammate's profile (not Admin/HR, and not their
-  // own profile) only gets the leads section — no personal/attendance/
+  // own profile) only gets the leads section - no personal/attendance/
   // leave/payroll data, which is Admin/HR-only.
   const isTeamLeadViewingOther =
     !isAdminOrHR && profile?.designation === "Team-Lead" && profile?.uid !== uid;
@@ -111,7 +111,7 @@ export default function EmployeeProfilePage() {
 
       // Statutory/bank details moved to employee_private (migration 14).
       // Its policy is self-or-Admin/HR, so for anyone else this simply comes
-      // back empty and the fields render as "Not provided" — no error.
+      // back empty and the fields render as "Not provided" - no error.
       const { data: priv } = await supabase
         .from("employee_private")
         .select("aadhar, pan, bank_account_name, bank_details, ifsc_code")
@@ -216,7 +216,7 @@ export default function EmployeeProfilePage() {
     },
     {
       title: "Latest Net Salary",
-      value: latestPayroll ? `₹${latestPayroll.netSalary.toLocaleString()}` : "—",
+      value: latestPayroll ? `Rs. ${latestPayroll.netSalary.toLocaleString()}` : "-",
       subtitle: latestPayroll ? `${latestPayroll.month}/${latestPayroll.year}` : "No payroll",
       icon: Wallet,
       color: "text-purple-600",
@@ -225,7 +225,7 @@ export default function EmployeeProfilePage() {
     },
     {
       title: "Payroll Status",
-      value: latestPayroll ? latestPayroll.status : "—",
+      value: latestPayroll ? latestPayroll.status : "-",
       subtitle: latestPayroll ? "Current" : "N/A",
       icon: BadgeCheck,
       color: "text-blue-600",
@@ -560,8 +560,8 @@ export default function EmployeeProfilePage() {
                             payrolls.slice(0, 10).map((p) => (
                               <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{p.month}/{p.year}</td>
-                                <td className="px-5 py-2.5 text-slate-600 text-xs">₹{p.grossSalary.toLocaleString()}</td>
-                                <td className="px-5 py-2.5 font-bold text-emerald-700 text-xs">₹{p.netSalary.toLocaleString()}</td>
+                                <td className="px-5 py-2.5 text-slate-600 text-xs">Rs. {p.grossSalary.toLocaleString()}</td>
+                                <td className="px-5 py-2.5 font-bold text-emerald-700 text-xs">Rs. {p.netSalary.toLocaleString()}</td>
                                 <td className="px-5 py-2.5">
                                   <Badge
                                     variant={p.status === "Paid" ? "success" : "warning"}
