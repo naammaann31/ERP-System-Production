@@ -49,5 +49,11 @@
     "supabase": "^2.113.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "react-day-picker": {
+      "date-fns": "-fns",
+      "react": ""
+    }
   }
 }
