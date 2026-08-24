@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } from "lucide-react";
@@ -104,48 +104,63 @@ function GenerateReportModal({ isOpen, onClose, profile, startDate, endDate, dis
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
-                <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/80">
-                    <div>
-                        <h3 className="font-black text-slate-900 text-lg">Generate Daily Report</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Fill in your daily marketing metrics</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-700">
+                <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-white tracking-tight">Generate Daily Report</h2>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-xl transition-colors">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                <div className="p-5 space-y-4">
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</label>
-                        <input type="text" value={profile?.fullName || ""} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">No of Candidates</label>
-                            <input type="number" value={stats.candidates} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Applications</label>
-                            <input type="number" value={stats.applications} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                        </div>
-                        <div className="space-y-1.5 col-span-2">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">RTR Submissions</label>
-                            <input type="number" value={rtr} onChange={e => setRtr(e.target.value)} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Screenings</label>
-                            <input type="number" value={stats.screenings} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Interviews</label>
-                            <input type="number" value={stats.interviews} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                        </div>
+                
+                <div className="p-6 space-y-4">
+                    <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
+                        <table className="w-full text-sm text-left text-slate-300">
+                            <tbody>
+                                <tr className="border-b border-slate-700">
+                                    <td className="px-4 py-3 font-medium text-slate-400">Name</td>
+                                    <td className="px-4 py-3 text-white font-semibold">{profile?.fullName}</td>
+                                </tr>
+                                <tr className="border-b border-slate-700">
+                                    <td className="px-4 py-3 font-medium text-slate-400">No of Candidates</td>
+                                    <td className="px-4 py-3 text-white">{stats.candidates}</td>
+                                </tr>
+                                <tr className="border-b border-slate-700">
+                                    <td className="px-4 py-3 font-medium text-slate-400">Applications</td>
+                                    <td className="px-4 py-3 text-white">{stats.applications}</td>
+                                </tr>
+                                <tr className="border-b border-slate-700 bg-slate-800/50">
+                                    <td className="px-4 py-3 font-medium text-slate-400">RTR Submissions</td>
+                                    <td className="px-4 py-3">
+                                        <input 
+                                            type="number" 
+                                            value={rtr}
+                                            onChange={e => setRtr(e.target.value)}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                            placeholder="Enter number..."
+                                        />
+                                    </td>
+                                </tr>
+                                <tr className="border-b border-slate-700">
+                                    <td className="px-4 py-3 font-medium text-slate-400">Screenings</td>
+                                    <td className="px-4 py-3 text-white">{stats.screenings}</td>
+                                </tr>
+                                <tr>
+                                    <td className="px-4 py-3 font-medium text-slate-400">Interviews</td>
+                                    <td className="px-4 py-3 text-white">{stats.interviews}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div className="flex justify-end gap-3 px-5 py-4 border-t border-slate-100 bg-slate-50/50">
-                    <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-                    <button type="button" onClick={handleSubmit} disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm disabled:opacity-50">{loading ? "Sending..." : "Submit to Team Lead"}</button>
+                
+                <div className="px-6 py-4 border-t border-slate-800 bg-slate-900 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-slate-300 hover:text-white transition-colors">
+                        Cancel
+                    </button>
+                    <button onClick={handleSubmit} disabled={loading} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50">
+                        {loading ? "Sending..." : "Submit to Team Lead"}
+                    </button>
                 </div>
             </div>
         </div>
@@ -631,10 +646,10 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
     return (
         <>
             <div className="space-y-6">
-                {/* Toolbar â€” sits outside the table card, matching the
+                {/* Toolbar — sits outside the table card, matching the
                     Interview & Screening layout. */}
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative w-full sm:w-auto sm:min-w-[200px]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="relative w-full sm:max-w-xs">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-slate-400" />
                         </div>
@@ -1013,8 +1028,4 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         </>
     );
 }
-
-
-
-
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search } from "lucide-react";
@@ -25,9 +25,6 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
     const [statusConfirmModal, setStatusConfirmModal] = useState<{isOpen: boolean, row: any, newStatus: string}>({ isOpen: false, row: null, newStatus: "" });
     const [candidateToDelete, setCandidateToDelete] = useState<any | null>(null);
     const [importSummary, setImportSummary] = useState<string | null>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [reportModalOpen, setReportModalOpen] = useState(false);
-    const [reportForm, setReportForm] = useState({ noOfCalls: "", answeredCalls: "", churnedCalls: "", leads: "", closed: "" });
     
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { profile } = useAuth();
@@ -227,44 +224,6 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
             case "Ringing": return "bg-amber-50 text-amber-700 border-amber-200 focus:ring-amber-500 hover:bg-amber-100";
             case "Success": return "bg-emerald-50 text-emerald-700 border-emerald-200 focus:ring-emerald-500 hover:bg-emerald-100";
             default: return "bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-500 hover:bg-slate-100";
-        }
-    };
-
-        const handleGenerateMasterReport = async () => {
-        setIsGenerating(true);
-        try {
-            const supabase = createClient();
-            const today = new Date().toISOString().split("T")[0];
-            
-            const reportData = [{
-                id: Math.random().toString(36).substring(7),
-                user_name: profile?.fullName || "Unknown",
-                user_id: profile?.uid || "unknown",
-                report_date: today,
-                department: "Sales",
-                no_of_calls: parseInt(reportForm.noOfCalls) || 0,
-                answered_calls: parseInt(reportForm.answeredCalls) || 0,
-                churned_calls: parseInt(reportForm.churnedCalls) || 0,
-                leads: parseInt(reportForm.leads) || 0,
-                closed: parseInt(reportForm.closed) || 0
-            }];
-            
-            const { error } = await supabase.from("team_lead_reports").insert({
-                team_lead_id: profile?.uid,
-                team_lead_name: profile?.fullName || "Sales Person",
-                report_date: today,
-                report_data: reportData
-            });
-
-            if (error) throw error;
-            toast.success("Report generated successfully!");
-            setReportModalOpen(false);
-            setReportForm({ noOfCalls: "", answeredCalls: "", churnedCalls: "", leads: "", closed: "" });
-        } catch (error: any) {
-            console.error("Error saving report:", error);
-            toast.error(error.message || "Failed to generate report");
-        } finally {
-            setIsGenerating(false);
         }
     };
 
@@ -493,15 +452,7 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                                 title="Export as Excel"
                             >
                                 <Upload className="w-4 h-4" />
-                                                                Export XL
-                            </button>
-                            <button
-                                onClick={() => setReportModalOpen(true)}
-                                disabled={isGenerating}
-                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm border border-blue-700 disabled:opacity-50 whitespace-nowrap"
-                            >
-                                <Download className="w-4 h-4" />
-                                {isGenerating ? "Saving..." : "Generate Report"}
+                                Export XL
                             </button>
                         </div>
                         </div>
@@ -692,63 +643,6 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                 cancelText="Close"
                 variant="success"
             />
-
-            {reportModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
-                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/80">
-                            <div>
-                                <h3 className="font-black text-slate-900 text-lg">Generate Daily Report</h3>
-                                <p className="text-xs text-slate-500 mt-0.5">Fill in your daily sales metrics</p>
-                            </div>
-                            <button onClick={() => setReportModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</label>
-                                <input type="text" value={profile?.fullName || ""} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">No. of Calls</label>
-                                    <input type="number" value={reportForm.noOfCalls} onChange={e => setReportForm({...reportForm, noOfCalls: e.target.value})} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Answered Calls</label>
-                                    <input type="number" value={reportForm.answeredCalls} onChange={e => setReportForm({...reportForm, answeredCalls: e.target.value})} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Churned Calls</label>
-                                    <input type="number" value={reportForm.churnedCalls} onChange={e => setReportForm({...reportForm, churnedCalls: e.target.value})} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leads</label>
-                                    <input type="number" value={reportForm.leads} onChange={e => setReportForm({...reportForm, leads: e.target.value})} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-1.5 col-span-2">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Closed</label>
-                                    <input type="number" value={reportForm.closed} onChange={e => setReportForm({...reportForm, closed: e.target.value})} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 px-5 py-4 border-t border-slate-100 bg-slate-50/50">
-                            <button type="button" onClick={() => setReportModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-                            <button type="button" onClick={handleGenerateMasterReport} disabled={isGenerating} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm disabled:opacity-50">{isGenerating ? "Saving..." : "Submit Report"}</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
-
-
-
-
-
-
-
-
-

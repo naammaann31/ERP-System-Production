@@ -605,4 +605,3 @@ export default function MyTeamPage() {
   );
 }
 
-

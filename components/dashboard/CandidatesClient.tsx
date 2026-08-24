@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import * as xlsx from "xlsx";
 import { Card } from "@/components/ui/card";
-import { DatePicker } from "@/components/ui/date-picker";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -117,7 +116,7 @@ export default function CandidatesClient() {
     /**
      * Team-Leads and Admin/HR manage candidates; everyone else is read-only.
      *
-     * This only decides what the UI offers â€” the same rule is enforced by the
+     * This only decides what the UI offers — the same rule is enforced by the
      * candidates_insert/update/delete policies, so hiding a button is never
      * what actually protects the data.
      */
@@ -194,7 +193,7 @@ export default function CandidatesClient() {
          * Realtime alone cannot clear a row that was reassigned away.
          *
          * Realtime applies RLS to every event, so when a Team-Lead reassigns a
-         * candidate to someone else the previous assignee is â€” correctly â€” no
+         * candidate to someone else the previous assignee is — correctly — no
          * longer allowed to see that row and therefore receives no event at
          * all. Their open tab would keep showing it until something else
          * happened to trigger a refetch. Re-reading on focus closes that gap;
@@ -357,7 +356,7 @@ export default function CandidatesClient() {
      * Imports the marketing team's candidate sheet.
      *
      * Parsed positionally (`header: 1`) rather than as objects, because the
-     * sheet has TWO columns both headed "Password" â€” one for the marketing
+     * sheet has TWO columns both headed "Password" — one for the marketing
      * email, one for LinkedIn. Object parsing would silently collapse or
      * rename the second, so instead each "Password" column is attached to
      * whichever email column preceded it. Header names are matched loosely,
@@ -470,7 +469,7 @@ export default function CandidatesClient() {
                 }
 
                 setImportSummary(
-                    `Import Complete!\n\nCandidates imported: ${inserted.length}\nSkipped (no name): ${skipped}\n\nImported candidates are Unassigned â€” use the edit button on a row to assign each one to an employee.`
+                    `Import Complete!\n\nCandidates imported: ${inserted.length}\nSkipped (no name): ${skipped}\n\nImported candidates are Unassigned — use the edit button on a row to assign each one to an employee.`
                 );
                 toast.success(`Imported ${inserted.length} candidate(s).`);
                 loadCandidates();
@@ -547,17 +546,19 @@ export default function CandidatesClient() {
                 <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 lg:shrink-0">
                     <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">From</span>
-                        <DatePicker
+                        <input
+                            type="date"
                             value={startDate}
-                            onChange={setStartDate}
-                            className="h-8 w-36 border-none bg-slate-50"
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
                         />
                         <div className="h-5 w-px bg-slate-200" />
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</span>
-                        <DatePicker
+                        <input
+                            type="date"
                             value={endDate}
-                            onChange={setEndDate}
-                            className="h-8 w-36 border-none bg-slate-50"
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
                         />
                         {(startDate || endDate) && (
                             <button
@@ -572,7 +573,7 @@ export default function CandidatesClient() {
                         )}
                     </div>
 
-                    {/* Available to employees as well as leads â€” anyone working
+                    {/* Available to employees as well as leads — anyone working
                         a candidate needs their documents. */}
                     <a
                         href={CANDIDATE_DOCS_URL}
@@ -667,7 +668,7 @@ export default function CandidatesClient() {
                                             {searchQuery || startDate || endDate
                                                 ? "No candidates match the current search or date range."
                                                 : canManage
-                                                  ? "No candidates yet. Use â€œAdd Candidateâ€ to create one."
+                                                  ? "No candidates yet. Use “Add Candidate” to create one."
                                                   : "No candidates have been assigned to you yet."}
                                         </td>
                                     </tr>
@@ -945,7 +946,7 @@ export default function CandidatesClient() {
                                         {employees.map((emp) => (
                                             <option key={emp.id} value={emp.id}>
                                                 {emp.full_name}
-                                                {emp.designation ? ` â€” ${emp.designation}` : ""}
+                                                {emp.designation ? ` — ${emp.designation}` : ""}
                                             </option>
                                         ))}
                                     </select>
@@ -990,5 +991,3 @@ export default function CandidatesClient() {
         </div>
     );
 }
-
-

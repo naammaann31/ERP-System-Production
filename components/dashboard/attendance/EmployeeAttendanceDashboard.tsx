@@ -27,8 +27,6 @@ import {
   getISTYearMonth,
   getLocalDateString,
   getRecentMonthOptions,
-  parseTimestamp,
-  istParts,
   AttendanceRecord
 } from "@/lib/attendance";
 
@@ -80,7 +78,6 @@ export default function EmployeeAttendanceDashboard() {
   const [selectedDate, setSelectedDate] = useState(getLocalDateString);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [monthRecords, setMonthRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Clock-in/out state
@@ -149,92 +146,12 @@ export default function EmployeeAttendanceDashboard() {
     setLoading(true);
     const yearMonth = selectedDate.substring(0, 7);
     getUserAttendanceForMonth(profile.uid, yearMonth).then((data) => {
-      setMonthRecords(data);
       setRecords(data.filter(r => r.date === selectedDate));
       setLoading(false);
     });
   }, [profile, selectedDate]);
 
   
-
-  
-  const stats = useMemo(() => {
-    // Merge todayRecord into monthRecords for real-time accuracy
-    let effectiveRecords = [...monthRecords];
-    if (todayRecord && todayRecord.date) {
-      const idx = effectiveRecords.findIndex(r => r.date === todayRecord.date);
-      if (idx >= 0) {
-        effectiveRecords[idx] = { ...effectiveRecords[idx], ...todayRecord };
-      } else if (todayRecord.date.startsWith(selectedDate.substring(0, 7))) {
-        effectiveRecords.push(todayRecord);
-      }
-    }
-
-    // 1. Attendance Rate
-    const workingDays = effectiveRecords.filter(r => r.status !== "Week Off");
-    const presentDays = workingDays.filter(r => r.status === "Present" || r.status === "Checked In");
-    const attendanceRate = workingDays.length > 0
-      ? `${Math.round((presentDays.length / workingDays.length) * 100)}%`
-      : "-";
-
-    // 2. Avg. Login Time
-    const checkInRecords = effectiveRecords.filter(r => r.checkInTime);
-    let avgLoginTime = "-";
-    if (checkInRecords.length > 0) {
-      let totalMinutes = 0;
-      let validCount = 0;
-      checkInRecords.forEach(r => {
-        const d = parseTimestamp(r.checkInTime);
-        if (d) {
-          const p = istParts(d);
-          totalMinutes += Number(p.hour) * 60 + Number(p.minute);
-          validCount++;
-        }
-      });
-      if (validCount > 0) {
-        const avgMins = Math.round(totalMinutes / validCount);
-        const avgHour24 = Math.floor(avgMins / 60) % 24;
-        const avgMin = avgMins % 60;
-        const period = avgHour24 >= 12 ? "PM" : "AM";
-        const avgHour12 = avgHour24 % 12 || 12;
-        avgLoginTime = `${String(avgHour12).padStart(2, '0')}:${String(avgMin).padStart(2, '0')} ${period}`;
-      }
-    }
-
-    // 3. Avg. Logout Time
-    const checkOutRecords = effectiveRecords.filter(r => r.checkOutTime);
-    let avgLogoutTime = "-";
-    if (checkOutRecords.length > 0) {
-      let totalMinutes = 0;
-      let validCount = 0;
-      checkOutRecords.forEach(r => {
-        const d = parseTimestamp(r.checkOutTime);
-        if (d) {
-          const p = istParts(d);
-          totalMinutes += Number(p.hour) * 60 + Number(p.minute);
-          validCount++;
-        }
-      });
-      if (validCount > 0) {
-        const avgMins = Math.round(totalMinutes / validCount);
-        const avgHour24 = Math.floor(avgMins / 60) % 24;
-        const avgMin = avgMins % 60;
-        const period = avgHour24 >= 12 ? "PM" : "AM";
-        const avgHour12 = avgHour24 % 12 || 12;
-        avgLogoutTime = `${String(avgHour12).padStart(2, '0')}:${String(avgMin).padStart(2, '0')} ${period}`;
-      }
-    }
-
-    // 4. Late Arrivals
-    const lateArrivals = effectiveRecords.filter(r => r.isLate).length.toString();
-
-    return {
-      attendanceRate,
-      avgLoginTime,
-      avgLogoutTime,
-      lateArrivals
-    };
-  }, [monthRecords, todayRecord, selectedDate]);
 
   const displayRecords = records.filter(record => 
     record.date.includes(searchTerm) || 

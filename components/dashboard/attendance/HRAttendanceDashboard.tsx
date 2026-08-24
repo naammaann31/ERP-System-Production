@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
@@ -58,10 +58,8 @@ export default function HRAttendanceDashboard() {
     } else if (newStatusOption === "half-day") {
       newStatus = "Present";
       isHalfDay = true;
-        } else if (newStatusOption === "absent") {
+    } else if (newStatusOption === "absent") {
       newStatus = "Absent";
-    } else if (newStatusOption === "week-off") {
-      newStatus = "Week Off";
     }
     
     try {
@@ -80,7 +78,7 @@ export default function HRAttendanceDashboard() {
   // Always query by the current business day. The app stores timestamps in IST
   // wall-clock, but JS Date() is local. getLocalDateString wraps istParts() to
   // give the true Indian date, shifted back to yesterday if it's before 6:00 AM
-  // YESTERDAY â€” so an early-morning shift showed an empty table because it
+  // YESTERDAY — so an early-morning shift showed an empty table because it
   // was querying the wrong day.
   const [selectedDate, setSelectedDate] = useState(getLocalDateString);
   const [filterLate, setFilterLate] = useState(false);
@@ -104,27 +102,24 @@ export default function HRAttendanceDashboard() {
       let mergedRecords = data;
       
       if (profiles) {
-                   const dDate = new Date(selectedDate);
-          const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
-
-          mergedRecords = profiles.map(profile => {
-             const existing = data.find(r => r.userId === profile.id);
-             if (existing) return existing;
-             
-             return {
-               id: (isWeekend ? "weekoff-" : "absent-") + profile.id + "-" + selectedDate,
-               userId: profile.id,
-               fullName: profile.full_name,
-               role: profile.role,
-               date: selectedDate,
-               checkInTime: null,
-               checkOutTime: null,
-               status: isWeekend ? "Week Off" : "Absent",
-               workingSeconds: 0,
-               isLate: false,
-               isHalfDay: false,
-             };
-           });
+         mergedRecords = profiles.map(profile => {
+           const existing = data.find(r => r.userId === profile.id);
+           if (existing) return existing;
+           
+           return {
+             id: "absent-" + profile.id,
+             userId: profile.id,
+             fullName: profile.full_name,
+             role: profile.role,
+             date: selectedDate,
+             checkInTime: null,
+             checkOutTime: null,
+             status: "Absent",
+             workingSeconds: 0,
+             isLate: false,
+             isHalfDay: false,
+           };
+         });
       }
       
       setRecords(mergedRecords);
@@ -291,16 +286,15 @@ export default function HRAttendanceDashboard() {
                         {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
-                                                  <select
-                            className="text-xs border-slate-200 rounded-md py-1 px-2"
-                            value={record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
-                            onChange={(e) => handleStatusChange(record, e.target.value)}
-                          >
-                            <option value="present">Present</option>
-                            <option value="half-day">Half Day</option>
-                            <option value="absent">Absent</option>
-                            <option value="week-off">Week Off</option>
-                          </select>
+                        <select
+                          className="text-xs border-slate-200 rounded-md py-1 px-2"
+                          value={record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
+                          onChange={(e) => handleStatusChange(record, e.target.value)}
+                        >
+                          <option value="present">Present</option>
+                          <option value="half-day">Half Day</option>
+                          <option value="absent">Absent</option>
+                        </select>
                       </td>
                     </tr>
                   ))
@@ -314,7 +308,5 @@ export default function HRAttendanceDashboard() {
     </div>
   );
 }
-
-
 
 
