@@ -25,7 +25,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["xlsx", "xlsx-js-style"],
-  allowedDevOrigins: ["192.168.1.50", "192.168.1.30"],
+  allowedDevOrigins: ["192.168.1.6", "192.168.1.50", "192.168.1.30", "192.168.1.6:3000", "192.168.1.50:3000", "192.168.1.30:3000", "localhost:3000", "127.0.0.1:3000"],
   async headers() {
     return [
       {

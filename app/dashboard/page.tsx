@@ -8,7 +8,7 @@ import WeeklyOverview from "@/components/dashboard/WeeklyOverview";
 import CalendarWidget from "@/components/dashboard/CalendarWidget";
 import TodaySchedule from "@/components/dashboard/TodaySchedule";
 import TeamStatusWidget from "@/components/dashboard/TeamStatusWidget";
-import RecentNotifications from "@/components/dashboard/RecentNotifications";
+import QuickActions from "@/components/dashboard/QuickActions";
 import { motion, Variants } from "framer-motion";
 
 const containerVariants: Variants = {
@@ -74,13 +74,13 @@ export default function DashboardPage() {
             <TeamStatusWidget />
           </motion.div>
           <motion.div variants={itemVariants}>
-            <RecentNotifications />
+            <QuickActions />
           </motion.div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           <motion.div variants={itemVariants}>
-            <RecentNotifications />
+            <QuickActions />
           </motion.div>
         </div>
       )}
