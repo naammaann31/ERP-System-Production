@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+﻿import { createClient } from "@/lib/supabase/client";
 
 export interface AttendanceRecord {
   id?: string;
@@ -34,7 +34,7 @@ function fromRow(row: any): AttendanceRecord {
  * Attendance is recorded in Indian time for everyone, always.
  *
  * Deriving it from the device clock would mean a laptop set to another
- * timezone — or simply set wrong — records a different day and time from
+ * timezone â€” or simply set wrong â€” records a different day and time from
  * everyone else. Pinning the zone here makes a clock-in mean the same thing
  * no matter whose machine it came from.
  */
@@ -68,7 +68,7 @@ export const istParts = (d: Date): Record<string, string> => {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    // h23 rather than hour12:false — the latter renders midnight as "24"
+    // h23 rather than hour12:false â€” the latter renders midnight as "24"
     // in some engines, which would roll the date forward by a day.
     hourCycle: "h23",
   }).formatToParts(d);
@@ -89,7 +89,7 @@ export const istParts = (d: Date): Record<string, string> => {
 };
 
 /**
- * Formats an instant as an IST wall-clock string — "YYYY-MM-DDTHH:mm:ss.sss",
+ * Formats an instant as an IST wall-clock string â€” "YYYY-MM-DDTHH:mm:ss.sss",
  * deliberately carrying no timezone designator.
  *
  * `check_in_time` / `check_out_time` are `timestamp` WITHOUT time zone, and
@@ -108,12 +108,12 @@ const toLocalTimestamp = (d: Date): string => {
  * Parses a timestamp read back from the `attendance` table.
  *
  * Values are written by toLocalTimestamp above, i.e. local wall-clock with no
- * timezone designator — and per the ECMAScript spec a date-time string with no
+ * timezone designator â€” and per the ECMAScript spec a date-time string with no
  * designator is parsed as local time, so the round trip is exact.
  *
  * A value that DOES carry a zone is honoured as written. That covers rows
  * created before the switch to wall-clock storage (they were UTC, tagged or
- * not — see migration 15, which shifted the untagged ones) and anything a
+ * not â€” see migration 15, which shifted the untagged ones) and anything a
  * `timestamptz` column would return.
  */
 export const parseTimestamp = (value: string | null | undefined): Date | null => {
@@ -121,7 +121,7 @@ export const parseTimestamp = (value: string | null | undefined): Date | null =>
   const s = String(value).trim();
   if (!s) return null;
   // Stored values are IST wall-clock with no designator, so IST is attached
-  // explicitly rather than letting Date assume the viewer's own timezone —
+  // explicitly rather than letting Date assume the viewer's own timezone â€”
   // otherwise HR opening the dashboard from a different zone would read every
   // check-in shifted. A value that already carries a zone is honoured as
   // written. Postgres hands back "YYYY-MM-DD HH:mm:ss"; the T form is what
@@ -149,7 +149,7 @@ export const formatAttendanceTime = (value: string | null | undefined): string =
  *
  * A counter that does `seconds + 1` on an interval drifts whenever the tab is
  * backgrounded (browsers throttle timers to once a minute), and double-counts
- * if the tick ever runs twice — which it did, so the clock advanced two
+ * if the tick ever runs twice â€” which it did, so the clock advanced two
  * seconds per second. Recomputing from check-in is idempotent: it cannot
  * drift or double-count no matter how often, or how erratically, it runs.
  */
@@ -192,7 +192,7 @@ export const getISTYearMonth = () => {
  * as { value: "2026-08", label: "August 2026" }.
  *
  * Generated rather than listed literally: the month picker used to be a
- * hardcoded May–Sep 2026 array defaulting to "July 2026", so it opened on a
+ * hardcoded Mayâ€“Sep 2026 array defaulting to "July 2026", so it opened on a
  * month with no records and stopped working entirely outside that window.
  */
 export const getRecentMonthOptions = (count = 12): { value: string; label: string }[] => {
@@ -201,7 +201,7 @@ export const getRecentMonthOptions = (count = 12): { value: string; label: strin
   const month = Number(p.month);
 
   return Array.from({ length: count }, (_, i) => {
-    // Built in UTC purely as calendar arithmetic — Date handles the year
+    // Built in UTC purely as calendar arithmetic â€” Date handles the year
     // rollover, and reading back UTC parts keeps the device zone out of it.
     const d = new Date(Date.UTC(year, month - 1 - i, 1));
     const value = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -384,18 +384,18 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     // Don't pad future dates
     if (dateStr > todayStr) continue;
     
-    // Ignore Sundays (0) if you have week off logic, but we'll just pad everything as Absent for now
-    // Actually let's just pad it as Absent
     if (!existingDates.has(dateStr)) {
+      const dDate = new Date(Number(year), Number(month) - 1, d);
+      const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
       paddedRecords.push({
-        id: "absent-" + profile.id + "-" + dateStr,
+        id: (isWeekend ? "weekoff-" : "absent-") + profile.id + "-" + dateStr,
         userId: profile.id,
         fullName: profile.full_name,
         role: profile.role,
         date: dateStr,
         checkInTime: null,
         checkOutTime: null,
-        status: "Absent",
+        status: isWeekend ? "Week Off" : "Absent",
         workingSeconds: 0,
         isLate: false,
         isHalfDay: false,
@@ -420,7 +420,7 @@ export const updateAttendanceStatus = async (
 ) => {
   const supabase = createClient();
   
-  if (id.startsWith('absent-') && userId && dateStr) {
+  if ((id.startsWith('absent-') || id.startsWith('weekoff-')) && userId && dateStr) {
     // This record doesn't exist in the DB yet, insert it
     const { error } = await supabase.from("attendance").insert({
       user_id: userId,
@@ -446,3 +446,6 @@ export const updateAttendanceStatus = async (
     if (error) throw error;
   }
 };
+
+
+

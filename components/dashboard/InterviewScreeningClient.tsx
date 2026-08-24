@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
@@ -355,7 +355,7 @@ export default function InterviewScreeningClient() {
             setAddSaving(false);
             return;
         }
-        // created_by is deliberately NOT sent — a BEFORE INSERT trigger stamps
+        // created_by is deliberately NOT sent â€” a BEFORE INSERT trigger stamps
         // it from the authenticated session. Sending it from the client broke
         // for non-Admin users whenever the profile hadn't loaded yet, and it
         // would be spoofable besides.
@@ -422,15 +422,15 @@ export default function InterviewScreeningClient() {
      * Imports Interview / Screening rows from Excel into Supabase.
      *
      * Accepts three shapes:
-     *  1. A workbook with sheets named "Interview" and/or "Screening" —
+     *  1. A workbook with sheets named "Interview" and/or "Screening" â€”
      *     i.e. exactly what this page's Export XL produces, so an
-     *     export → edit → import round trip works.
+     *     export â†’ edit â†’ import round trip works.
      *  2. A single sheet laid out like the source Google Sheet, with the
      *     two tables side by side under an "Interview"/"Screening" group
      *     header row. Each block is located by its own Date+Candidate header
      *     pair rather than assumed to start at a fixed column.
      *  3. One bare 6-column table (Date, Candidate, Client, Stage/Method,
-     *     Recruiter, Remarks) with no headers at all — what you get when a
+     *     Recruiter, Remarks) with no headers at all â€” what you get when a
      *     single table is copied out of the sheet on its own. Nothing in the
      *     file says which of the two tables it is, so the user is asked.
      */
@@ -463,7 +463,7 @@ export default function InterviewScreeningClient() {
                  * text is the only surviving record of the intended date, and
                  * it also matches how rows pulled from the Google Sheet are
                  * already stored (entry_date is free text). So no year is
-                 * invented and no serial-number conversion is needed —
+                 * invented and no serial-number conversion is needed â€”
                  * `raw: false` below hands us the formatted string directly.
                  */
                 const text = (v: any) => String(v ?? "").trim();
@@ -505,7 +505,7 @@ export default function InterviewScreeningClient() {
                     }
                 } else {
                     const ws = workbook.Sheets[workbook.SheetNames[0]];
-                    // raw: false yields each cell's displayed text — see the
+                    // raw: false yields each cell's displayed text â€” see the
                     // note on `text` above for why that matters for dates.
                     const grid = xlsx.utils.sheet_to_json<any[]>(ws, {
                         header: 1, defval: "", blankrows: true, raw: false,
@@ -693,7 +693,7 @@ export default function InterviewScreeningClient() {
                                         className="text-slate-300 text-xs"
                                         title="Only the person who added this entry (or Admin/HR) can delete it"
                                     >
-                                        —
+                                        â€”
                                     </span>
                                 )}
                             </td>
@@ -813,7 +813,7 @@ export default function InterviewScreeningClient() {
                 variant="success"
             />
 
-            {/* Section picker — shown only when the file is one bare table
+            {/* Section picker â€” shown only when the file is one bare table
                 with no Interview/Screening headers to route it by. */}
             {sectionPrompt && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -1011,3 +1011,4 @@ export default function InterviewScreeningClient() {
         </div>
     );
 }
+
