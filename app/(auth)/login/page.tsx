@@ -173,15 +173,7 @@ export default function LoginPage() {
                                 <label className="text-[10px] font-bold text-white/80 tracking-[0.2em] uppercase">
                                     Authentication Key
                                 </label>
-                                <button 
-                                    type="button" 
-                                    onClick={handleForgotPassword}
-                                    disabled={resetLoading}
-                                    suppressHydrationWarning
-                                    className="text-[10px] font-bold text-white/80 tracking-wider uppercase hover:text-white transition-colors disabled:opacity-50"
-                                >
-                                    {resetLoading ? "Sending..." : "Forgot?"}
-                                </button>
+                                
                             </div>
                             <div className="relative">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
