@@ -18,6 +18,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [fullName, setFullName] = useState("");
     const [employeeId, setEmployeeId] = useState("");
     const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [role, setRole] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [designation, setDesignation] = useState("Employee");
@@ -39,6 +40,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setDesignation(employee.designation || "Employee");
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
+            setPassword("");
             
             const fetchEmail = async () => {
               const supabase = createClient();
@@ -65,6 +67,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             fullName,
             employeeId,
             email,
+            password,
             role,
             jobRole,
             designation,
@@ -198,6 +201,19 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                             </div>
                         </div>
 
+                        {/* Admin Password Reset */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">New Password (Optional)</label>
+                            <input
+                                type="text"
+                                placeholder="Type here to forcefully reset the employee's password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all text-sm shadow-sm"
+                            />
+                            <p className="text-[10px] text-slate-500 mt-1">Leave blank unless you are explicitly trying to overwrite this employee's password.</p>
+                        </div>
+
                         {/* Date Of Joining */}
                         <div>
                              <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Date Of Joining</label>
@@ -313,3 +329,4 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
         </AnimatePresence>
     );
 }
+

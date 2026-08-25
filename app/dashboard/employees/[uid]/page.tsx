@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { getUserAttendanceForMonth, formatAttendanceTime, AttendanceRecord, updateAttendanceStatus } from "@/lib/attendance";
-import { getUserLeaves, LeaveRequest } from "@/lib/leave";
+import { getUserLeaves, LeaveRequest, calculateAccruedLeaves } from "@/lib/leave";
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
 import MarketingClient from "@/components/dashboard/MarketingClient";
 import SalesDataSection from "@/components/dashboard/departments/SalesDataSection";
@@ -193,6 +193,8 @@ export default function EmployeeProfilePage() {
   const approvedLeaves = leaves.filter((l) => l.status === "Approved").length;
   const pendingLeaves = leaves.filter((l) => l.status === "Pending").length;
   const totalLeaveDays = leaves.filter((l) => l.status === "Approved").reduce((sum, l) => sum + l.days, 0);
+    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining);
+    const remainingLeaves = Math.max(0, totalAccruedLeaves - totalLeaveDays);
   const latestPayroll = payrolls.length > 0 ? payrolls[0] : null;
 
   const summaryCards = [
@@ -206,9 +208,9 @@ export default function EmployeeProfilePage() {
       accent: "bg-emerald-500",
     },
     {
-      title: "Leaves Taken",
-      value: totalLeaveDays.toString(),
-      subtitle: `${pendingLeaves} pending`,
+      title: "Leave Balance",
+        value: `${totalLeaveDays} / ${totalAccruedLeaves}`,
+        subtitle: `${remainingLeaves} Remaining | ${pendingLeaves} Pending`,
       icon: CalendarOff,
       color: "text-amber-600",
       bg: "bg-amber-100/50",

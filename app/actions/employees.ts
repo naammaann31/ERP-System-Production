@@ -23,6 +23,7 @@ export interface UpdateEmployeeInput {
   designation: string;
   phone?: string;
   dateOfJoining?: string;
+  password?: string;
 }
 
 
@@ -122,7 +123,11 @@ export async function updateEmployeeAction(
   if (email) {
     updateData.email = email;
     updateData.email_confirm = true;
-  }
+    }
+
+    if (input.password) {
+      updateData.password = input.password;
+    }
 
   // Update Auth layer (email and metadata)
   const { error: updateAuthError } = await admin.auth.admin.updateUserById(input.uid, updateData);
@@ -151,3 +156,6 @@ export async function updateEmployeeAction(
 
   return {};
 }
+
+
+
