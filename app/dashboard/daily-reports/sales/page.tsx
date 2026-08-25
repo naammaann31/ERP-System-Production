@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { getTeamLeadReports } from "@/app/actions/marketing";
 import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, TrendingUp, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -27,17 +28,16 @@ export default function SalesDailyReportsPage() {
     }
 
     const fetchMasterReports = async () => {
-      const supabase = createClient();
-      // Fetch master reports
-      const { data, error } = await supabase
-        .from("team_lead_reports")
-        .select("*")
-        .order("report_date", { ascending: false });
-        
-      if (!error && data) {
-         setMasterReports(data);
+      try {
+        const data = await getTeamLeadReports();
+        if (data) {
+          setMasterReports(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch reports", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     fetchMasterReports();
   }, [profile, router]);

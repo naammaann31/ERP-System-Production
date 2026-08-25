@@ -29,16 +29,13 @@ export default function WeeklyOverview() {
       if (!profile?.uid) return;
       const today = new Date();
       
-      // Fetch current month
       const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
       const currentMonthRecords = await getUserAttendanceForMonth(profile.uid, currentYearMonth);
       
-      // Fetch last month (to cover Last Week if it spans months)
       const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const lastYearMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
       const lastMonthRecords = await getUserAttendanceForMonth(profile.uid, lastYearMonth);
       
-      // Combine and remove duplicates
       const combined = [...currentMonthRecords, ...lastMonthRecords];
       const uniqueRecords = Array.from(new Map(combined.map(r => [r.date, r])).values());
       
@@ -49,18 +46,14 @@ export default function WeeklyOverview() {
 
   const chartData = useMemo(() => {
     const today = new Date();
-    // In JS getDay() is 0=Sun, 1=Mon
     const dayOfWeek = today.getDay() || 7; 
     
-    // Monday of This Week
     const thisMonday = new Date(today);
     thisMonday.setDate(today.getDate() - dayOfWeek + 1);
     
-    // Monday of Last Week
     const lastMonday = new Date(thisMonday);
     lastMonday.setDate(thisMonday.getDate() - 7);
 
-    // Helper to get records for a specific 7-day range starting from a Monday
     const getWeekData = (startMonday: Date) => {
       const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const bars = [];
@@ -76,36 +69,60 @@ export default function WeeklyOverview() {
         
         const rec = records.find(r => r.date === dateStr);
         let value = 0;
+        let status = "Pending";
         
         if (!rec) {
-            // Future or unrecorded
-            if (d > today) pendingCount++;
-            else if (d.getDay() !== 0 && d.getDay() !== 6) pendingCount++;
+            if (d > today) {
+                status = "Future";
+            } else if (d.getDay() === 0 || d.getDay() === 6) {
+                status = "Week Off";
+            } else {
+                status = "Pending";
+                pendingCount++;
+            }
         } else {
             if (rec.status === "Present" || rec.status === "Checked In") {
+                const workingSecs = rec.workingSeconds || 0;
+                let dayPerc = Math.min(100, Math.round((workingSecs / 32400) * 100));
+                
+                if (workingSecs === 0) {
+                    dayPerc = rec.isHalfDay ? 50 : 100;
+                }
+                value = dayPerc;
+
                 if (rec.isHalfDay) {
-                    value = 50;
+                    status = "Half Day";
                     halfDayCount++;
                 } else {
-                    value = 100;
+                    status = "Present";
                     presentCount++;
                 }
             } else if (rec.status === "Absent") {
                 absentCount++;
-                value = 0;
+                value = 15; // Give it a tiny bit of height so it's visible as red
+                status = "Absent";
             } else if (rec.status === "Week Off") {
-                value = 0;
+                value = 100;
+                status = "Week Off";
             } else if (rec.status === "Pending") {
+                status = "Pending";
                 pendingCount++;
             }
         }
         
-        bars.push({ label: weekDays[i], value });
+        // Ensure weekends without records default to Week Off
+        if (d.getDay() === 0 || d.getDay() === 6) {
+             if (status === "Future" || status === "Pending") {
+                 status = "Week Off";
+                 value = 100;
+             }
+        }
+
+        bars.push({ label: weekDays[i], value, status, date: dateStr });
       }
       return { bars, stats: { presentCount, halfDayCount, absentCount, pendingCount } };
     };
 
-    // Helper for This Month
     const getMonthData = () => {
       const bars = [];
       let presentCount = 0;
@@ -120,6 +137,7 @@ export default function WeeklyOverview() {
       let currentWeekIndex = 1;
       let weekPresent = 0;
       let weekWorkingDays = 0;
+      let statusesInWeek: string[] = [];
       
       for (let d = 1; d <= daysInMonth; d++) {
         const dateObj = new Date(year, month, d);
@@ -129,21 +147,31 @@ export default function WeeklyOverview() {
         
         if (rec) {
             if (rec.status === "Present" || rec.status === "Checked In") {
+                const workingSecs = rec.workingSeconds || 0;
+                let dayPerc = Math.min(100, Math.round((workingSecs / 32400) * 100));
+                
+                if (workingSecs === 0) {
+                    dayPerc = rec.isHalfDay ? 50 : 100;
+                }
+                weekPresent += (dayPerc / 100);
+
                 if (rec.isHalfDay) {
-                    weekPresent += 0.5;
                     halfDayCount++;
+                    statusesInWeek.push("Half Day");
                 } else {
-                    weekPresent += 1;
                     presentCount++;
+                    statusesInWeek.push("Present");
                 }
                 weekWorkingDays++;
             } else if (rec.status === "Absent") {
                 absentCount++;
                 weekWorkingDays++;
+                statusesInWeek.push("Absent");
             } else if (rec.status === "Week Off") {
-                // Do not increment working days
+                 statusesInWeek.push("Week Off");
             } else if (rec.status === "Pending") {
                 pendingCount++;
+                statusesInWeek.push("Pending");
                 if (dateObj <= today && dateObj.getDay() !== 0 && dateObj.getDay() !== 6) {
                     weekWorkingDays++;
                 }
@@ -155,19 +183,21 @@ export default function WeeklyOverview() {
                 if (dateObj.getDay() !== 0 && dateObj.getDay() !== 6) {
                     pendingCount++;
                     weekWorkingDays++;
+                    statusesInWeek.push("Pending");
                 }
             }
         }
 
-        // End of week (Sunday) or end of month
         if (dateObj.getDay() === 0 || d === daysInMonth) {
             const weekValue = weekWorkingDays > 0 ? Math.round((weekPresent / weekWorkingDays) * 100) : 0;
-            bars.push({ label: `Wk ${currentWeekIndex}`, value: weekValue });
             
-            // reset for next week
+            // For month view, status is mixed, we'll label it as Average
+            bars.push({ label: `Wk ${currentWeekIndex}`, value: weekValue, status: "Weekly Average" });
+            
             currentWeekIndex++;
             weekPresent = 0;
             weekWorkingDays = 0;
+            statusesInWeek = [];
         }
       }
       
@@ -183,22 +213,40 @@ export default function WeeklyOverview() {
     }
   }, [period, records]);
 
+  // Color mapper based on status
+  const getBarColor = (status: string, value: number) => {
+    switch (status) {
+      case "Present": return "bg-emerald-400";
+      case "Half Day": return "bg-blue-400";
+      case "Absent": return "bg-red-400";
+      case "Week Off": return "bg-slate-50 border-2 border-dashed border-slate-200";
+      case "Pending": return "bg-slate-300";
+      case "Weekly Average": return value >= 90 ? "bg-emerald-400" : value >= 50 ? "bg-blue-400" : value > 0 ? "bg-red-400" : "bg-slate-300";
+      default: return "bg-slate-100";
+    }
+  };
+
+  const getStatusText = (status: string, value: number) => {
+    if (status === "Weekly Average") return `${value}%`;
+    return status;
+  };
+
   return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6 relative">
-        <h3 className="font-bold text-slate-800">Attendance Overview</h3>
+    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col h-full relative z-10">
+      <div className="flex justify-between items-center mb-8 relative z-50">
+        <h3 className="font-bold text-slate-800 text-lg">Attendance Overview</h3>
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="text-[11px] text-slate-600 font-bold flex items-center gap-1.5 border border-slate-200 bg-white px-3.5 py-1.5 rounded-full hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all duration-300 shadow-sm hover:shadow active:scale-95 group"
+            className="text-[12px] text-slate-700 font-bold flex items-center gap-1.5 border border-slate-200 bg-white px-4 py-2 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 shadow-sm hover:shadow group"
           >
-            <CalendarDays className="h-3.5 w-3.5 text-blue-500 group-hover:scale-110 transition-transform" />
+            <CalendarDays className="h-4 w-4 text-blue-500 group-hover:scale-110 transition-transform" />
             {period}
-            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-all duration-300 ${isOpen ? "rotate-180" : ""}`} />
+            <ChevronDown className={`h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-all duration-300 ${isOpen ? "rotate-180" : ""}`} />
           </button>
 
           {isOpen && (
-            <div className="absolute right-0 mt-2 w-36 bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-200/50 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute right-0 mt-2 w-40 bg-white border border-slate-100 rounded-xl shadow-xl py-2 z-[60] animate-in fade-in zoom-in-95 duration-200">
               {(["This Week", "Last Week", "This Month"] as Period[]).map((p) => (
                 <button
                   key={p}
@@ -206,7 +254,7 @@ export default function WeeklyOverview() {
                     setPeriod(p);
                     setIsOpen(false);
                   }}
-                  className={`w-full text-left px-4 py-2 text-xs font-semibold hover:bg-slate-50 transition-colors ${period === p ? "text-blue-600 bg-blue-50/50" : "text-slate-600"}`}
+                  className={`w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors ${period === p ? "text-blue-600 bg-blue-50/50" : "text-slate-600"}`}
                 >
                   {p}
                 </button>
@@ -216,60 +264,66 @@ export default function WeeklyOverview() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-end justify-between gap-2 mt-auto relative">
+      <div className="flex-1 flex items-end justify-between gap-2 mt-auto relative pt-4">
         {/* Y Axis lines */}
-        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none z-0">
+        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none z-0 pb-1">
           {[100, 75, 50, 25, 0].map((step, i) => (
-            <div key={i} className="flex items-center gap-3 w-full opacity-40">
-              <span className="text-[10px] text-slate-400 w-8 text-right">{step}%</span>
+            <div key={i} className="flex items-center gap-4 w-full opacity-40">
+              <span className="text-[11px] font-medium text-slate-400 w-8 text-right">{step}%</span>
               <div className="flex-1 border-b border-dashed border-slate-200"></div>
             </div>
           ))}
         </div>
 
         {/* Bars */}
-        <div className="relative z-10 flex w-full justify-between items-end h-[100px] pl-8 pr-1 pb-1">
+        <div className="relative z-10 flex w-full justify-between items-end h-[140px] pl-10 pr-1 pb-1">
           {chartData.bars.map((day, i) => (
-            <div key={i} className="flex flex-col items-center gap-1 group w-full">
-              <div className="text-[9px] font-bold text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity mb-0.5">
-                {day.value}%
+            <div key={i} className="flex flex-col items-center gap-1 group w-full relative cursor-pointer">
+              
+              {/* Tooltip */}
+              <div className="absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none transform -translate-y-2 group-hover:translate-y-0 duration-200 z-50">
+                {getStatusText(day.status, day.value)}
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
               </div>
-              <div className="w-3 bg-slate-100 rounded-full h-[60px] relative overflow-hidden">
+
+              <div className="w-5 md:w-6 bg-slate-50 rounded-t-lg rounded-b-sm h-[120px] relative overflow-hidden ring-1 ring-slate-100 group-hover:ring-slate-200 transition-all">
                 <div 
-                  className={`absolute bottom-0 w-full rounded-full transition-all duration-1000 ${day.value > 90 ? 'bg-emerald-400' : (day.value > 0 ? 'bg-blue-400' : 'bg-slate-300')}`}
-                  style={{ height: `${day.value}%` }}
-                />
+                  className={`absolute bottom-0 w-full rounded-t-lg rounded-b-sm transition-all duration-1000 ${getBarColor(day.status, day.value)}`}
+                  style={{ height: `${day.status === 'Week Off' ? 100 : day.value}%` }}
+                >
+                   
+                </div>
               </div>
-              <span className="text-[9px] font-semibold text-slate-500 whitespace-nowrap mt-1">{day.label}</span>
+              <span className={`text-[11px] font-bold mt-1.5 transition-colors ${day.status === 'Future' ? 'text-slate-300' : 'text-slate-500 group-hover:text-slate-800'}`}>{day.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-100">
-        <div className="flex flex-col items-center justify-center text-center p-1.5 rounded-lg border border-slate-100 bg-white">
-          <div className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 mb-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Present
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8 pt-5 border-t border-slate-100">
+        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50/80 border border-slate-100/50">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 mb-1">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div> Present
           </div>
-          <span className="text-[10px] font-bold text-slate-800">{chartData.stats.presentCount} {chartData.stats.presentCount === 1 ? 'Day' : 'Days'}</span>
+          <span className="text-sm font-black text-slate-800">{chartData.stats.presentCount} <span className="text-xs font-semibold text-slate-500">{chartData.stats.presentCount === 1 ? 'Day' : 'Days'}</span></span>
         </div>
-        <div className="flex flex-col items-center justify-center text-center p-1.5 rounded-lg border border-slate-100 bg-white">
-          <div className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 mb-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> Half Day
+        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50/80 border border-slate-100/50">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 mb-1">
+            <div className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]"></div> Half Day
           </div>
-          <span className="text-[10px] font-bold text-slate-800">{chartData.stats.halfDayCount} {chartData.stats.halfDayCount === 1 ? 'Day' : 'Days'}</span>
+          <span className="text-sm font-black text-slate-800">{chartData.stats.halfDayCount} <span className="text-xs font-semibold text-slate-500">{chartData.stats.halfDayCount === 1 ? 'Day' : 'Days'}</span></span>
         </div>
-        <div className="flex flex-col items-center justify-center text-center p-1.5 rounded-lg border border-slate-100 bg-white">
-          <div className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 mb-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div> Absent
+        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50/80 border border-slate-100/50">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 mb-1">
+            <div className="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]"></div> Absent
           </div>
-          <span className="text-[10px] font-bold text-slate-800">{chartData.stats.absentCount} {chartData.stats.absentCount === 1 ? 'Day' : 'Days'}</span>
+          <span className="text-sm font-black text-slate-800">{chartData.stats.absentCount} <span className="text-xs font-semibold text-slate-500">{chartData.stats.absentCount === 1 ? 'Day' : 'Days'}</span></span>
         </div>
-        <div className="flex flex-col items-center justify-center text-center p-1.5 rounded-lg border border-slate-100 bg-white">
-          <div className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 mb-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div> Pending
+        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50/80 border border-slate-100/50">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 mb-1">
+            <div className="w-2 h-2 rounded-full bg-slate-300"></div> Pending
           </div>
-          <span className="text-[10px] font-bold text-slate-800">{chartData.stats.pendingCount} {chartData.stats.pendingCount === 1 ? 'Day' : 'Days'}</span>
+          <span className="text-sm font-black text-slate-800">{chartData.stats.pendingCount} <span className="text-xs font-semibold text-slate-500">{chartData.stats.pendingCount === 1 ? 'Day' : 'Days'}</span></span>
         </div>
       </div>
     </div>

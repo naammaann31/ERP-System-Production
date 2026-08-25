@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } from "lucide-react";
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { submitMarketingDailyReport } from "@/app/actions/marketing";
 import { marketingRowToUi, marketingUiToRow } from "@/lib/salesMarketingMap";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -78,10 +79,9 @@ function GenerateReportModal({ isOpen, onClose, profile, startDate, endDate, dis
     const handleSubmit = async () => {
         try {
             setLoading(true);
-            const supabase = createClient();
             const today = new Date().toISOString().split("T")[0];
             
-            const { error } = await supabase.from("marketing_daily_reports").insert({
+            await submitMarketingDailyReport({
                 user_id: profile.uid,
                 user_name: profile.fullName || "Unknown",
                 report_date: today,
@@ -93,7 +93,6 @@ function GenerateReportModal({ isOpen, onClose, profile, startDate, endDate, dis
                 candidate_breakdown: stats.breakdown
             });
             
-            if (error) throw error;
             toast.success("Daily report sent to Team Lead successfully!");
             onClose();
         } catch (error: any) {
@@ -103,7 +102,7 @@ function GenerateReportModal({ isOpen, onClose, profile, startDate, endDate, dis
         }
     };
 
-    return (
+return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
                 <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/80">

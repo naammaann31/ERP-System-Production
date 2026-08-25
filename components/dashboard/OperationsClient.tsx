@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search } from "lucide-react";
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { submitTeamLeadReport } from "@/app/actions/marketing";
 import { salesRowToUi, salesUiToRow } from "@/lib/salesMarketingMap";
 import { compareDatesDesc } from "@/lib/dateSort";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -249,12 +250,13 @@ export default function OperationsClient({ collectionName = "sales", restrictToU
                 closed: parseInt(reportForm.closed) || 0
             }];
             
-            const { error } = await supabase.from("team_lead_reports").insert({
+            await submitTeamLeadReport({
                 team_lead_id: profile?.uid,
                 team_lead_name: profile?.fullName || "Sales Person",
                 report_date: today,
                 report_data: reportData
             });
+            const error = null; // for existing check
 
             if (error) throw error;
             toast.success("Report generated successfully!");

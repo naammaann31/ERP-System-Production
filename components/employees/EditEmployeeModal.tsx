@@ -106,7 +106,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
                     className="relative z-10 w-full max-w-lg bg-white rounded-3xl p-6 border border-slate-200 hover:border-black transition-colors shadow-2xl"
                 >
                     <button 
@@ -329,4 +329,5 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
         </AnimatePresence>
     );
 }
+
 

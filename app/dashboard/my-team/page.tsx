@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
+import { getMarketingDailyReports, deleteMarketingDailyReport, updateMarketingDailyReport, submitTeamLeadReport } from "@/app/actions/marketing";
 import { Users, ArrowRight, Calendar, ChevronDown, ChevronUp, Edit2, Trash2, X, Download, UserCircle, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +21,7 @@ export default function MyTeamPage() {
   
   // Filters
   const [filterDate, setFilterDate] = useState<string>("");
+    useEffect(() => { setFilterDate(new Date().toISOString().split("T")[0]); }, []);
   const [filterEmployee, setFilterEmployee] = useState<string>("All");
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
@@ -31,16 +33,15 @@ export default function MyTeamPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const fetchReports = async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("marketing_daily_reports")
-      .select("*")
-      .order("created_at", { ascending: false });
-      
-    if (!error && data) {
-        setReports(data);
-    }
-  };
+      try {
+          const data = await getMarketingDailyReports();
+          if (data) {
+              setReports(data);
+          }
+      } catch (err) {
+          console.error("Failed to fetch reports", err);
+      }
+    };
 
   useEffect(() => {
     if (!profile) return;
@@ -100,17 +101,15 @@ export default function MyTeamPage() {
   }, [profile, router]);
 
   const handleDeleteReport = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this report?")) return;
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("marketing_daily_reports").delete().eq("id", id);
-      if (error) throw error;
-      toast.success("Report deleted successfully");
-      fetchReports();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete report");
-    }
-  };
+      if (!confirm("Are you sure you want to delete this report?")) return;
+      try {
+        await deleteMarketingDailyReport(id);
+        toast.success("Report deleted successfully");
+        fetchReports();
+      } catch (error: any) {
+        toast.error(error.message || "Failed to delete report");
+      }
+    };
 
   const handleUpdateReport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,31 +178,37 @@ export default function MyTeamPage() {
   });
 
   const handleGenerateMasterReport = async () => {
-    if (processedReports.length === 0) {
-      toast.error("No reports available to generate");
-      return;
-    }
-    
-    setIsGenerating(true);
-    try {
-      const supabase = createClient();
-      const today = filterDate || new Date().toISOString().split("T")[0];
+      if (processedReports.length === 0) {
+        toast.error("No reports available to generate");
+        return;
+      }
       
-      const { error } = await supabase.from("team_lead_reports").insert({
-        team_lead_id: profile?.uid,
-        team_lead_name: profile?.fullName || "Unknown",
-        report_date: today,
-        report_data: processedReports
-      });
-      
-      if (error) throw error;
-      toast.success("Master Report generated successfully!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate report");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+      setIsGenerating(true);
+      try {
+        const today = filterDate || new Date().toISOString().split("T")[0];
+        
+        await submitTeamLeadReport({
+          team_lead_id: profile?.uid,
+          team_lead_name: profile?.fullName || "Unknown",
+          report_date: today,
+          report_data: processedReports.map(r => ({
+              ...r,
+              department: "Marketing",
+              no_of_candidates: r.total_candidates,
+              applications: r.total_applications,
+              rtr_submissions: r.total_rtr,
+              screenings: r.total_screenings,
+              interviews: r.total_interviews
+          }))
+        });
+        
+        toast.success("Master Report generated successfully!");
+      } catch (error: any) {
+        toast.error(error.message || "Failed to generate report");
+      } finally {
+        setIsGenerating(false);
+      }
+    };
 
   if (loading) {
     return (
@@ -333,16 +338,9 @@ export default function MyTeamPage() {
                   type="date" 
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm w-full sm:w-auto"
+                  className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm w-full sm:w-auto [&::-webkit-clear-button]:hidden [&::-webkit-inner-spin-button]:hidden"
                 />
-                {filterDate && (
-                  <button 
-                    onClick={() => setFilterDate('')}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+                
               </div>
               
               <div className="relative group">

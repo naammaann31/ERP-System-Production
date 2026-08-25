@@ -171,3 +171,75 @@ export async function fetchMarketingData() {
         return [];
     }
 }
+
+import { createClient } from "@supabase/supabase-js";
+
+export async function submitMarketingDailyReport(data: any) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+        throw new Error("Missing Supabase credentials");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { error } = await supabase.from("marketing_daily_reports").insert(data);
+    
+    if (error) {
+        console.error("Error inserting report:", error);
+        throw new Error(error.message);
+    }
+    
+    return { success: true };
+}
+
+export async function getMarketingDailyReports() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase.from("marketing_daily_reports").select("*").order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data;
+}
+
+export async function deleteMarketingDailyReport(id: number) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error } = await supabase.from("marketing_daily_reports").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+}
+
+export async function updateMarketingDailyReport(id: number, updateData: any) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error } = await supabase.from("marketing_daily_reports").update(updateData).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+}
+
+export async function submitTeamLeadReport(data: any) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error } = await supabase.from("team_lead_reports").insert(data);
+    if (error) throw new Error(error.message);
+    return { success: true };
+}
+
+export async function getTeamLeadReports() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase.from("team_lead_reports").select("*").order("report_date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data;
+}

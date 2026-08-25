@@ -135,15 +135,48 @@ export default function HRPayrollDashboard() {
       });
   
       
+        const leaveMap = new Map<string, number>();
+        yearLeaves.forEach(l => {
+            const start = new Date(l.startDate);
+            const end = new Date(l.endDate);
+            let curr = new Date(start);
+            while (curr <= end) {
+                const dateStr = curr.toISOString().split('T')[0];
+                const currentVal = leaveMap.get(dateStr) || 0;
+                const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
+                leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
+                curr.setDate(curr.getDate() + 1);
+            }
+        });
+
+        // Apply Sandwich Rule
+        const dates = Array.from(leaveMap.keys()).sort();
+        dates.forEach(dateStr => {
+            const d = new Date(dateStr);
+            if (d.getDay() === 5) { // Friday
+                const nextMonday = new Date(d);
+                nextMonday.setDate(d.getDate() + 3);
+                const mondayStr = nextMonday.toISOString().split('T')[0];
+                
+                if (leaveMap.has(mondayStr)) {
+                    // Sandwich! Add Saturday and Sunday
+                    const sat = new Date(d); sat.setDate(d.getDate() + 1);
+                    const sun = new Date(d); sun.setDate(d.getDate() + 2);
+                    leaveMap.set(sat.toISOString().split('T')[0], 1);
+                    leaveMap.set(sun.toISOString().split('T')[0], 1);
+                }
+            }
+        });
+
         let totalLeavesTakenBeforeMonth = 0;
         let leavesTakenInMonth = 0;
 
-        yearLeaves.forEach(l => {
-            const start = new Date(l.startDate);
-            if (start.getFullYear() < year || (start.getFullYear() === year && start.getMonth() + 1 < month)) {
-                totalLeavesTakenBeforeMonth += l.days;
-            } else if (start.getFullYear() === year && start.getMonth() + 1 === month) {
-                leavesTakenInMonth += l.days;
+        leaveMap.forEach((val, dateStr) => {
+            const d = new Date(dateStr);
+            if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
+                totalLeavesTakenBeforeMonth += val;
+            } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
+                leavesTakenInMonth += val;
             }
         });
         
