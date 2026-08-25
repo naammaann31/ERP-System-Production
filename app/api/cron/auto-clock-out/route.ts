@@ -48,22 +48,22 @@ export async function GET(request: Request) {
     
     const penaltyTimestamp = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.000`;
 
-    const updates = activeShifts.map(shift => ({
-      id: shift.id,
-      status: "Absent",
-      check_out_time: penaltyTimestamp,
-      // They forfeit their working seconds
-    }));
+    const shiftIds = activeShifts.map(shift => shift.id);
 
     const { error: updateError } = await supabase
       .from("attendance")
-      .upsert(updates);
+      .update({
+        status: "Absent",
+        check_out_time: penaltyTimestamp,
+        // They forfeit their working seconds
+      })
+      .in("id", shiftIds);
 
     if (updateError) throw updateError;
 
     return NextResponse.json({ 
       message: "Successfully ran auto-clock-out guillotine",
-      processed: updates.length 
+      processed: shiftIds.length 
     }, { status: 200 });
 
   } catch (error: any) {
@@ -71,3 +71,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+
