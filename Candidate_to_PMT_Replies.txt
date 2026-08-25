@@ -35,7 +35,7 @@ Haniel E Thomson
 **To:** Project Management Team <pmt@vectrastaffing.com>
 **Subject:** Re: Task Assignment: Executing the Migration from Firebase to Supabase
 
-Hi there,
+Hi Hamzah,
 
 Understood. I will start auditing the user flows tied to Firebase Auth and sketch out the new designs required for Supabase Auth. I'll also prepare wireframes for any new error states and loading screens that we might need during this backend transition. I'm setting up a quick sync with the frontend engineers on Wednesday to ensure the visual experience remains seamless. I should have the initial designs ready by early next week. 
 
@@ -105,11 +105,7 @@ Vipul Sharma
 **To:** Project Management Team <pmt@vectrastaffing.com>
 **Subject:** Re: Task Assignment: Executing the Migration from Firebase to Supabase
 
-Thanks for the email.
-
-Got it. Transitioning from NoSQL to a relational PostgreSQL schema will be a significant shift, but I'm on it. I will begin architecting the new data models and building the ETL pipelines for the migration immediately. I'll also ensure proper indexing and foreign key constraints are in place for optimal performance. I'll provide a preliminary timeline for the data migration by Wednesday. 
-
-Please let me know if you need anything else in the meantime. I will reach out if I need access to the staging credentials.
+Whe.
 
 Thanks,
 Tanay Mevada
