@@ -653,13 +653,13 @@ export default function InterviewScreeningClient() {
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">{stageLabel}</th>
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Recruiter</th>
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Remarks</th>
-                    <th className="px-6 py-4 font-semibold whitespace-nowrap text-right">Actions</th>
+                    
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
                 {rows.length === 0 ? (
                     <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                             No records found.
                         </td>
                     </tr>
@@ -679,24 +679,7 @@ export default function InterviewScreeningClient() {
                             <td className="px-6 py-4">
                                 <RemarkCell row={row} options={remarkOptions} onSave={handleSaveRemark} />
                             </td>
-                            <td className="px-6 py-4 text-right whitespace-nowrap">
-                                {canDelete(row) ? (
-                                    <button
-                                        onClick={() => setRowToDelete(row)}
-                                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-                                        title="Delete this entry"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                ) : (
-                                    <span
-                                        className="text-slate-300 text-xs"
-                                        title="Only the person who added this entry (or Admin/HR) can delete it"
-                                    >
-                                        â€”
-                                    </span>
-                                )}
-                            </td>
+                            
                         </tr>
                     ))
                 )}

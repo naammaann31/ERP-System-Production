@@ -945,7 +945,7 @@ export default function CandidatesClient() {
                                         {employees.map((emp) => (
                                             <option key={emp.id} value={emp.id}>
                                                 {emp.full_name}
-                                                {emp.designation ? ` â€” ${emp.designation}` : ""}
+                                                {emp.designation ? ` - ${emp.designation}` : ""}
                                             </option>
                                         ))}
                                     </select>
