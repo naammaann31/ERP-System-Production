@@ -45,6 +45,7 @@ export default function DocumentsPage() {
   const [aadhar, setAadhar] = useState("");
   const [pan, setPan] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
+  const [bankName, setBankName] = useState("");
   const [bankDetails, setBankDetails] = useState("");
   const [ifscCode, setIfscCode] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
@@ -100,7 +101,7 @@ export default function DocumentsPage() {
         // columns were moved behind a self-or-Admin/HR policy (migration 14).
         const { data, error } = await supabase
           .from("employee_private")
-          .select("aadhar, pan, bank_account_name, bank_details, ifsc_code")
+          .select("aadhar, pan, bank_name, bank_account_name, bank_details, ifsc_code")
           .eq("id", uidToFetch)
           .maybeSingle();
 
@@ -111,6 +112,7 @@ export default function DocumentsPage() {
           setAadhar(data.aadhar || "");
           setPan(data.pan || "");
           setBankAccountName(data.bank_account_name || "");
+          setBankName(data.bank_name || "");
           setBankDetails(data.bank_details || "");
           setIfscCode(data.ifsc_code || "");
 
@@ -170,7 +172,8 @@ export default function DocumentsPage() {
             id: uidToSave,
             aadhar,
             pan,
-            bank_account_name: bankAccountName,
+            bank_name: bankName,
+          bank_account_name: bankAccountName,
             bank_details: bankDetails,
             ifsc_code: ifscCode,
           },
@@ -309,7 +312,11 @@ export default function DocumentsPage() {
                     <p className="text-sm font-medium text-slate-800 mt-1">{pan || "Not provided"}</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Account Name</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Name</p>
+                      <p className="text-sm font-medium text-slate-800 mt-1">{bankName || "Not provided"}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bank Account Name</p>
                     <p className="text-sm font-medium text-slate-800 mt-1">{bankAccountName || "Not provided"}</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
@@ -339,7 +346,11 @@ export default function DocumentsPage() {
                     <input type="text" maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Enter 10-character PAN" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Bank Account Name</label>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Bank Name</label>
+                      <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. HDFC Bank, ICICI Bank" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Bank Account Name</label>
                     <input type="text" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500" placeholder="Name as per bank" />
                   </div>
                   <div>

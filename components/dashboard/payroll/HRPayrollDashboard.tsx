@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/payroll";
 import PayslipDocument from "@/components/payroll/PayslipDocument";
 import { getUserLeaves } from "@/lib/leave";
+import { updatePayrollExtraFields, getEmployeeBankName, getEmployeeProfileFields } from "@/app/actions/payroll";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 import SalaryConfigModal from "./SalaryConfigModal";
@@ -37,27 +38,28 @@ export default function HRPayrollDashboard() {
   const { profile } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [salaryStructure, setSalaryStructure] = useState<SalaryStructure | null>(null);
-  
+
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-  
+
   // Salary Form State
   const [grossSalary, setGrossSalary] = useState<number>(0);
   const [travelAllowance, setTravelAllowance] = useState<number>(0);
   const [otherDeductions, setOtherDeductions] = useState<number>(0);
   const [otherAllowances, setOtherAllowances] = useState<number>(0);
-  
+
   // Generate Form State
   const [lopDays, setLopDays] = useState<number>(0);
   const [leavesTakenThisMonth, setLeavesTakenThisMonth] = useState<number>(0);
   const [paidLeavesThisMonth, setPaidLeavesThisMonth] = useState<number>(0);
   const [daysInMonth, setDaysInMonth] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
+  const [daysWorked, setDaysWorked] = useState<number>(0);
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  
+
   const [dateOfJoining, setDateOfJoining] = useState("");
   const [bankName, setBankName] = useState("");
   const [division, setDivision] = useState("Vectra Staffing");
@@ -67,7 +69,7 @@ export default function HRPayrollDashboard() {
   const [providentFund, setProvidentFund] = useState<number>(0);
   const [paymentDate, setPaymentDate] = useState("");
   const [modeOfPayment, setModeOfPayment] = useState("Bank Transfer");
-  
+
   const [allPayrolls, setAllPayrolls] = useState<PayrollRecord[]>([]);
   const [payrollToDelete, setPayrollToDelete] = useState<PayrollRecord | null>(null);
 
@@ -83,14 +85,14 @@ export default function HRPayrollDashboard() {
         setLoading(false);
         return;
       }
-      
-      
+
+
 
       const emps = (data || []).map((row: any) => ({
         uid: row.id,
         id: row.employee_id || "N/A",
         name: row.full_name || "Unnamed",
-        department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
+        department: row.department || (row.role === "OPS_HR" ? "HR" : row.role === "Admin" ? "Admin" : (row.role || "Employee")),
         jobRole: row.job_role || "N/A",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         isConfigured: false,
@@ -125,93 +127,93 @@ export default function HRPayrollDashboard() {
   useEffect(() => {
     const fetchAndCalculateLop = async () => {
       if (!selectedEmployee) return;
-      
+
       const leaves = await getUserLeaves(selectedEmployee.uid);
-      
+
       // Filter for approved leaves in the selected year
       const yearLeaves = leaves.filter(l => {
-          const start = new Date(l.startDate);
-          return start.getFullYear() === year && l.status === "Approved";
+        const start = new Date(l.startDate);
+        return start.getFullYear() === year && l.status === "Approved";
       });
-  
-      
-        const leaveMap = new Map<string, number>();
-        yearLeaves.forEach(l => {
-            const start = new Date(l.startDate);
-            const end = new Date(l.endDate);
-            let curr = new Date(start);
-            while (curr <= end) {
-                const dateStr = curr.toISOString().split('T')[0];
-                const currentVal = leaveMap.get(dateStr) || 0;
-                const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
-                leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
-                curr.setDate(curr.getDate() + 1);
-            }
-        });
 
-        // Apply Sandwich Rule
-        const dates = Array.from(leaveMap.keys()).sort();
-        dates.forEach(dateStr => {
-            const d = new Date(dateStr);
-            if (d.getDay() === 5) { // Friday
-                const nextMonday = new Date(d);
-                nextMonday.setDate(d.getDate() + 3);
-                const mondayStr = nextMonday.toISOString().split('T')[0];
-                
-                if (leaveMap.has(mondayStr)) {
-                    // Sandwich! Add Saturday and Sunday
-                    const sat = new Date(d); sat.setDate(d.getDate() + 1);
-                    const sun = new Date(d); sun.setDate(d.getDate() + 2);
-                    leaveMap.set(sat.toISOString().split('T')[0], 1);
-                    leaveMap.set(sun.toISOString().split('T')[0], 1);
-                }
-            }
-        });
 
-        let totalLeavesTakenBeforeMonth = 0;
-        let leavesTakenInMonth = 0;
+      const leaveMap = new Map<string, number>();
+      yearLeaves.forEach(l => {
+        const start = new Date(l.startDate);
+        const end = new Date(l.endDate);
+        let curr = new Date(start);
+        while (curr <= end) {
+          const dateStr = curr.toISOString().split('T')[0];
+          const currentVal = leaveMap.get(dateStr) || 0;
+          const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
+          leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
+          curr.setDate(curr.getDate() + 1);
+        }
+      });
 
-        leaveMap.forEach((val, dateStr) => {
-            const d = new Date(dateStr);
-            if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
-                totalLeavesTakenBeforeMonth += val;
-            } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
-                leavesTakenInMonth += val;
-            }
-        });
-        
-        // Use the helper from lib/leave (we need to import it!)
-        // Wait, calculateMonthsEmployed isn't imported here yet. Let's just inline the logic or import it.
-        // I will add the import at the top later.
-        const calculateAccrued = () => {
-            if (!selectedEmployee.dateOfJoining) return 2; // Default 2 for 1st month
-            const joinDate = new Date(selectedEmployee.dateOfJoining);
-            if (isNaN(joinDate.getTime())) return 2;
-            
-            const targetDate = new Date(year, month - 1, 1);
-            
-            // If they are generating payroll for a month BEFORE they joined, this is weird but we handle it
-            if (targetDate < joinDate) return 0;
-            
-            const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
-            const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
-            const totalMonths = (yearsDiff * 12) + monthsDiff;
-            return Math.max(1, totalMonths + 1) * 2;
-        };
-        
-        const totalAccruedUpToMonth = calculateAccrued();
-        const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
-        
-        // If they took more leaves in this month than their available balance, the rest is LOP
-        const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
-        
-        // Save these to state so we can show them in the modal
-        setLopDays(unpaidLeaves);
-        setLeavesTakenThisMonth(leavesTakenInMonth);
-        setPaidLeavesThisMonth(Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth));
-        
-        // Wait, we also need to pass leavesTakenInMonth and availableBalanceAtStartOfMonth to the modal!
-        // We can add state for them.
+      // Apply Sandwich Rule
+      const dates = Array.from(leaveMap.keys()).sort();
+      dates.forEach(dateStr => {
+        const d = new Date(dateStr);
+        if (d.getDay() === 5) { // Friday
+          const nextMonday = new Date(d);
+          nextMonday.setDate(d.getDate() + 3);
+          const mondayStr = nextMonday.toISOString().split('T')[0];
+
+          if (leaveMap.has(mondayStr)) {
+            // Sandwich! Add Saturday and Sunday
+            const sat = new Date(d); sat.setDate(d.getDate() + 1);
+            const sun = new Date(d); sun.setDate(d.getDate() + 2);
+            leaveMap.set(sat.toISOString().split('T')[0], 1);
+            leaveMap.set(sun.toISOString().split('T')[0], 1);
+          }
+        }
+      });
+
+      let totalLeavesTakenBeforeMonth = 0;
+      let leavesTakenInMonth = 0;
+
+      leaveMap.forEach((val, dateStr) => {
+        const d = new Date(dateStr);
+        if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
+          totalLeavesTakenBeforeMonth += val;
+        } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
+          leavesTakenInMonth += val;
+        }
+      });
+
+      // Use the helper from lib/leave (we need to import it!)
+      // Wait, calculateMonthsEmployed isn't imported here yet. Let's just inline the logic or import it.
+      // I will add the import at the top later.
+      const calculateAccrued = () => {
+        if (!selectedEmployee.dateOfJoining) return 2; // Default 2 for 1st month
+        const joinDate = new Date(selectedEmployee.dateOfJoining);
+        if (isNaN(joinDate.getTime())) return 2;
+
+        const targetDate = new Date(year, month - 1, 1);
+
+        // If they are generating payroll for a month BEFORE they joined, this is weird but we handle it
+        if (targetDate < joinDate) return 0;
+
+        const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
+        const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
+        const totalMonths = (yearsDiff * 12) + monthsDiff;
+        return Math.max(1, totalMonths + 1) * 2;
+      };
+
+      const totalAccruedUpToMonth = calculateAccrued();
+      const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
+
+      // If they took more leaves in this month than their available balance, the rest is LOP
+      const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
+
+      // Save these to state so we can show them in the modal
+      setLopDays(unpaidLeaves);
+      setLeavesTakenThisMonth(leavesTakenInMonth);
+      setPaidLeavesThisMonth(Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth));
+
+      // Wait, we also need to pass leavesTakenInMonth and availableBalanceAtStartOfMonth to the modal!
+      // We can add state for them.
 
     };
 
@@ -240,18 +242,18 @@ export default function HRPayrollDashboard() {
   const handleSaveStructure = async () => {
     if (!selectedEmployee) return;
     await saveSalaryStructure(selectedEmployee.uid, {
-        grossSalary,
-        travelAllowance,
-        otherAllowances: 0,
-        otherDeductions
-      });
-      
-      setEmployees(prev => prev.map(emp => 
-        emp.uid === selectedEmployee.uid ? { ...emp, isConfigured: true } : emp
-      ));
-      
-      setIsConfigModalOpen(false);
-      toast.success("Salary structure updated successfully!");
+      grossSalary,
+      travelAllowance,
+      otherAllowances: 0,
+      otherDeductions
+    });
+
+    setEmployees(prev => prev.map(emp =>
+      emp.uid === selectedEmployee.uid ? { ...emp, isConfigured: true } : emp
+    ));
+
+    setIsConfigModalOpen(false);
+    toast.success("Salary structure updated successfully!");
   };
 
   const openGenerateModal = async (emp: Employee) => {
@@ -264,8 +266,18 @@ export default function HRPayrollDashboard() {
     setSalaryStructure(struct);
     const days = new Date(year, month, 0).getDate();
     setDaysInMonth(days);
-    setDateOfJoining("");
-    setBankName("");
+    // Pre-populate from employee profile using server action (bypasses RLS)
+    try {
+      const [profileFields, bankNameResult] = await Promise.all([
+        getEmployeeProfileFields(emp.uid),
+        getEmployeeBankName(emp.uid),
+      ]);
+      setDateOfJoining(profileFields.dateOfJoining || emp.dateOfJoining || "");
+      setBankName(bankNameResult || "");
+    } catch {
+      setDateOfJoining(emp.dateOfJoining || "");
+      setBankName("");
+    }
     setDivision("Vectra Staffing");
     setIncentives(0);
     setProfessionalTax(200);
@@ -279,7 +291,7 @@ export default function HRPayrollDashboard() {
   const handleGeneratePayroll = async () => {
     if (!selectedEmployee) return;
     try {
-      await generatePayroll(
+      const payroll = await generatePayroll(
         selectedEmployee.uid,
         selectedEmployee.name,
         month,
@@ -299,6 +311,16 @@ export default function HRPayrollDashboard() {
         paymentDate,
         modeOfPayment
       );
+
+      if (payroll?.id) {
+        await updatePayrollExtraFields(payroll.id, {
+          date_of_joining: dateOfJoining,
+          bank_name: bankName,
+          division: division,
+          department: selectedEmployee.department || selectedEmployee.jobRole || "",
+          days_worked: daysWorked
+        });
+      }
       setIsGenerateModalOpen(false);
       toast.success("Payroll generated successfully!");
       getAllPayrolls().then(setAllPayrolls);
@@ -307,15 +329,15 @@ export default function HRPayrollDashboard() {
     }
   };
 
-    const executeDeletePayroll = async () => {
+  const executeDeletePayroll = async () => {
     if (!payrollToDelete || !payrollToDelete.id) return;
     await deletePayroll(payrollToDelete.id);
     getAllPayrolls().then(setAllPayrolls);
-    
-    setEmployees(prev => prev.map(emp => 
+
+    setEmployees(prev => prev.map(emp =>
       emp.uid === payrollToDelete.userId ? { ...emp, isConfigured: false } : emp
     ));
-    
+
     setPayrollToDelete(null);
     toast.success("Payroll record deleted");
   };
@@ -371,25 +393,24 @@ export default function HRPayrollDashboard() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
-                            <button 
-                                onClick={() => openConfigModal(emp)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 border ${
-                                  emp.isConfigured && !hasPayrollThisMonth
-                                    ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                            <button
+                              onClick={() => openConfigModal(emp)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 border ${emp.isConfigured && !hasPayrollThisMonth
+                                ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
                                 }`}
-                              >
-                                <Edit className={`w-3.5 h-3.5 ${emp.isConfigured && !hasPayrollThisMonth ? "text-green-600" : "text-slate-500"}`} /> Configure Salary
-                              </button>
+                            >
+                              <Edit className={`w-3.5 h-3.5 ${emp.isConfigured && !hasPayrollThisMonth ? "text-green-600" : "text-slate-500"}`} /> Configure Salary
+                            </button>
                             {hasPayrollThisMonth ? (
-                              <button 
+                              <button
                                 onClick={() => openGenerateModal(emp)}
                                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"
                               >
                                 <FileText className="w-3.5 h-3.5 text-slate-500" /> Regenerate
                               </button>
                             ) : (
-                              <button 
+                              <button
                                 onClick={() => openGenerateModal(emp)}
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5"
                               >
@@ -465,9 +486,11 @@ export default function HRPayrollDashboard() {
         setYear={setYear}
         lopDays={lopDays}
         setLopDays={setLopDays}
-          leavesTakenThisMonth={leavesTakenThisMonth}
-          paidLeavesThisMonth={paidLeavesThisMonth}
+        leavesTakenThisMonth={leavesTakenThisMonth}
+        paidLeavesThisMonth={paidLeavesThisMonth}
         daysInMonth={daysInMonth}
+        daysWorked={daysWorked}
+        setDaysWorked={setDaysWorked}
         dateOfJoining={dateOfJoining}
         setDateOfJoining={setDateOfJoining}
         bankName={bankName}

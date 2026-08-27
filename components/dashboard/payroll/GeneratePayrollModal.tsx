@@ -16,7 +16,9 @@ interface GeneratePayrollModalProps {
   lopDays: number;
   setLopDays: (val: number) => void;
   daysInMonth: number;
-  dateOfJoining: string;
+    daysWorked: number;
+    setDaysWorked: (val: number) => void;
+    dateOfJoining: string;
   setDateOfJoining: (val: string) => void;
   bankName: string;
   setBankName: (val: string) => void;
@@ -111,7 +113,7 @@ function CustomSelect({ value, options, onChange }: {
 export default function GeneratePayrollModal({
   isOpen, onClose, onGenerate, selectedEmployee,
   month, setMonth, year, setYear,
-  lopDays, setLopDays, daysInMonth,
+  lopDays, setLopDays, daysInMonth, daysWorked, setDaysWorked,
   dateOfJoining, setDateOfJoining,
   bankName, setBankName,
   division, setDivision,
@@ -183,17 +185,21 @@ export default function GeneratePayrollModal({
             </div>
           </div>
 
-          {/* LOP Days + Days in Month */}
-
-          <div className="grid grid-cols-2 gap-4">
+                    {/* LOP Days + Days in Month + Days Worked */}
+  
+            <div className="grid grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>LOP Days</label>
               <input type="number" value={lopDays} onChange={(e) => setLopDays(Number(e.target.value))} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Days in Month</label>
-              <input type="number" value={daysInMonth} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 cursor-not-allowed" />
-            </div>
+                <label className={labelClass}>Days in Month</label>
+                <input type="number" value={daysInMonth} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 cursor-not-allowed" />
+              </div>
+              <div>
+                <label className={labelClass}>Days Worked</label>
+                <input type="number" min="0" value={daysWorked} onChange={(e) => setDaysWorked(Number(e.target.value))} className={inputClass} />
+              </div>
           </div>
 
           {/* Date of Joining + Bank Name + Division */}
