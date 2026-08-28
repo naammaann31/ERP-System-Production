@@ -10,7 +10,8 @@ import { toast, Toaster } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 const tabs = [
-  { id: "profile", label: "Profile", icon: User },
+    { id: "profile", label: "Profile", icon: User },
+    { id: "security", label: "Security", icon: Lock },
 ];
 
 const timezones = [
@@ -220,6 +221,39 @@ export default function SettingsPage() {
                 <div className="pt-4 flex justify-end">
                   <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
                     {saved ? <><Check className="h-4 w-4" /> Saved!</> : saving ? "Saving..." : <><Save className="h-4 w-4" /> Save Changes</>}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Security Tab */}
+          {activeTab === "security" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your password to keep your account secure.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-slate-500">Current Password</label>
+                    <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter current password" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-slate-500">New Password</label>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter new password" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-slate-500">Confirm New Password</label>
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Confirm new password" />
+                  </div>
+                </div>
+                <div className="pt-4 flex justify-end">
+                  <Button onClick={handleUpdatePassword} disabled={updatingPassword} className="gap-2 bg-blue-600 hover:bg-blue-700">
+                    {updatingPassword ? "Updating..." : <><Lock className="h-4 w-4" /> Update Password</>}
                   </Button>
                 </div>
               </CardContent>
