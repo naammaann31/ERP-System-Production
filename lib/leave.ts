@@ -165,13 +165,18 @@ export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) =>
 
 export const calculateMonthsEmployed = (dateOfJoining: string | undefined): number => {
   if (!dateOfJoining) return 1; // Default to 1 month if no date is set
-  const joinDate = new Date(dateOfJoining);
+  
+  // Extract date part in case it includes time, then split by '-'
+  const parts = dateOfJoining.split('T')[0].split('-');
+  if (parts.length < 3) return 1;
+
+  const joinYear = parseInt(parts[0], 10);
+  const joinMonth = parseInt(parts[1], 10) - 1; // 0-indexed month
+
   const now = new Date();
   
-  if (isNaN(joinDate.getTime())) return 1;
-  
-  const yearsDiff = now.getFullYear() - joinDate.getFullYear();
-  const monthsDiff = now.getMonth() - joinDate.getMonth();
+  const yearsDiff = now.getFullYear() - joinYear;
+  const monthsDiff = now.getMonth() - joinMonth;
   const totalMonths = (yearsDiff * 12) + monthsDiff;
   
   // They get 2 leaves for the current month they are in as well, so we add 1.
