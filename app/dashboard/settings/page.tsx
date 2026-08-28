@@ -9,10 +9,7 @@ import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings
 import { toast, Toaster } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
-const tabs = [
-    { id: "profile", label: "Profile", icon: User },
-    { id: "security", label: "Security", icon: Lock },
-];
+
 
 const timezones = [
   "Indian",
@@ -24,6 +21,11 @@ const timezones = [
 
 export default function SettingsPage() {
   const { profile } = useAuth();
+  
+  const tabs = [
+    { id: "profile", label: "Profile", icon: User },
+    ...(profile?.role === "Admin" ? [{ id: "security", label: "Security", icon: Lock }] : [])
+  ];
   const [activeTab, setActiveTab] = useState("profile");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
