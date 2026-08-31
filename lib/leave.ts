@@ -169,7 +169,8 @@ export const calculateMonthsEmployed = (dateOfJoining: string | undefined): numb
   const resetYear = 2026;
   const resetMonth = 7; // August (0-indexed in JS Dates)
   
-  const now = new Date();
+  // Force the date to IST (Indian Standard Time) so it resets universally for everyone at exactly 12:00 AM IST
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   
   const yearsDiff = now.getFullYear() - resetYear;
   const monthsDiff = now.getMonth() - resetMonth;
