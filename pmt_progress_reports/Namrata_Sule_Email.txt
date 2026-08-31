@@ -1,0 +1,18 @@
+From: Namrata Sule <namrata.sule@vectrastaffing.com>
+To: Project Management Team <pmt@vectrastaffing.com>
+Subject: Product Roadmap Update: Firebase Deprecation - Namrata Sule
+
+Hello PMT,
+
+I am reaching out to provide a thorough update on my responsibilities concerning the transition to Supabase. As a UX Designer, my priority is ensuring that this migration translates to a seamless, uninterrupted experience for our end-users while meeting all our product milestones.
+
+I have been mapping out the equivalent requirements for Supabase to replace our current Firebase features. For the UI/UX side, I am also designing the updated user flows for the new Supabase Auth implementation. I have enclosed a Markdown document that highlights my progress and provides a snippet of our updated design/roadmap strategy.
+
+I am coordinating with the engineering leads to ensure our rollout timeline remains on track with zero downtime.
+
+Please review the attached Markdown document for the technical specifics of my work. Do not hesitate to reach out if you require any further clarification or if there are adjustments needed to the timeline.
+
+Best regards,
+
+Namrata Sule
+UX Designer

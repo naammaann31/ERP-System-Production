@@ -68,6 +68,87 @@ const formatDate = (dateStr: string) => {
 
 const formatTime = formatAttendanceTime;
 
+
+function ManualLeaveCredit({ employeeUid, employeeName, employeeDepartment }: { employeeUid: string; employeeName: string; employeeDepartment: string }) {
+  const [days, setDays] = useState<number | "">("");
+  const [saving, setSaving] = useState(false);
+
+  const handleLeaveAction = async (action: "add" | "reduce") => {
+    if (!days || days <= 0) {
+      toast.error("Please enter a valid number of days");
+      return;
+    }
+    setSaving(true);
+    try {
+      const supabase = createClient();
+      const leaveType = action === "add" ? "Manual Credit" : "Manual Deduction";
+      const actualDays = action === "add" ? days : -days;
+      const { error } = await supabase.from("leave_requests").insert({
+        user_id: employeeUid,
+        full_name: employeeName,
+        department: employeeDepartment,
+        leave_type: leaveType,
+        start_date: new Date().toISOString().split("T")[0],
+        end_date: new Date().toISOString().split("T")[0],
+        days: actualDays,
+        reason: action === "add" ? "Manual leave credit by Admin/HR" : "Manual leave deduction by Admin/HR",
+        status: "Approved",
+      });
+      if (error) {
+        toast.error("Failed to " + action + " leaves: " + error.message);
+      } else {
+        toast.success(action === "add" 
+          ? `Successfully credited ${days} leave(s) to ${employeeName}` 
+          : `Successfully deducted ${days} leave(s) from ${employeeName}`);
+        setDays("");
+        window.location.reload();
+      }
+    } catch (err) {
+      toast.error("Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div variants={itemVariants} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <p className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Manual Leave Editor</p>
+          <p className="text-slate-500 text-sm">Add or reduce leaves from {employeeName}&apos;s bucket.</p>
+        </div>
+        <div className="flex gap-3 items-center">
+          <input
+            type="number"
+            value={days}
+            onChange={(e) => setDays(e.target.value ? parseFloat(e.target.value) : "")}
+            placeholder="Days"
+            step={0.5}
+            className="w-24 px-3 py-2 rounded-xl border border-slate-200 text-center font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+            min={0.5}
+          />
+          <button
+            type="button"
+            onClick={() => handleLeaveAction("add")}
+            disabled={saving || !days}
+            className="rounded-xl px-5 py-2.5 font-semibold bg-emerald-600 text-white hover:bg-emerald-500 active:scale-95 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {saving ? "..." : "+ Add"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleLeaveAction("reduce")}
+            disabled={saving || !days}
+            className="rounded-xl px-5 py-2.5 font-semibold bg-red-600 text-white hover:bg-red-500 active:scale-95 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {saving ? "..." : "− Reduce"}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function EmployeeProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -191,9 +272,9 @@ export default function EmployeeProfilePage() {
 
   const presentDays = attendance.filter((a) => a.status === "Present" || a.status === "Checked In").length;
   const approvedLeaves = leaves.filter((l) => l.status === "Approved").length;
-  const pendingLeaves = leaves.filter((l) => l.status === "Pending").length;
-  const totalLeaveDays = leaves.filter((l) => l.status === "Approved").reduce((sum, l) => sum + l.days, 0);
-    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining);
+  const pendingLeaves = leaves.filter((l) => l.status === "Pending" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").length;
+  const totalLeaveDays = leaves.filter((l) => l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").reduce((sum, l) => sum + l.days, 0);
+    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining, leaves);
     const remainingLeaves = Math.max(0, totalAccruedLeaves - totalLeaveDays);
   const latestPayroll = payrolls.length > 0 ? payrolls[0] : null;
 
@@ -320,6 +401,11 @@ export default function EmployeeProfilePage() {
           </motion.div>
         ))}
       </div>
+      )}
+
+      {/* Manual Leave Credit - HR/Admin can manually add leaves */}
+      {(profile?.role === "HR" || profile?.role === "Admin" || profile?.role === "SuperAdmin" || profile?.role === "OPS_HR") && !isTeamLeadViewingOther && (
+        <ManualLeaveCredit employeeUid={employee.uid} employeeName={employee.fullName} employeeDepartment={employee.department || employee.role || "N/A"} />
       )}
 
       {/* Personal Info + Attendance */}

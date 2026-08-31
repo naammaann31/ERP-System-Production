@@ -49,7 +49,7 @@ export default function EmployeeLeaveDashboard() {
 
       const updatedBalances = initialLeaveBalances.map(bal => ({ ...bal, used: 0, pending: 0 }));
       
-      const totalAccrued = calculateAccruedLeaves(profile?.dateOfJoining);
+      const totalAccrued = calculateAccruedLeaves(profile?.dateOfJoining, fetched);
       updatedBalances[0].total = totalAccrued;
       
       let totalUsed = 0, totalPending = 0;
@@ -59,14 +59,14 @@ export default function EmployeeLeaveDashboard() {
       const currentYear = new Date().getFullYear();
 
       fetched.forEach(l => {
-        if (l.status === "Approved") {
+        if (l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction") {
             totalUsed += l.days;
             const start = new Date(l.startDate);
             if (start.getMonth() === currentMonth && start.getFullYear() === currentYear) {
                 usedThisMonth += l.days;
             }
         }
-        if (l.status === "Pending") totalPending += l.days;
+        if (l.status === "Pending" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction") totalPending += l.days;
       });
 
       
@@ -195,7 +195,7 @@ export default function EmployeeLeaveDashboard() {
                       <td className="px-5 py-3 font-semibold text-slate-600">
                         {formatDate(record.startDate)} - {formatDate(record.endDate)}
                       </td>
-                      <td className="px-5 py-3 font-bold text-slate-800">{record.days}</td>
+                      <td className="px-5 py-3 font-bold text-slate-800">{record.leaveType === 'Manual Credit' ? `+${record.days}` : record.leaveType === 'Manual Deduction' ? record.days : record.days}</td>
                       <td className="px-5 py-3 font-medium text-slate-500">{formatTimestamp(record.appliedOn)}</td>
                       <td className="px-5 py-3">
                         <Badge variant={record.status === "Approved" ? "success" : record.status === "Rejected" ? "destructive" : "warning"} className="font-semibold text-[10px] py-0.5">

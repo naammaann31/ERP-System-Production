@@ -356,7 +356,9 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
 
   // 2. Fetch actual attendance records
   const startDate = `${yearMonth}-01`;
-  const endDate = `${yearMonth}-31`;
+  const [yearStr, monthStr] = yearMonth.split('-');
+  const lastDay = new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate();
+  const endDate = `${yearMonth}-${lastDay}`;
 
   const { data, error } = await supabase
     .from("attendance")

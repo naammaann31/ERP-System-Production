@@ -164,26 +164,25 @@ export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) =>
 };
 
 export const calculateMonthsEmployed = (dateOfJoining: string | undefined): number => {
-  if (!dateOfJoining) return 1; // Default to 1 month if no date is set
+  // We want to start crediting 2 leaves on the 1st of every month, starting Sept 1st, 2026.
+  // Since leaves were reset to 0 in August 2026, our baseline is August 2026.
+  const resetYear = 2026;
+  const resetMonth = 7; // August (0-indexed in JS Dates)
   
-  // Extract date part in case it includes time, then split by '-'
-  const parts = dateOfJoining.split('T')[0].split('-');
-  if (parts.length < 3) return 1;
-
-  const joinYear = parseInt(parts[0], 10);
-  const joinMonth = parseInt(parts[1], 10) - 1; // 0-indexed month
-
   const now = new Date();
   
-  const yearsDiff = now.getFullYear() - joinYear;
-  const monthsDiff = now.getMonth() - joinMonth;
+  const yearsDiff = now.getFullYear() - resetYear;
+  const monthsDiff = now.getMonth() - resetMonth;
   const totalMonths = (yearsDiff * 12) + monthsDiff;
   
-  // They get 2 leaves for the current month they are in as well, so we add 1.
-  return Math.max(1, totalMonths + 1);
+  // Return the number of months passed since August 2026. 
+  // e.g., On Sept 1st, this becomes 1. 1 * 2 = 2 leaves credited.
+  return Math.max(0, totalMonths);
 };
 
-export const calculateAccruedLeaves = (dateOfJoining: string | undefined): number => {
+export const calculateAccruedLeaves = (dateOfJoining: string | undefined, leaves: LeaveRequest[] = []): number => {
   const months = calculateMonthsEmployed(dateOfJoining);
-  return months * 2;
+  const automaticLeaves = months * 2;
+  const manualLeaves = leaves.filter(l => (l.leaveType === "Manual Credit" || l.leaveType === "Manual Deduction") && l.status === "Approved").reduce((s, l) => s + l.days, 0);
+  return automaticLeaves + manualLeaves;
 };
