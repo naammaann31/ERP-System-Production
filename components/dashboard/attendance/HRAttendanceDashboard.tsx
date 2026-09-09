@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
@@ -16,27 +16,20 @@ import * as xlsx from "xlsx";
 const formatTime = formatAttendanceTime;
 
 const getStatusBadge = (status: string, isHalfDay?: boolean, isLate?: boolean) => {
-  let mainBadge;
-  switch (status) {
-    case "Present": mainBadge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>; break;
-    case "Checked In": mainBadge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>; break;
-    case "Leave": mainBadge = <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>; break;
-    case "WFH": mainBadge = <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>; break;
-    case "Absent": mainBadge = <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>; break;
-    case "Late": mainBadge = <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>; break;
-    case "Week Off": mainBadge = <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>; break;
-    default: mainBadge = <Badge>{status}</Badge>;
+  if (isHalfDay) {
+    return <Badge variant="warning" className="bg-amber-50 text-amber-700 border-amber-200">Half Day</Badge>;
   }
 
-  if (isHalfDay || isLate) {
-    return (
-      <div className="flex items-center gap-2">
-        {mainBadge}
-        {isHalfDay && <Badge variant="warning" className="bg-amber-50 text-amber-700 border-amber-200">Half Day</Badge>}
-      </div>
-    );
+  switch (status) {
+    case "Present": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>;
+    case "Checked In": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>;
+    case "Leave": return <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>;
+    case "WFH": return <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>;
+    case "Absent": return <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>;
+    case "Late": return <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>;
+    case "Week Off": return <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>;
+    default: return <Badge>{status}</Badge>;
   }
-  return mainBadge;
 };
 
 const hrStats = [

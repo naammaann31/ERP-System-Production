@@ -164,6 +164,11 @@ export default function EmployeeProfilePage() {
 
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceMonth, setAttendanceMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,12 +226,6 @@ export default function EmployeeProfilePage() {
       }
       setEmployee(empData);
 
-      // Fetch attendance for current month
-      const now = new Date();
-      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const attRecords = await getUserAttendanceForMonth(uid, yearMonth);
-      setAttendance(attRecords);
-
       // Fetch leaves
       const leaveRecords = await getUserLeaves(uid);
       setLeaves(leaveRecords);
@@ -240,6 +239,17 @@ export default function EmployeeProfilePage() {
 
     fetchAll();
   }, [uid]);
+
+  useEffect(() => {
+    if (!uid) return;
+    const fetchAttendance = async () => {
+      setAttendanceLoading(true);
+      const attRecords = await getUserAttendanceForMonth(uid, attendanceMonth);
+      setAttendance(attRecords);
+      setAttendanceLoading(false);
+    };
+    fetchAttendance();
+  }, [uid, attendanceMonth]);
 
   if (loading) {
     return (
@@ -280,7 +290,7 @@ export default function EmployeeProfilePage() {
 
   const summaryCards = [
     {
-      title: "Present This Month",
+      title: "Present (Selected Month)",
       value: presentDays.toString(),
       subtitle: "days",
       icon: CalendarCheck,
@@ -477,9 +487,18 @@ export default function EmployeeProfilePage() {
             >
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <CalendarCheck className="h-5 w-5 text-slate-400" /> Attendance This Month
+                  <CalendarCheck className="h-5 w-5 text-slate-400" /> Attendance Record
                 </CardTitle>
-                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.attendance ? 'rotate-180' : ''}`} />
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="month"
+                    value={attendanceMonth}
+                    onChange={(e) => setAttendanceMonth(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openCards.attendance ? 'rotate-180' : ''}`} />
+                </div>
               </div>
             </CardHeader>
             <AnimatePresence initial={false}>
@@ -503,7 +522,11 @@ export default function EmployeeProfilePage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                          {attendance.length === 0 ? (
+                          {attendanceLoading ? (
+                            <tr>
+                              <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">Loading records...</td>
+                            </tr>
+                          ) : attendance.length === 0 ? (
                             <tr>
                               <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No attendance records this month.</td>
                             </tr>
