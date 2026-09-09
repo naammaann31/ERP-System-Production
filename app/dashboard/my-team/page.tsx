@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -46,7 +46,8 @@ export default function MyTeamPage() {
   useEffect(() => {
     if (!profile) return;
 
-    if (profile.designation !== "Team-Lead" && profile.jobRole !== "Team-Lead") {
+    const isManager = profile.designation === "Manager";
+    if (profile.designation !== "Team-Lead" && profile.jobRole !== "Team-Lead" && !isManager) {
       router.push("/dashboard");
       return;
     }
@@ -68,16 +69,19 @@ export default function MyTeamPage() {
         const memberDept = row.department?.toLowerCase();
         const memberRole = row.role?.toLowerCase();
 
+        // Managers can see both their own department AND Marketing team
         const isSameDept = (leadDept && memberDept && leadDept === memberDept) ||
                            (leadRole && memberRole && leadRole === memberRole);
+        const isMarketingMember = memberDept === "marketing" || memberRole === "marketing";
 
-        if (isSameDept) {
+        if (isSameDept || (isManager && isMarketingMember)) {
             emps.push({
             uid: row.id,
             id: row.employee_id || "N/A",
             name: row.full_name || "Unnamed",
             jobRole: row.job_role || "N/A",
             designation: row.designation || "Employee",
+            department: row.department || row.role || "N/A",
             createdAt: row.created_at ? new Date(row.created_at).getTime() : 0
             });
         }

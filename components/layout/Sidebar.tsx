@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -146,10 +146,13 @@ export default function Sidebar() {
 
                 <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 custom-scrollbar">
                     {NAV_LINKS.filter(link => {
+                        const isManager = profile?.designation === "Manager";
                         if (link.isTeamLeadOnly) {
-                            return profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead";
+                            return profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || isManager;
                         }
                         if (link.department) {
+                            // Managers can see all department-specific tabs
+                            if (isManager) return link.roles.includes(userRole);
                             const userDept = profile?.department?.toLowerCase() || "";
                             const userRoleStr = profile?.role?.toLowerCase() || "";
                             const targetDept = link.department.toLowerCase();
