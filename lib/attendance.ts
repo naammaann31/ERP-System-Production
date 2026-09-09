@@ -1,4 +1,4 @@
-﻿import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 export interface AttendanceRecord {
   id?: string;
@@ -350,7 +350,7 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
   const supabase = createClient();
   
   // 1. Fetch user profile for dummy records
-  const { data: profile } = await supabase.from("profiles").select("id, full_name, role").eq("id", userId).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id, full_name, role, date_of_joining").eq("id", userId).maybeSingle();
   if (!profile) return [];
   if (profile.role === "Admin") return [];
 
@@ -386,6 +386,9 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     // Don't pad future dates
     if (dateStr > todayStr) continue;
     
+    // Don't pad dates before date_of_joining
+    if (profile.date_of_joining && dateStr < profile.date_of_joining) continue;
+    
     if (!existingDates.has(dateStr)) {
       const dDate = new Date(Number(year), Number(month) - 1, d);
       const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
@@ -405,10 +408,15 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     }
   }
   
+  // Final safety filter: remove any records (even existing DB ones) before the joining date
+  const finalRecords = profile.date_of_joining 
+    ? paddedRecords.filter(r => r.date >= profile.date_of_joining)
+    : paddedRecords;
+    
   // Sort descending by date
-  paddedRecords.sort((a, b) => b.date.localeCompare(a.date));
+  finalRecords.sort((a, b) => b.date.localeCompare(a.date));
   
-  return paddedRecords;
+  return finalRecords;
 };
 
 export const updateAttendanceStatus = async (

@@ -92,15 +92,18 @@ export default function HRAttendanceDashboard() {
       const data = await getAttendanceByDate(selectedDate);
       
       // Fetch all employees
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role").neq("role", "Admin");
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining").neq("role", "Admin");
       
       let mergedRecords = data;
       
       if (profiles) {
-                   const dDate = new Date(selectedDate);
+          const dDate = new Date(selectedDate);
           const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
 
-          mergedRecords = profiles.map(profile => {
+          // Filter out profiles whose joining date is after the selected date
+          const validProfiles = profiles.filter(p => !p.date_of_joining || p.date_of_joining <= selectedDate);
+
+          mergedRecords = validProfiles.map(profile => {
              const existing = data.find(r => r.userId === profile.id);
              if (existing) return existing;
              

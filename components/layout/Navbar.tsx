@@ -5,7 +5,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { logoutUser } from "@/lib/auth";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Menu, ChevronLeft, Bell, X } from "lucide-react";
+import { LogOut, User, Menu, ChevronLeft, ArrowLeft, ArrowRight, RotateCw, Bell, X } from "lucide-react";
 import { useSidebar } from "@/components/providers/SidebarProvider";
 import {
     Notification,
@@ -89,8 +89,17 @@ export default function Navbar() {
                     className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors md:flex"
                     aria-label="Toggle Sidebar"
                 >
-                    {isOpen ? <ChevronLeft className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                    <Menu className="w-5 h-5" />
                 </button>
+                
+                <div className="hidden md:flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200/60 shadow-sm">
+                    <button onClick={() => window.history.back()} className="p-1.5 rounded-md text-slate-400 hover:text-slate-800 hover:bg-white hover:shadow-sm transition-all" title="Go Back">
+                        <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => window.history.forward()} className="p-1.5 rounded-md text-slate-400 hover:text-slate-800 hover:bg-white hover:shadow-sm transition-all" title="Go Forward">
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
+                </div>
                 <div className="md:hidden flex items-center gap-2">
                     <div className="w-6 h-6 flex items-center justify-center mt-0.5">
                         <Image

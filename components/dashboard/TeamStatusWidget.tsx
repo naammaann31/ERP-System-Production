@@ -128,7 +128,7 @@ export default function TeamStatusWidget() {
           <span className="text-xs font-semibold text-slate-500">{team.length} Members</span>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="max-h-[420px] overflow-y-auto custom-scrollbar">
         {team.length > 0 ? (
           <div className="space-y-3">
             {team.map((member) => (

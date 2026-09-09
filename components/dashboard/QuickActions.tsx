@@ -65,28 +65,26 @@ export default function QuickActions() {
         </div>
       </CardHeader>
       
-      <CardContent className="p-4 sm:p-5 relative z-10 bg-white/50 backdrop-blur-sm h-full">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 h-full">
+      <CardContent className="p-4 sm:p-5 relative z-10 bg-white/50 backdrop-blur-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {actions.map((action, i) => (
             <Link 
               href={action.href} 
               key={i}
-              className={`group flex flex-col justify-between p-4 rounded-xl border border-slate-100 bg-white hover:bg-slate-50/80 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${action.border}`}
+              className={`group flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-white hover:bg-slate-50/80 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 ${action.border}`}
             >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`p-2.5 rounded-lg ${action.bg} group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
-                    <action.icon className={`h-4 w-4 ${action.color}`} />
-                  </div>
-                  <div className="p-1.5 rounded-full bg-slate-50 group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-100 shadow-sm">
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-                <h4 className="font-bold text-slate-800 text-sm mb-1 group-hover:text-slate-900 transition-colors">{action.title}</h4>
+              <div className={`p-2 rounded-lg shrink-0 ${action.bg} group-hover:scale-105 transition-transform duration-300 shadow-sm`}>
+                <action.icon className={`h-4 w-4 ${action.color}`} />
               </div>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                {action.desc}
-              </p>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-slate-800 text-[13px] mb-0.5 group-hover:text-slate-900 transition-colors truncate">{action.title}</h4>
+                <p className="text-[11px] text-slate-500 font-medium truncate">
+                  {action.desc}
+                </p>
+              </div>
+              <div className="shrink-0 p-1 rounded-full bg-slate-50 group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-100 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 duration-300">
+                <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-slate-700" />
+              </div>
             </Link>
           ))}
         </div>
