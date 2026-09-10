@@ -166,7 +166,7 @@ export default function EmployeeAttendanceDashboard() {
 
     // 1. Attendance Rate
     const workingDays = effectiveRecords.filter(r => r.status !== "Week Off");
-    const presentDays = workingDays.filter(r => r.status === "Present" || r.status === "Checked In");
+    const presentDays = workingDays.filter(r => r.status === "Present" || r.status === "Checked In" || r.status === "Holiday (Paid)" || r.status === "WFH");
     const attendanceRate = workingDays.length > 0
       ? `${Math.round((presentDays.length / workingDays.length) * 100)}%`
       : "-";
@@ -261,9 +261,10 @@ export default function EmployeeAttendanceDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
         {employeeStats.map((stat, i) => {
           let val = stat.value;
-          if (stat.title === "Late Arrivals") {
-            val = records.filter(r => r.isLate).length.toString();
-          }
+          if (stat.title === "Attendance Rate") val = stats.attendanceRate;
+          if (stat.title === "Avg. Login Time") val = stats.avgLoginTime;
+          if (stat.title === "Avg. Logout Time") val = stats.avgLogoutTime;
+          if (stat.title === "Late Arrivals") val = stats.lateArrivals;
 
           return (
             <motion.div
