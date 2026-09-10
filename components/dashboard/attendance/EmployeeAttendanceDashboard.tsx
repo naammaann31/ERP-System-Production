@@ -49,6 +49,7 @@ const getStatusBadge = (status: string, isHalfDay?: boolean, isLate?: boolean) =
   switch (status) {
     case "Present": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>;
     case "Checked In": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>;
+    case "Holiday (Paid)": return <Badge variant="info" className="bg-purple-50 text-purple-600 border-purple-200">Holiday</Badge>;
     case "Leave": return <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>;
     case "WFH": return <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>;
     case "Absent": return <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>;

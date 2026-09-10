@@ -3,27 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const HOLIDAYS = [
-  // US Holidays
-  { month: 0, date: 1, name: "New Year's Day", type: "us" },
-  { month: 0, date: 19, name: "Martin Luther King Jr. Day", type: "us" },
-  { month: 4, date: 25, name: "Memorial Day", type: "us" },
-  { month: 6, date: 3, name: "Independence Day (Observed)", type: "us" },
-  { month: 8, date: 7, name: "Labor Day", type: "us" },
-  { month: 10, date: 11, name: "Veterans Day", type: "us" },
-  { month: 10, date: 26, name: "Thanksgiving Day", type: "us" },
-  { month: 11, date: 25, name: "Christmas Day", type: "us" },
-  // Indian Holidays
-  { month: 2, date: 4, name: "Holi", type: "indian" },
-  { month: 9, date: 2, name: "Gandhi Jayanti", type: "indian" },
-  { month: 9, date: 20, name: "Dussehra", type: "indian" },
-  { month: 10, date: 9, name: "New Year (Gujarati)", type: "indian" },
-  // Optional Holidays
-  { month: 0, date: 14, name: "Makar Sankrant", type: "optional" },
-  { month: 2, date: 21, name: "Eid", type: "optional" },
-  { month: 4, date: 27, name: "Bakri Eid", type: "optional" },
-  { month: 7, date: 28, name: "Raksha bandhan", type: "optional" }
-];
+import { HOLIDAYS } from "@/lib/holidays";
 
 export default function CalendarWidget() {
   const days = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -70,7 +50,11 @@ export default function CalendarWidget() {
     const isToday = today.getDate() === i && today.getMonth() === currentMonth && today.getFullYear() === currentYear;
     
     // Find holiday
-    const holiday = HOLIDAYS.find(h => h.month === currentMonth && h.date === i);
+    const holidaysForDate = HOLIDAYS.filter(h => h.month === currentMonth && h.date === i);
+    const holiday = holidaysForDate.length > 0 ? {
+      name: holidaysForDate.map(h => h.name).join("\n"),
+      type: holidaysForDate.some(h => h.type === 'birthday') ? 'birthday' : holidaysForDate[0].type
+    } : null;
     
     dates.push({ 
       date: i, 
@@ -125,7 +109,8 @@ export default function CalendarWidget() {
                 <div className={`absolute bottom-1.5 w-1.5 h-1.5 rounded-full ${
                   d.holiday.type === 'us' ? 'bg-blue-500' :
                   d.holiday.type === 'indian' ? 'bg-pink-500' :
-                  d.holiday.type === 'optional' ? 'bg-amber-500' : ''
+                  d.holiday.type === 'optional' ? 'bg-amber-500' :
+                  d.holiday.type === 'birthday' ? 'bg-green-500' : ''
                 }`} />
               )}
             </div>
@@ -133,10 +118,11 @@ export default function CalendarWidget() {
         ))}
       </div>
 
-      <div className="mt-auto flex justify-between px-2 pt-4 border-t border-slate-100">
+      <div className="mt-auto flex flex-wrap gap-x-4 gap-y-2 justify-center px-2 pt-4 border-t border-slate-100">
         <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-blue-500" /> US Holiday</div>
         <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-pink-500" /> Indian Holiday</div>
         <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-amber-500" /> Optional</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold"><div className="w-2 h-2 rounded-full bg-green-500" /> Birthday</div>
       </div>
     </div>
   );

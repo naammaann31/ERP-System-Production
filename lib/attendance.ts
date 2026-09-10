@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
+import { format, subDays, startOfMonth, endOfMonth, isSameDay } from "date-fns";
+import { getUsHolidayName } from "./holidays";
 
 export interface AttendanceRecord {
   id?: string;
@@ -8,7 +10,7 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   checkInTime: string | null; // ISO timestamp
   checkOutTime: string | null; // ISO timestamp
-  status: "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off";
+  status: "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off" | "Holiday (Paid)" | string;
   workingSeconds: number;
   isLate?: boolean;
   isHalfDay?: boolean;
@@ -392,15 +394,17 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     if (!existingDates.has(dateStr)) {
       const dDate = new Date(Number(year), Number(month) - 1, d);
       const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
+      const usHolidayName = getUsHolidayName(dateStr);
+      
       paddedRecords.push({
-        id: (isWeekend ? "weekoff-" : "absent-") + profile.id + "-" + dateStr,
+        id: (usHolidayName ? "holiday-" : isWeekend ? "weekoff-" : "absent-") + profile.id + "-" + dateStr,
         userId: profile.id,
         fullName: profile.full_name,
         role: profile.role,
         date: dateStr,
         checkInTime: null,
         checkOutTime: null,
-        status: isWeekend ? "Week Off" : "Absent",
+        status: usHolidayName ? "Holiday (Paid)" : (isWeekend ? "Week Off" : "Absent"),
         workingSeconds: 0,
         isLate: false,
         isHalfDay: false,
