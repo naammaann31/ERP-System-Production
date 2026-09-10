@@ -15,6 +15,7 @@ export interface UserProfile {
   designation?: string;
   department?: string;
   dateOfJoining?: string;
+  dateOfBirth?: string;
 }
 
 interface AuthContextType {
@@ -43,6 +44,7 @@ function toProfile(row: any): UserProfile {
     designation: row.designation,
     department: row.department,
     dateOfJoining: row.date_of_joining,
+    dateOfBirth: row.date_of_birth,
   };
 }
 

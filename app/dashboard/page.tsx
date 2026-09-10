@@ -9,6 +9,7 @@ import CalendarWidget from "@/components/dashboard/CalendarWidget";
 import TodaySchedule from "@/components/dashboard/TodaySchedule";
 import TeamStatusWidget from "@/components/dashboard/TeamStatusWidget";
 import QuickActions from "@/components/dashboard/QuickActions";
+import BirthdayTakeover from "@/components/dashboard/BirthdayTakeover";
 import { motion, Variants } from "framer-motion";
 
 const containerVariants: Variants = {
@@ -37,6 +38,7 @@ export default function DashboardPage() {
     >
       {/* 1. Welcome Header spanning full width */}
       <motion.div variants={itemVariants} className="relative z-20">
+        <BirthdayTakeover />
         <WelcomeHeader />
       </motion.div>
 

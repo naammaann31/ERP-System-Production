@@ -24,7 +24,6 @@ export const HOLIDAYS = [
   { month: 8, date: 5, name: "Pritesh Senjaliya's Birthday", type: "birthday" },
   { month: 7, date: 4, name: "Damini Mallick's Birthday", type: "birthday" },
   { month: 11, date: 14, name: "Piyush Barad's Birthday", type: "birthday" },
-  { month: 3, date: 4, name: "Jaynish Vaghela's Birthday", type: "birthday" },
   { month: 7, date: 21, name: "Krushna Ch. Parida's Birthday", type: "birthday" },
   { month: 10, date: 6, name: "Rohit Khundia's Birthday", type: "birthday" },
   { month: 6, date: 15, name: "Mohammed Hamzah Saiyed's Birthday", type: "birthday" },
@@ -57,7 +56,7 @@ export const getUsHolidayName = (dateStr: string): string | null => {
   const [year, month, day] = dateStr.split('-');
   const m = parseInt(month, 10) - 1; // 0-indexed
   const d = parseInt(day, 10);
-  
+
   const holiday = HOLIDAYS.find(h => h.month === m && h.date === d && h.type === 'us');
   return holiday ? holiday.name : null;
 };
