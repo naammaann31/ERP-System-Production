@@ -93,14 +93,26 @@ export default function TopStats() {
   useEffect(() => {
     if (!profile?.uid) return;
 
+    let intervalId: NodeJS.Timeout;
+
     // Get today's attendance
     getTodayAttendance(profile.uid).then((record) => {
       if (record) {
         setAttendanceStatus(record.status === "Present" ? "Present" : record.status === "Checked In" ? "Clocked In" : record.status);
-        if (record.workingSeconds > 0) {
-          const hrs = Math.floor(record.workingSeconds / 3600);
-          const mins = Math.floor((record.workingSeconds % 3600) / 60);
-          setWorkingHrs(`${hrs}h ${mins}m`);
+        
+        const updateWorkingTime = () => {
+          const secs = computeWorkedSeconds(record);
+          if (secs > 0) {
+            const hrs = Math.floor(secs / 3600);
+            const mins = Math.floor((secs % 3600) / 60);
+            setWorkingHrs(`${hrs}h ${mins}m`);
+          }
+        };
+
+        updateWorkingTime();
+
+        if (record.status === "Checked In") {
+          intervalId = setInterval(updateWorkingTime, 60000);
         }
       }
     });
@@ -122,6 +134,10 @@ export default function TopStats() {
         setSalarySubtitle(`${monthNames[latest.month - 1]} ${latest.year}`);
       }
     }).catch(console.error);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [profile]);
 
   if (isAdmin) {

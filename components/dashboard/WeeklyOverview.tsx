@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, CalendarDays } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { getUserAttendanceForMonth } from "@/lib/attendance";
+import { getUserAttendanceForMonth, getTodayAttendance, computeWorkedSeconds } from "@/lib/attendance";
 
 type Period = "This Week" | "Last Week" | "This Month";
 
@@ -13,6 +13,7 @@ export default function WeeklyOverview() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [records, setRecords] = useState<any[]>([]);
+  const [todayRecord, setTodayRecord] = useState<any>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -40,6 +41,9 @@ export default function WeeklyOverview() {
       const uniqueRecords = Array.from(new Map(combined.map(r => [r.date, r])).values());
       
       setRecords(uniqueRecords);
+      
+      const todayRec = await getTodayAttendance(profile.uid);
+      setTodayRecord(todayRec);
     }
     fetchData();
   }, [profile?.uid]);
@@ -67,7 +71,10 @@ export default function WeeklyOverview() {
         d.setDate(startMonday.getDate() + i);
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         
-        const rec = records.find(r => r.date === dateStr);
+        let rec = records.find(r => r.date === dateStr);
+        if (todayRecord && todayRecord.date === dateStr) {
+           rec = { ...rec, ...todayRecord };
+        }
         let value = 0;
         let status = "Pending";
         
@@ -81,16 +88,22 @@ export default function WeeklyOverview() {
                 pendingCount++;
             }
         } else {
-            if (rec.status === "Present" || rec.status === "Checked In") {
-                const workingSecs = rec.workingSeconds || 0;
+            if (rec.status === "Present" || rec.status === "Checked In" || rec.status === "Holiday (Paid)") {
+                let workingSecs = rec.workingSeconds || 0;
+                if (rec.status === "Checked In" && rec.date === todayRecord?.date) {
+                     workingSecs = computeWorkedSeconds(rec);
+                }
                 let dayPerc = Math.min(100, Math.round((workingSecs / 32400) * 100));
                 
-                if (workingSecs === 0) {
+                if (workingSecs === 0 && (rec.status === "Present" || rec.status === "Holiday (Paid)")) {
                     dayPerc = rec.isHalfDay ? 50 : 100;
                 }
                 value = dayPerc;
 
-                if (rec.isHalfDay) {
+                if (rec.status === "Holiday (Paid)") {
+                    status = "Holiday";
+                    presentCount++;
+                } else if (rec.isHalfDay) {
                     status = "Half Day";
                     halfDayCount++;
                 } else {
@@ -143,19 +156,28 @@ export default function WeeklyOverview() {
         const dateObj = new Date(year, month, d);
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         
-        const rec = records.find(r => r.date === dateStr);
+        let rec = records.find(r => r.date === dateStr);
+        if (todayRecord && todayRecord.date === dateStr) {
+           rec = { ...rec, ...todayRecord };
+        }
         
         if (rec) {
-            if (rec.status === "Present" || rec.status === "Checked In") {
-                const workingSecs = rec.workingSeconds || 0;
+            if (rec.status === "Present" || rec.status === "Checked In" || rec.status === "Holiday (Paid)") {
+                let workingSecs = rec.workingSeconds || 0;
+                if (rec.status === "Checked In" && rec.date === todayRecord?.date) {
+                     workingSecs = computeWorkedSeconds(rec);
+                }
                 let dayPerc = Math.min(100, Math.round((workingSecs / 32400) * 100));
                 
-                if (workingSecs === 0) {
+                if (workingSecs === 0 && (rec.status === "Present" || rec.status === "Holiday (Paid)")) {
                     dayPerc = rec.isHalfDay ? 50 : 100;
                 }
                 weekPresent += (dayPerc / 100);
 
-                if (rec.isHalfDay) {
+                if (rec.status === "Holiday (Paid)") {
+                    presentCount++;
+                    statusesInWeek.push("Holiday");
+                } else if (rec.isHalfDay) {
                     halfDayCount++;
                     statusesInWeek.push("Half Day");
                 } else {
@@ -211,12 +233,13 @@ export default function WeeklyOverview() {
     } else {
       return getMonthData();
     }
-  }, [period, records]);
+  }, [period, records, todayRecord]);
 
   // Color mapper based on status
   const getBarColor = (status: string, value: number) => {
     switch (status) {
       case "Present": return "bg-emerald-400";
+      case "Holiday": return "bg-purple-400";
       case "Half Day": return "bg-blue-400";
       case "Absent": return "bg-red-400";
       case "Week Off": return "bg-slate-50 border-2 border-dashed border-slate-200";
@@ -232,8 +255,8 @@ export default function WeeklyOverview() {
   };
 
   return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col h-full relative z-10">
-      <div className="flex justify-between items-center mb-8 relative z-50">
+    <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col h-full relative z-10">
+      <div className="flex justify-between items-center mb-5 relative z-50">
         <h3 className="font-bold text-slate-800 text-lg">Attendance Overview</h3>
         <div className="relative" ref={dropdownRef}>
           <button
@@ -264,19 +287,20 @@ export default function WeeklyOverview() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-end justify-between gap-2 mt-auto relative pt-4">
-        {/* Y Axis lines */}
-        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none z-0 pb-1">
-          {[100, 75, 50, 25, 0].map((step, i) => (
-            <div key={i} className="flex items-center gap-4 w-full opacity-40">
-              <span className="text-[11px] font-medium text-slate-400 w-8 text-right">{step}%</span>
-              <div className="flex-1 border-b border-dashed border-slate-200"></div>
-            </div>
-          ))}
-        </div>
+      <div className="flex-1 flex items-end justify-between gap-2 mt-auto relative pt-4 w-full">
+        <div className="relative w-full h-[140px]">
+          {/* Y Axis lines */}
+          <div className="absolute top-0 left-0 right-0 h-[120px] flex flex-col justify-between pointer-events-none z-0">
+            {[100, 75, 50, 25, 0].map((step, i) => (
+              <div key={i} className="flex items-center gap-4 w-full opacity-60">
+                <span className="text-[11px] font-semibold text-slate-500 w-8 text-right leading-none transform translate-y-[1px]">{step}%</span>
+                <div className="flex-1 border-b border-dashed border-slate-200/60"></div>
+              </div>
+            ))}
+          </div>
 
-        {/* Bars */}
-        <div className="relative z-10 flex w-full justify-between items-end h-[140px] pl-10 pr-1 pb-1">
+          {/* Bars */}
+          <div className="absolute inset-0 z-10 flex w-full justify-between items-start pl-10 pr-1">
           {chartData.bars.map((day, i) => (
             <div key={i} className="flex flex-col items-center gap-1 group w-full relative cursor-pointer">
               
@@ -297,10 +321,11 @@ export default function WeeklyOverview() {
               <span className={`text-[11px] font-bold mt-1.5 transition-colors ${day.status === 'Future' ? 'text-slate-300' : 'text-slate-500 group-hover:text-slate-800'}`}>{day.label}</span>
             </div>
           ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8 pt-5 border-t border-slate-100">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-4 border-t border-slate-100">
         <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50/80 border border-slate-100/50">
           <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 mb-1">
             <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div> Present
