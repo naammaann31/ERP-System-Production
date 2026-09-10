@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
 import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime, updateAttendanceStatus } from "@/lib/attendance";
 import { getUsHolidayName } from "@/lib/holidays";
 import { createClient } from "@/lib/supabase/client";
