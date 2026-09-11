@@ -11,8 +11,9 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import * as xlsx from "xlsx";
+import EmployeeDetailsModal from "./EmployeeDetailsModal";
 
 const formatTime = formatAttendanceTime;
 
@@ -81,6 +82,8 @@ export default function HRAttendanceDashboard() {
   const [filterLate, setFilterLate] = useState(false);
   const [filterAbsent, setFilterAbsent] = useState(false);
   const [filterPresent, setFilterPresent] = useState(false);
+
+  const [selectedEmployee, setSelectedEmployee] = useState<{ id: string, name: string } | null>(null);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -277,7 +280,12 @@ export default function HRAttendanceDashboard() {
                   filteredEmployees.map((record) => (
                     <tr key={record.id} className="bg-white hover:bg-slate-50/80 transition-colors group">
                       <td className="px-5 py-3">
-                        <div className="font-bold text-slate-900">{record.fullName}</div>
+                        <button 
+                          onClick={() => setSelectedEmployee({ id: record.userId, name: record.fullName })}
+                          className="text-left font-bold text-slate-900 hover:text-blue-600 transition-colors focus:outline-none"
+                        >
+                          {record.fullName}
+                        </button>
                         <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{record.role || 'Employee'}</div>
                       </td>
                       <td className="px-5 py-3 text-slate-600 font-medium">
@@ -310,6 +318,14 @@ export default function HRAttendanceDashboard() {
           )}
         </div>
       </Card>
+      <AnimatePresence>
+        {selectedEmployee && (
+          <EmployeeDetailsModal 
+            employee={selectedEmployee} 
+            onClose={() => setSelectedEmployee(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
