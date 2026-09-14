@@ -68,6 +68,16 @@ export const archiveAnnouncement = async (id: string) => {
 
 export const deleteAnnouncement = async (id: string) => {
   const supabase = createClient();
+  
+  // Fetch title to delete associated notifications
+  const { data: ann } = await supabase.from("announcements").select("title").eq("id", id).single();
+  if (ann?.title) {
+    await supabase.from("notifications")
+      .delete()
+      .eq("type", "announcement")
+      .eq("message", `New Announcement: ${ann.title}`);
+  }
+
   await supabase.from("announcements").delete().eq("id", id);
 };
 

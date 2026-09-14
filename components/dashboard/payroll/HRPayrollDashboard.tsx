@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Edit, Trash2 } from "lucide-react";
+import { FileText, Edit, Trash2, CalendarDays, ChevronDown, Check, Search } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
+import { getISTYearMonth, getRecentMonthOptions } from "@/lib/attendance";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   SalaryStructure,
   PayrollRecord,
@@ -14,15 +16,18 @@ import {
   calculateSalaryBreakup,
   generatePayroll,
   getAllPayrolls,
-  deletePayroll
+  deletePayroll,
+  calculateEmployeeLopAndLeaves
 } from "@/lib/payroll";
-import PayslipDocument from "@/components/payroll/PayslipDocument";
-import { getUserLeaves } from "@/lib/leave";
 import { updatePayrollExtraFields, getEmployeeBankName, getEmployeeProfileFields } from "@/app/actions/payroll";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 import SalaryConfigModal from "./SalaryConfigModal";
 import GeneratePayrollModal from "./GeneratePayrollModal";
+
+import PayrollHeader from "./PayrollHeader";
+import EmployeePayrollTable from "./EmployeePayrollTable";
+import RecentPayrollsGrid from "./RecentPayrollsGrid";
 
 interface Employee {
   uid: string;
@@ -72,6 +77,28 @@ export default function HRPayrollDashboard() {
 
   const [allPayrolls, setAllPayrolls] = useState<PayrollRecord[]>([]);
   const [payrollToDelete, setPayrollToDelete] = useState<PayrollRecord | null>(null);
+
+  const [filterMonth, setFilterMonth] = useState(getISTYearMonth());
+  const [searchQuery, setSearchQuery] = useState("");
+  const monthOptions = useMemo(() => getRecentMonthOptions(12), []);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const [filterYearStr, filterMonthStr] = filterMonth.split('-');
+    setMonth(parseInt(filterMonthStr, 10));
+    setYear(parseInt(filterYearStr, 10));
+  }, [filterMonth]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!profile) return;
@@ -125,99 +152,24 @@ export default function HRPayrollDashboard() {
   }, [month, year]);
 
   useEffect(() => {
-    const fetchAndCalculateLop = async () => {
+    const fetchLop = async () => {
       if (!selectedEmployee) return;
-
-      const leaves = await getUserLeaves(selectedEmployee.uid);
-
-      // Filter for approved leaves in the selected year
-      const yearLeaves = leaves.filter(l => {
-        const start = new Date(l.startDate);
-        return start.getFullYear() === year && l.status === "Approved";
-      });
-
-
-      const leaveMap = new Map<string, number>();
-      yearLeaves.forEach(l => {
-        const start = new Date(l.startDate);
-        const end = new Date(l.endDate);
-        let curr = new Date(start);
-        while (curr <= end) {
-          const dateStr = curr.toISOString().split('T')[0];
-          const currentVal = leaveMap.get(dateStr) || 0;
-          const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
-          leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
-          curr.setDate(curr.getDate() + 1);
-        }
-      });
-
-      // Apply Sandwich Rule
-      const dates = Array.from(leaveMap.keys()).sort();
-      dates.forEach(dateStr => {
-        const d = new Date(dateStr);
-        if (d.getDay() === 5) { // Friday
-          const nextMonday = new Date(d);
-          nextMonday.setDate(d.getDate() + 3);
-          const mondayStr = nextMonday.toISOString().split('T')[0];
-
-          if (leaveMap.has(mondayStr)) {
-            // Sandwich! Add Saturday and Sunday
-            const sat = new Date(d); sat.setDate(d.getDate() + 1);
-            const sun = new Date(d); sun.setDate(d.getDate() + 2);
-            leaveMap.set(sat.toISOString().split('T')[0], 1);
-            leaveMap.set(sun.toISOString().split('T')[0], 1);
-          }
-        }
-      });
-
-      let totalLeavesTakenBeforeMonth = 0;
-      let leavesTakenInMonth = 0;
-
-      leaveMap.forEach((val, dateStr) => {
-        const d = new Date(dateStr);
-        if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
-          totalLeavesTakenBeforeMonth += val;
-        } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
-          leavesTakenInMonth += val;
-        }
-      });
-
-      // Use the helper from lib/leave (we need to import it!)
-      // Wait, calculateMonthsEmployed isn't imported here yet. Let's just inline the logic or import it.
-      // I will add the import at the top later.
-      const calculateAccrued = () => {
-        if (!selectedEmployee.dateOfJoining) return 2; // Default 2 for 1st month
-        const joinDate = new Date(selectedEmployee.dateOfJoining);
-        if (isNaN(joinDate.getTime())) return 2;
-
-        const targetDate = new Date(year, month - 1, 1);
-
-        // If they are generating payroll for a month BEFORE they joined, this is weird but we handle it
-        if (targetDate < joinDate) return 0;
-
-        const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
-        const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
-        const totalMonths = (yearsDiff * 12) + monthsDiff;
-        return Math.max(1, totalMonths + 1) * 2;
-      };
-
-      const totalAccruedUpToMonth = calculateAccrued();
-      const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
-
-      // If they took more leaves in this month than their available balance, the rest is LOP
-      const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
-
-      // Save these to state so we can show them in the modal
-      setLopDays(unpaidLeaves);
-      setLeavesTakenThisMonth(leavesTakenInMonth);
-      setPaidLeavesThisMonth(Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth));
-
-      // Wait, we also need to pass leavesTakenInMonth and availableBalanceAtStartOfMonth to the modal!
-      // We can add state for them.
-
+      try {
+        const res = await calculateEmployeeLopAndLeaves(
+          selectedEmployee.uid, 
+          month, 
+          year, 
+          selectedEmployee.dateOfJoining
+        );
+        setLopDays(res.lopDays);
+        setLeavesTakenThisMonth(res.leavesTakenThisMonth);
+        setPaidLeavesThisMonth(res.paidLeavesThisMonth);
+      } catch (err) {
+        console.error("Failed to calculate LOP and Leaves:", err);
+      }
     };
 
-    fetchAndCalculateLop();
+    fetchLop();
   }, [selectedEmployee, month, year]);
 
   const openConfigModal = async (emp: Employee) => {
@@ -345,122 +297,37 @@ export default function HRPayrollDashboard() {
   // Preview calculations
   const preview = calculateSalaryBreakup(grossSalary, travelAllowance, lopDays, daysInMonth, otherDeductions, otherAllowances, incentives, professionalTax, incomeTax, providentFund);
 
+  const displayedPayrolls = allPayrolls.filter(pr => {
+    const prDateStr = `${pr.year}-${String(pr.month).padStart(2, '0')}`;
+    const matchesMonth = prDateStr === filterMonth;
+    const matchesSearch = pr.employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesMonth && matchesSearch;
+  });
+
   return (
     <div className="space-y-6">
-      <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 font-medium">Employee Name</th>
-                <th className="px-6 py-4 font-medium">Department</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {loading ? (
-                <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
-              ) : (
-                (() => {
-                  const currentMonth = new Date().getMonth() + 1;
-                  const currentYear = new Date().getFullYear();
-                  const currentMonthName = new Date().toLocaleString('default', { month: 'short' });
+      <PayrollHeader
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        filterMonth={filterMonth}
+        setFilterMonth={setFilterMonth}
+        monthOptions={monthOptions}
+      />
 
-                  return employees.map(emp => {
-                    const hasPayrollThisMonth = allPayrolls.some(
-                      pr => pr.userId === emp.uid && pr.month === currentMonth && pr.year === currentYear
-                    );
+      <EmployeePayrollTable
+        employees={employees}
+        loading={loading}
+        searchQuery={searchQuery}
+        filterMonth={filterMonth}
+        allPayrolls={allPayrolls}
+        openConfigModal={openConfigModal}
+        openGenerateModal={openGenerateModal}
+      />
 
-                    return (
-                      <tr key={emp.uid} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <span>{emp.name}</span>
-                            {hasPayrollThisMonth ? (
-                              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold py-0.5">
-                                Paid ({currentMonthName})
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold py-0.5">
-                                Pending
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="block text-xs font-normal text-slate-500">{emp.id}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <Badge variant="secondary" className="font-medium text-[10px]">{emp.department}</Badge>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => openConfigModal(emp)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 border ${emp.isConfigured && !hasPayrollThisMonth
-                                ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
-                                }`}
-                            >
-                              <Edit className={`w-3.5 h-3.5 ${emp.isConfigured && !hasPayrollThisMonth ? "text-green-600" : "text-slate-500"}`} /> Configure Salary
-                            </button>
-                            {hasPayrollThisMonth ? (
-                              <button
-                                onClick={() => openGenerateModal(emp)}
-                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"
-                              >
-                                <FileText className="w-3.5 h-3.5 text-slate-500" /> Regenerate
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => openGenerateModal(emp)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5"
-                              >
-                                <FileText className="w-3.5 h-3.5" /> Generate Payroll
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <div>
-        <h3 className="font-bold text-lg text-slate-800 mb-4">Recent Payrolls Generated</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {allPayrolls.map(pr => (
-            <Card key={pr.id} className="border border-slate-200 shadow-sm p-4 relative group">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h4 className="font-bold text-slate-900">{pr.employeeName}</h4>
-                  <p className="text-xs text-slate-500">{pr.month}/{pr.year}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">Paid</Badge>
-                  <button
-                    onClick={() => setPayrollToDelete(pr)}
-                    className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-                    title="Delete Payroll"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between items-end mt-4">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Net Salary</p>
-                  <p className="font-black text-xl text-slate-800">{pr.netSalary.toLocaleString()}</p>
-                </div>
-                <PayslipDocument payroll={pr} />
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
+      <RecentPayrollsGrid
+        displayedPayrolls={displayedPayrolls}
+        setPayrollToDelete={setPayrollToDelete}
+      />
 
       <SalaryConfigModal
         isOpen={isConfigModalOpen}

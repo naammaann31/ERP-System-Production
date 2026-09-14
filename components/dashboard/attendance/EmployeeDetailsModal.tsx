@@ -21,6 +21,7 @@ import {
   getRecentMonthOptions,
   parseTimestamp,
   istParts,
+  computeWorkedSeconds,
   AttendanceRecord
 } from "@/lib/attendance";
 
@@ -299,7 +300,7 @@ export default function EmployeeDetailsModal({
                               {formatTime(record.checkOutTime)}
                             </td>
                             <td className="px-5 py-3 whitespace-nowrap">
-                              <div className="font-bold text-slate-800">{formatDuration(record.workingSeconds)}</div>
+                              <div className="font-bold text-slate-800">{formatDuration(computeWorkedSeconds(record))}</div>
                             </td>
                             <td className="px-5 py-3 whitespace-nowrap">
                               {getStatusBadge(record.status, record.isHalfDay, record.isLate)}

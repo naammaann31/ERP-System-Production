@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { getUserLeaves } from "@/lib/leave";
 
 export interface SalaryStructure {
   userId: string;
@@ -245,4 +246,92 @@ export const deletePayroll = async (payrollId: string): Promise<void> => {
   const supabase = createClient();
   const { error } = await supabase.from("payrolls").delete().eq("id", payrollId);
   if (error) throw error;
+}
+
+export async function calculateEmployeeLopAndLeaves(
+  employeeUid: string,
+  month: number,
+  year: number,
+  dateOfJoining: string | undefined
+): Promise<{ lopDays: number, leavesTakenThisMonth: number, paidLeavesThisMonth: number }> {
+  const leaves = await getUserLeaves(employeeUid);
+
+  // Filter for approved leaves in the selected year
+  const yearLeaves = leaves.filter(l => {
+    const start = new Date(l.startDate);
+    return start.getFullYear() === year && l.status === "Approved";
+  });
+
+  const leaveMap = new Map<string, number>();
+  yearLeaves.forEach(l => {
+    const start = new Date(l.startDate);
+    const end = new Date(l.endDate);
+    let curr = new Date(start);
+    while (curr <= end) {
+      const dateStr = curr.toISOString().split('T')[0];
+      const currentVal = leaveMap.get(dateStr) || 0;
+      const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
+      leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
+      curr.setDate(curr.getDate() + 1);
+    }
+  });
+
+  // Apply Sandwich Rule
+  const dates = Array.from(leaveMap.keys()).sort();
+  dates.forEach(dateStr => {
+    const d = new Date(dateStr);
+    if (d.getDay() === 5) { // Friday
+      const nextMonday = new Date(d);
+      nextMonday.setDate(d.getDate() + 3);
+      const mondayStr = nextMonday.toISOString().split('T')[0];
+
+      if (leaveMap.has(mondayStr)) {
+        // Sandwich! Add Saturday and Sunday
+        const sat = new Date(d); sat.setDate(d.getDate() + 1);
+        const sun = new Date(d); sun.setDate(d.getDate() + 2);
+        leaveMap.set(sat.toISOString().split('T')[0], 1);
+        leaveMap.set(sun.toISOString().split('T')[0], 1);
+      }
+    }
+  });
+
+  let totalLeavesTakenBeforeMonth = 0;
+  let leavesTakenInMonth = 0;
+
+  leaveMap.forEach((val, dateStr) => {
+    const d = new Date(dateStr);
+    if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
+      totalLeavesTakenBeforeMonth += val;
+    } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
+      leavesTakenInMonth += val;
+    }
+  });
+
+  const calculateAccrued = () => {
+    if (!dateOfJoining) return 2; // Default 2 for 1st month
+    const joinDate = new Date(dateOfJoining);
+    if (isNaN(joinDate.getTime())) return 2;
+
+    const targetDate = new Date(year, month - 1, 1);
+
+    // If they are generating payroll for a month BEFORE they joined
+    if (targetDate < joinDate) return 0;
+
+    const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
+    const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
+    const totalMonths = (yearsDiff * 12) + monthsDiff;
+    return Math.max(1, totalMonths + 1) * 2;
+  };
+
+  const totalAccruedUpToMonth = calculateAccrued();
+  const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
+
+  // If they took more leaves in this month than their available balance, the rest is LOP
+  const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
+
+  return {
+    lopDays: unpaidLeaves,
+    leavesTakenThisMonth: leavesTakenInMonth,
+    paidLeavesThisMonth: Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth)
+  };
 };

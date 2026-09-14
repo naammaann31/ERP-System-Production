@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,8 @@ import {
   Search,
   TrendingUp,
   TrendingDown,
-  ChevronDown
+  ChevronDown,
+  Check
 } from "lucide-react";
 import {
   getUserAttendanceForMonth,
@@ -69,11 +70,25 @@ const employeeStats = [
 export default function EmployeeAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  // Built from the current Indian month rather than a fixed list, and holding
-  // the "2026-08" value the query needs instead of a display label.
-  const [selectedDate, setSelectedDate] = useState(getLocalDateString);
+  const [activeFilter, setActiveFilter] = useState<"all" | "late" | "absent" | "present">("all");
+  
+  const [selectedMonth, setSelectedMonth] = useState(getISTYearMonth());
+  const monthOptions = useMemo(() => getRecentMonthOptions(6), []);
+  
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  // Click outside listener for dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const [monthRecords, setMonthRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -137,17 +152,16 @@ export default function EmployeeAttendanceDashboard() {
     setClockLoading(false);
   };
 
-  // Fetch day's attendance
+  // Fetch month's attendance
   useEffect(() => {
     if (!profile?.uid) return;
     setLoading(true);
-    const yearMonth = selectedDate.substring(0, 7);
-    getUserAttendanceForMonth(profile.uid, yearMonth).then((data) => {
-      setMonthRecords(data);
-      setRecords(data.filter(r => r.date === selectedDate));
+    getUserAttendanceForMonth(profile.uid, selectedMonth).then((data) => {
+      // Sort the records by date descending so the most recent is at the top
+      setMonthRecords(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       setLoading(false);
     });
-  }, [profile, selectedDate]);
+  }, [profile, selectedMonth]);
 
   
 
@@ -159,7 +173,7 @@ export default function EmployeeAttendanceDashboard() {
       const idx = effectiveRecords.findIndex(r => r.date === todayRecord.date);
       if (idx >= 0) {
         effectiveRecords[idx] = { ...effectiveRecords[idx], ...todayRecord };
-      } else if (todayRecord.date.startsWith(selectedDate.substring(0, 7))) {
+      } else if (todayRecord.date.startsWith(selectedMonth)) {
         effectiveRecords.push(todayRecord);
       }
     }
@@ -228,12 +242,22 @@ export default function EmployeeAttendanceDashboard() {
       avgLogoutTime,
       lateArrivals
     };
-  }, [monthRecords, todayRecord, selectedDate]);
+  }, [monthRecords, todayRecord]);
 
-  const displayRecords = records.filter(record => 
-    record.date.includes(searchTerm) || 
-    record.status.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const displayRecords = monthRecords.filter(record => {
+    const matchesSearch = record.date.includes(searchTerm) || record.status.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let matchesFilter = true;
+    if (activeFilter === "late") {
+      matchesFilter = record.isLate === true || record.status === "Late";
+    } else if (activeFilter === "absent") {
+      matchesFilter = record.status === "Absent" || record.status === "Leave" || record.isHalfDay === true;
+    } else if (activeFilter === "present") {
+      matchesFilter = record.status === "Present" || record.status === "Checked In" || record.status === "WFH";
+    }
+
+    return matchesSearch && matchesFilter;
+  });
 
   return (
     <div className="space-y-6">
@@ -245,12 +269,48 @@ export default function EmployeeAttendanceDashboard() {
         </div>
 
         <div className="flex flex-col md:flex-row w-full md:w-auto items-stretch md:items-center gap-3">
-          <input 
-            type="date" 
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full md:w-auto bg-white flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-800 font-medium ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          />
+          <div className="relative" ref={dropdownRef}>
+            <button 
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="w-full md:w-auto bg-white flex items-center justify-between h-10 rounded-xl border border-slate-200 pl-4 pr-3 py-2 text-sm text-slate-800 font-semibold cursor-pointer hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 min-w-[200px] shadow-sm"
+            >
+              <div className="flex items-center">
+                <CalendarDays className="h-4 w-4 text-slate-400 mr-2" />
+                {monthOptions.find(opt => opt.value === selectedMonth)?.label || "Select Month"}
+              </div>
+              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+            
+            <AnimatePresence>
+              {dropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute right-0 md:left-0 mt-2 w-full md:w-56 bg-white rounded-xl shadow-xl border border-slate-100 py-1.5 z-50 overflow-hidden"
+                >
+                  {monthOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setSelectedMonth(opt.value);
+                        setDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-between ${
+                        selectedMonth === opt.value 
+                          ? 'bg-blue-50/50 text-blue-700' 
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      {opt.label}
+                      {selectedMonth === opt.value && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <Button className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20">
             <Download className="h-4 w-4 mr-2" /> Export
           </Button>
@@ -269,10 +329,29 @@ export default function EmployeeAttendanceDashboard() {
           return (
             <motion.div
               key={stat.title}
+              onClick={() => {
+                if (stat.title === "Late Arrivals") {
+                  setActiveFilter(prev => prev === "late" ? "all" : "late");
+                } else if (stat.title === "Attendance Rate") {
+                  setActiveFilter(prev => prev === "absent" ? "all" : "absent");
+                } else if (stat.title === "Avg. Login Time" || stat.title === "Avg. Logout Time") {
+                  setActiveFilter(prev => prev === "present" ? "all" : "present");
+                }
+              }}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: i * 0.1, ease: "easeOut" }}
-              className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group cursor-pointer relative overflow-hidden"
+              className={`bg-white rounded-2xl p-4 border shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group cursor-pointer relative overflow-hidden ${
+                (stat.title === "Late Arrivals" && activeFilter === "late") || 
+                (stat.title === "Attendance Rate" && activeFilter === "absent") ||
+                ((stat.title === "Avg. Login Time" || stat.title === "Avg. Logout Time") && activeFilter === "present")
+                  ? `ring-2 ring-offset-2 ${
+                      stat.title === "Late Arrivals" ? "ring-red-500" : 
+                      stat.title === "Attendance Rate" ? "ring-green-500" : 
+                      "ring-blue-500"
+                    } border-transparent` 
+                  : "border-slate-100"
+              }`}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
               <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />
@@ -313,9 +392,6 @@ export default function EmployeeAttendanceDashboard() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Button variant="outline" className="bg-white text-slate-700 rounded-lg shadow-sm hover:bg-slate-50 hover:text-slate-900 border-slate-200 py-2 h-auto text-sm">
-                  <Filter className="h-3.5 w-3.5 mr-2 text-slate-500" /> Filter
-                </Button>
               </div>
             </div>
           </CardHeader>
@@ -353,7 +429,11 @@ export default function EmployeeAttendanceDashboard() {
                           {formatTime(record.checkOutTime)}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap">
-                          <div className="font-bold text-slate-800">{formatDuration(record.workingSeconds)}</div>
+                          <div className="font-bold text-slate-800">
+                            {record.status === "Checked In" && todayRecord && record.id === todayRecord.id
+                              ? formatDuration(liveSeconds)
+                              : formatDuration(computeWorkedSeconds(record))}
+                          </div>
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap">
                           {getStatusBadge(record.status, record.isHalfDay, record.isLate)}

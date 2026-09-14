@@ -213,7 +213,7 @@ export const getRecentMonthOptions = (count = 12): { value: string; label: strin
       year: "numeric",
     });
     return { value, label };
-  });
+  }).filter(opt => opt.value >= "2026-08");
 };
 
 export const checkIn = async (userId: string, fullName: string, role?: string) => {
