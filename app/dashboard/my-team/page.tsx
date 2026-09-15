@@ -195,14 +195,16 @@ export default function MyTeamPage() {
           team_lead_id: profile?.uid,
           team_lead_name: profile?.fullName || "Unknown",
           report_date: today,
+          // Keep the aggregate names if a report ever carries them, but never
+          // let a missing total_* blank out the value the report actually has.
           report_data: processedReports.map(r => ({
               ...r,
               department: "Marketing",
-              no_of_candidates: r.total_candidates,
-              applications: r.total_applications,
-              rtr_submissions: r.total_rtr,
-              screenings: r.total_screenings,
-              interviews: r.total_interviews
+              no_of_candidates: r.total_candidates ?? r.no_of_candidates ?? 0,
+              applications: r.total_applications ?? r.applications ?? 0,
+              rtr_submissions: r.total_rtr ?? r.rtr_submissions ?? 0,
+              screenings: r.total_screenings ?? r.screenings ?? 0,
+              interviews: r.total_interviews ?? r.interviews ?? 0
           }))
         });
         

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
-import { getTeamLeadReports } from "@/app/actions/marketing";
+import { getTeamLeadReports, getMarketingDailyReports } from "@/app/actions/marketing";
 import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -15,6 +15,10 @@ export default function MarketingDailyReportsPage() {
   const router = useRouter();
   
   const [masterReports, setMasterReports] = useState<any[]>([]);
+  // The live submissions a master report was built from. A master report only
+  // stores a JSON snapshot, so these are what decide whether it still has
+  // anything to show and what the numbers actually are.
+  const [liveReports, setLiveReports] = useState<any[]>([]);
   const [filterDate, setFilterDate] = useState<string>("");
   const [filterEmployee, setFilterEmployee] = useState<string>("All");
   const [expandedRowId, setExpandedRowId] = useState<number | string | null>(null);
@@ -29,10 +33,12 @@ export default function MarketingDailyReportsPage() {
 
     const fetchMasterReports = async () => {
       try {
-        const data = await getTeamLeadReports();
-        if (data) {
-          setMasterReports(data);
-        }
+        const [masters, live] = await Promise.all([
+          getTeamLeadReports(),
+          getMarketingDailyReports(),
+        ]);
+        if (masters) setMasterReports(masters);
+        if (live) setLiveReports(live);
       } catch (err) {
         console.error("Failed to fetch reports", err);
       } finally {
@@ -61,12 +67,64 @@ export default function MarketingDailyReportsPage() {
   
   let displayReports: any[] = [];
   if (activeDate) {
-    const matched = marketingMasterReports.filter(r => r.report_date === activeDate);
+    // A Team Lead can regenerate the master report for a date, which inserts a
+    // second team_lead_reports row carrying the *same* submissions. Flattening
+    // every master for the date would therefore list each submission twice, so
+    // keep one entry per submission id.
+    //
+    // Copies are merged rather than replaced: the newest master wins for every
+    // field it actually carries, while a field it is missing keeps the value an
+    // earlier master recorded. Older masters were written before the metric
+    // fields were populated correctly, so replacing outright would blank out
+    // counts that are still perfectly good.
+    const matched = marketingMasterReports
+      .filter(r => r.report_date === activeDate)
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+
+    const liveById = new Map(liveReports.map((r: any) => [String(r.id), r]));
+
+    const seen = new Map<string, number>();
     matched.forEach(m => {
-       if (m.report_data && Array.isArray(m.report_data)) {
-          const mData = m.report_data.filter((rd: any) => isMarketingReport(rd));
-          displayReports.push(...mData);
-       }
+      if (!m.report_data || !Array.isArray(m.report_data)) return;
+      m.report_data.filter((rd: any) => isMarketingReport(rd)).forEach((rd: any) => {
+        const hasId = rd.id !== undefined && rd.id !== null;
+        const live = hasId ? liveById.get(String(rd.id)) : undefined;
+
+        // A master report is only a snapshot of submissions. Once the
+        // submission behind an entry has been deleted there is nothing left to
+        // report on, so the row is dropped rather than shown with figures that
+        // no longer exist in the database.
+        if (hasId && !live) return;
+
+        // The live submission is the source of truth for the counts; the
+        // snapshot only supplies the aggregated candidate breakdown.
+        const entry = live
+          ? {
+              ...rd,
+              no_of_candidates: live.no_of_candidates ?? rd.no_of_candidates ?? 0,
+              applications: live.applications ?? rd.applications ?? 0,
+              rtr_submissions: live.rtr_submissions ?? rd.rtr_submissions ?? 0,
+              screenings: live.screenings ?? rd.screenings ?? 0,
+              interviews: live.interviews ?? rd.interviews ?? 0,
+              candidate_breakdown: rd.candidate_breakdown ?? live.candidate_breakdown,
+            }
+          : {
+              ...rd,
+              no_of_candidates: rd.no_of_candidates ?? 0,
+              applications: rd.applications ?? 0,
+              rtr_submissions: rd.rtr_submissions ?? 0,
+              screenings: rd.screenings ?? 0,
+              interviews: rd.interviews ?? 0,
+            };
+
+        const existing = hasId ? seen.get(String(rd.id)) : undefined;
+        if (existing !== undefined) {
+          displayReports[existing] = { ...displayReports[existing], ...entry };
+          return;
+        }
+        if (hasId) seen.set(String(rd.id), displayReports.length);
+        displayReports.push(entry);
+      });
     });
   }
 
@@ -157,25 +215,29 @@ export default function MarketingDailyReportsPage() {
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-slate-500 font-medium">Loading reports...</td>
                 </tr>
-              ) : displayReports.map((report, idx) => (
-                <React.Fragment key={report.id || idx}>
+              ) : displayReports.map((report, idx) => {
+                // One identity per row, used for the React key and for the
+                // expand/collapse state, so two rows can never share either.
+                const rowKey = report.id ?? `${report.user_id ?? "row"}-${idx}`;
+                return (
+                <React.Fragment key={rowKey}>
                   <tr 
-                    className={`hover:bg-blue-50/30 transition-colors group ${expandedRowId === report.id ? 'bg-blue-50/30' : 'bg-white'}`}
+                    className={`hover:bg-blue-50/30 transition-colors group ${expandedRowId === rowKey ? 'bg-blue-50/30' : 'bg-white'}`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-medium cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-medium cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
                         {report.report_date}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-bold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-bold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs shrink-0 ${expandedRowId === report.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700'} transition-colors`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs shrink-0 ${expandedRowId === rowKey ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700'} transition-colors`}>
                           {report.user_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
                         <span className="group-hover:text-blue-700 transition-colors">{report.user_name}</span>
                         {report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
                           <div className="ml-2">
-                            {expandedRowId === report.id ? (
+                            {expandedRowId === rowKey ? (
                               <ChevronUp className="w-4 h-4 text-blue-500" />
                             ) : (
                               <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
@@ -184,23 +246,23 @@ export default function MarketingDailyReportsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600 font-semibold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>{report.no_of_candidates}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600 font-semibold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>{report.no_of_candidates}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-black text-xs border border-emerald-100">
                         {report.applications}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-black text-xs border border-blue-100">
                         {report.rtr_submissions}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-purple-50 text-purple-700 font-black text-xs border border-purple-100">
                         {report.screenings}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-orange-50 text-orange-700 font-black text-xs border border-orange-100">
                         {report.interviews}
                       </span>
@@ -208,7 +270,7 @@ export default function MarketingDailyReportsPage() {
                   </tr>
                   
                   <AnimatePresence>
-                    {expandedRowId === report.id && report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
+                    {expandedRowId === rowKey && report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
                       <motion.tr
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
@@ -249,7 +311,8 @@ export default function MarketingDailyReportsPage() {
                     )}
                   </AnimatePresence>
                 </React.Fragment>
-              ))}
+                );
+              })}
               
               {!loading && displayReports.length === 0 && (
                 <tr>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save, X } from "lucide-react";
@@ -6,6 +6,7 @@ import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { submitMarketingDailyReport } from "@/app/actions/marketing";
 import { marketingRowToUi, marketingUiToRow } from "@/lib/salesMarketingMap";
+import { parseMarketingWorkbook, formatCanonicalDate, toCanonicalForCompare } from "@/lib/marketingExcelImport";
 import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { Card } from "@/components/ui/card";
@@ -340,34 +341,9 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         }
     };
 
-    const formatDisplayDate = (dateStr: any) => {
-        if (!dateStr) return "-";
-        const s = String(dateStr).trim();
-        
-        let year: number, month: number, day: number;
-        
-        // Handle DD/MM/YYYY format (from Excel)
-        const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (slashMatch) {
-            day = parseInt(slashMatch[1]);
-            month = parseInt(slashMatch[2]) - 1;
-            year = parseInt(slashMatch[3]);
-        }
-        // Handle YYYY-MM-DD format (from database)
-        else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-            const parts = s.split('-');
-            year = parseInt(parts[0]);
-            month = parseInt(parts[1]) - 1;
-            day = parseInt(parts[2]);
-        }
-        else {
-            return s; // Return as-is if format is unrecognized
-        }
-        
-        const d = new Date(year!, month!, day!);
-        if (isNaN(d.getTime())) return s;
-        return d.toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric' });
-    };
+    // Canonical YYYY-MM-DD → DD/MM/YYYY, built by string surgery only so the
+    // displayed day can never drift from the stored day.
+    const formatDisplayDate = (dateStr: any) => formatCanonicalDate(dateStr);
 
     const filteredData = data.filter((row) => {
         if (searchQuery) {
@@ -381,36 +357,22 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         }
 
         if (!startDate && !endDate) return true;
-        const rowDateStr = row["Date"];
-        if (!rowDateStr) return false;
-        
-        let rowDate = new Date(rowDateStr);
-        if (isNaN(rowDate.getTime()) && typeof rowDateStr === 'string') {
-            const parts = rowDateStr.split('/');
-            if (parts.length === 3) {
-                rowDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-            }
-        }
-        
-        if (isNaN(rowDate.getTime())) return false;
-        
-        if (startDate) {
-            const sDate = new Date(startDate);
-            if (rowDate < sDate) return false;
-        }
-        if (endDate) {
-            const eDate = new Date(endDate);
-            eDate.setHours(23, 59, 59, 999);
-            if (rowDate > eDate) return false;
-        }
+        // The date inputs and the stored dates are both canonical YYYY-MM-DD, so
+        // the range check is a plain string comparison — no Date maths, no
+        // timezone, no off-by-one at the edges of the range.
+        const rowDate = toCanonicalForCompare(row["Date"]);
+        if (!rowDate) return false;
+
+        if (startDate && rowDate < startDate) return false;
+        if (endDate && rowDate > endDate) return false;
         return true;
     });
 
     const displayData = [...filteredData].sort((a, b) => {
-        const dateA = new Date(a.Date || 0).getTime();
-        const dateB = new Date(b.Date || 0).getTime();
+        const dateA = toCanonicalForCompare(a.Date);
+        const dateB = toCanonicalForCompare(b.Date);
         if (dateA !== dateB) {
-            return dateB - dateA; // Date DESC (newest at top)
+            return dateB.localeCompare(dateA); // Date DESC (newest at top)
         }
         const createdA = a.createdAt?.seconds || 0;
         const createdB = b.createdAt?.seconds || 0;
@@ -447,19 +409,47 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         reader.onload = async (evt) => {
             try {
                 const bstr = evt.target?.result;
-                const workbook = xlsx.read(bstr, { type: "binary", cellDates: true });
-                const wsname = workbook.SheetNames[0];
-                const ws = workbook.Sheets[wsname];
-                
-                const rawData = xlsx.utils.sheet_to_json(ws, { defval: "", blankrows: false, raw: true });
+                // cellDates:false to get raw serial numbers — avoids the xlsx
+                // timezone bug that shifts dates backward by 1 day in IST.
+                const workbook = xlsx.read(bstr, { type: "binary", cellDates: false });
 
-                let newCount = 0;
-                let dupCount = 0;
-                let invalidCount = 0;
+                // Header detection, column mapping and calendar-safe date parsing
+                // all live in lib/marketingExcelImport so the same logic can be
+                // exercised against real employee workbooks outside the browser.
+                const parsed = parseMarketingWorkbook(workbook);
+
+                if (!parsed.ok) {
+                    // An empty workbook is a normal result, not a failure the
+                    // user has to fix — only unreadable headers are reported as
+                    // an import failure.
+                    if (parsed.kind === "empty-workbook") {
+                        setImportSummary(`Import Complete!\n\n${parsed.error}`);
+                        toast.info("No valid data rows found in this file.");
+                    } else {
+                        setImportSummary(`Import Failed!\n\n${parsed.error}`);
+                        toast.error(parsed.error.split("\n")[0]);
+                    }
+                    return;
+                }
+
+                const { rows: parsedRows, diagnostics } = parsed;
+
+                if (parsedRows.length === 0) {
+                    setImportSummary(
+                        "Import Complete!\n\n" +
+                        `Total Rows Found: ${diagnostics.rowsScanned - diagnostics.blankRowsSkipped}\n` +
+                        "New Records Imported: 0\n" +
+                        "No valid data rows found in this file."
+                    );
+                    toast.success("Import processing completed!");
+                    fetchData();
+                    return;
+                }
 
                 const supabase = createClient();
                 const BATCH_SIZE = 490;
                 let pending: any[] = [];
+                let newCount = 0;
 
                 const flush = async () => {
                     if (pending.length === 0) return;
@@ -468,94 +458,17 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                     pending = [];
                 };
 
-                // Helper to parse various date formats into YYYY-MM-DD
-                const parseDate = (raw: any): string => {
-                    if (!raw || String(raw).trim() === "") {
-                        const today = new Date();
-                        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                    }
-
-                    // If it's a Date object (from cellDates: true)
-                    if (raw instanceof Date && !isNaN(raw.getTime())) {
-                        // Excel parsed DD/MM as MM/DD for ambiguous dates (e.g. 12/08 became Dec 8 instead of Aug 12).
-                        // So we swap them back: getMonth() + 1 is the intended day, getDate() is the intended month.
-                        const intendedDay = raw.getMonth() + 1;
-                        const intendedMonth = raw.getDate();
-                        return `${raw.getFullYear()}-${String(intendedMonth).padStart(2, '0')}-${String(intendedDay).padStart(2, '0')}`;
-                    }
-
-                    const str = String(raw).trim();
-
-                    // Handle DD/MM/YYYY format (e.g., 21/07/2026 or 03/08/2026)
-                    const slashParts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                    if (slashParts) {
-                        const day = slashParts[1].padStart(2, '0');
-                        const month = slashParts[2].padStart(2, '0');
-                        const year = slashParts[3];
-                        return `${year}-${month}-${day}`;
-                    }
-
-                    // Handle YYYY-MM-DD (already correct)
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-                        return str;
-                    }
-
-                    // Fallback: try to parse with Date constructor
-                    const d = new Date(str);
-                    if (!isNaN(d.getTime())) {
-                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    }
-
-                    // Last resort: return today's date
-                    const today = new Date();
-                    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                };
-
-                let lastCandidateName = "";
-                let lastDate = "";
-
-                for (const row of rawData as any[]) {
-                    const rawName = String(row["__EMPTY"] || row["Name"] || row["name"] || row["Candidate Name"] || "").trim();
-                    const rawDate = String(row["date "] || row["date"] || row["Date"] || "").trim();
-                    const company = String(row["company name"] || row["Company Name"] || "").trim();
-                    const link = String(row["link"] || row["Link"] || "").trim();
-
-                    // Skip header row if it got caught in rawData
-                    if (company.toLowerCase() === "company name" && link.toLowerCase() === "link") {
-                        continue;
-                    }
-
-                    // Skip completely empty rows
-                    if (!rawName && !company && !link) {
-                        invalidCount++;
-                        continue;
-                    }
-
-                    // If company and link are both empty, skip (no lead info)
-                    if (!company && !link) {
-                        invalidCount++;
-                        continue;
-                    }
-
-                    if (rawName) {
-                        lastCandidateName = rawName;
-                    }
-
-                    const candidateName = rawName || lastCandidateName || "Unknown Candidate";
-                    const dateStr = parseDate(rawDate);
-
-                    const row_ = marketingUiToRow(
+                for (const parsedRow of parsedRows) {
+                    pending.push(marketingUiToRow(
                         {
-                            "Name": candidateName,
-                            "Date": dateStr,
-                            "Company Name": company,
-                            "Link": link,
+                            "Name": parsedRow.name,
+                            "Date": parsedRow.date,          // canonical YYYY-MM-DD or null
+                            "Company Name": parsedRow.companyName,
+                            "Link": parsedRow.link,
                         },
                         profile?.uid || null,
                         profile?.fullName || "rohit"
-                    );
-
-                    pending.push(row_);
+                    ));
                     newCount++;
 
                     if (pending.length === BATCH_SIZE) {
@@ -565,7 +478,22 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
 
                 await flush();
 
-                setImportSummary(`Import Complete!\n\nTotal Rows Found: ${rawData.length}\nNew Records Imported: ${newCount}\nDuplicates Skipped: ${dupCount}\nInvalid Rows Skipped: ${invalidCount}`);
+                const ambiguousCount = diagnostics.rejects.filter(r => r.reason === "ambiguous-date").length;
+                const unreadableCount = diagnostics.rejects.filter(r => r.reason === "unreadable-date").length;
+                const skippedCount = diagnostics.rejects.filter(r => r.reason === "no-lead-info").length;
+
+                setImportSummary(
+                    "Import Complete!\n\n" +
+                    `Sheet: ${diagnostics.sheetName}\n` +
+                    `Columns Detected: Name, Date, Company Name${diagnostics.columns.link >= 0 ? ", Link" : ""}\n` +
+                    `Total Rows Found: ${diagnostics.rowsScanned - diagnostics.blankRowsSkipped}\n` +
+                    `New Records Imported: ${newCount}\n` +
+                    `Invalid Rows Skipped: ${skippedCount}` +
+                    (diagnostics.missingDateRows > 0 ? `\nRows Without A Date: ${diagnostics.missingDateRows}` : "") +
+                    (diagnostics.repairedDateRows > 0 ? `\nDates Corrected (day/month swapped by Excel): ${diagnostics.repairedDateRows}` : "") +
+                    (ambiguousCount > 0 ? `\nAmbiguous Dates Not Imported: ${ambiguousCount}` : "") +
+                    (unreadableCount > 0 ? `\nUnreadable Dates Not Imported: ${unreadableCount}` : "")
+                );
                 toast.success("Import processing completed!");
                 fetchData();
             } catch (error) {
@@ -725,6 +653,12 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                             </button>
                     </div>
                 </div>
+
+                {!loading && (
+                    <p className="text-xs font-medium text-slate-500">
+                        Showing {displayData.length} result{displayData.length === 1 ? "" : "s"}
+                    </p>
+                )}
 
                 <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden bg-white">
                 {/* Table */}
