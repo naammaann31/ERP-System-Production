@@ -10,135 +10,23 @@ import {
     Download,
     AlertCircle,
     Plus,
-    X,
-    Check,
-    ChevronDown,
     Trash2,
 } from "lucide-react";
 import * as xlsx from "xlsx";
 import { Card } from "@/components/ui/card";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { createClient } from "@/lib/supabase/client";
+import { requireSession } from "@/lib/supabase/requireSession";
 import { useAuth } from "@/components/providers/AuthProvider";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { compareDatesDesc } from "@/lib/dateSort";
+import { parseInterviewScreeningWorkbook, Section } from "@/lib/interviewScreeningExcelImport";
+import RemarkCell, { Row } from "@/components/dashboard/interviewScreening/RemarkCell";
+import AddEntryModal, { AddEntryForm } from "@/components/dashboard/interviewScreening/AddEntryModal";
+import SectionChoiceModal from "@/components/dashboard/interviewScreening/SectionChoiceModal";
 import { toast } from "sonner";
 
-type Section = "interview" | "screening";
-
-// A unified shape so both sections render through the same table code.
-interface Row {
-    key: string;
-    sig: string;
-    date: string;
-    candidate: string;
-    client: string;
-    stage: string; // "Stage" for interview, "Screening/AI" for screening
-    recruiter: string;
-    remarks: string;
-    createdBy?: string | null; // owner, for delete permission
-}
-
-const getRemarkColor = (remark: string) => {
-    const r = remark.toLowerCase();
-    if (!r) return "";
-    if (r.includes("reject") || r.includes("cancel") || r.includes("not attend") || r.includes("miss") || r.includes("hold") || r.includes("not join"))
-        return "bg-rose-50 text-rose-700 border-rose-200";
-    if (r.includes("went well") || r.includes("selected") || r.includes("offer"))
-        return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    if (r.includes("follow up") || r.includes("pending") || r.includes("reschedule") || r.includes("sharing"))
-        return "bg-amber-50 text-amber-700 border-amber-200";
-    return "bg-slate-50 text-slate-600 border-slate-200";
-};
-
 const normalize = (val: any) => String(val || "").toLowerCase().replace(/[\s\-_]/g, "");
-
-/** Remarks cell: dropdown of values already in use, plus free text. */
-function RemarkCell({
-    row,
-    options,
-    onSave,
-}: {
-    row: Row;
-    options: string[];
-    onSave: (row: Row, value: string) => Promise<void>;
-}) {
-    const [open, setOpen] = useState(false);
-    const [custom, setCustom] = useState("");
-    const [saving, setSaving] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (!open) return;
-        const onClickOutside = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener("mousedown", onClickOutside);
-        return () => document.removeEventListener("mousedown", onClickOutside);
-    }, [open]);
-
-    const commit = async (value: string) => {
-        setOpen(false);
-        setCustom("");
-        if (value === row.remarks) return;
-        setSaving(true);
-        await onSave(row, value);
-        setSaving(false);
-    };
-
-    return (
-        <div className="relative min-w-[170px]" ref={ref}>
-            <button
-                onClick={() => setOpen((o) => !o)}
-                disabled={saving}
-                className={`inline-flex w-full items-center justify-between gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all hover:brightness-95 disabled:opacity-60 ${
-                    row.remarks ? getRemarkColor(row.remarks) : "bg-white text-slate-400 border-slate-200 border-dashed"
-                }`}
-                title="Click to edit remark"
-            >
-                <span className="truncate text-left">{saving ? "Saving..." : row.remarks || "Add remark"}</span>
-                <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
-            </button>
-
-            {open && (
-                <div className="absolute z-30 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                    <div className="max-h-52 overflow-y-auto custom-scrollbar py-1">
-                        <button
-                            onClick={() => commit("")}
-                            className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 flex items-center gap-2"
-                        >
-                            <X className="h-3 w-3" /> Clear remark
-                        </button>
-                        {options.map((opt) => (
-                            <button
-                                key={opt}
-                                onClick={() => commit(opt)}
-                                className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center justify-between gap-2"
-                            >
-                                <span className="truncate">{opt}</span>
-                                {row.remarks.toLowerCase() === opt.toLowerCase() && (
-                                    <Check className="h-3 w-3 text-blue-600 shrink-0" />
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="border-t border-slate-100 p-2 bg-slate-50/60">
-                        <input
-                            autoFocus
-                            value={custom}
-                            onChange={(e) => setCustom(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && custom.trim()) commit(custom.trim());
-                                if (e.key === "Escape") setOpen(false);
-                            }}
-                            placeholder="Or type a custom remark..."
-                            className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
-                        />
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
 
 export default function InterviewScreeningClient() {
     const { profile } = useAuth();
@@ -163,8 +51,8 @@ export default function InterviewScreeningClient() {
     // Add Data modal
     const [addOpen, setAddOpen] = useState(false);
     const [addSaving, setAddSaving] = useState(false);
-    const [form, setForm] = useState({
-        section: "screening" as Section,
+    const [form, setForm] = useState<AddEntryForm>({
+        section: "screening",
         date: new Date().toISOString().split("T")[0],
         candidate: "",
         client: "",
@@ -172,24 +60,6 @@ export default function InterviewScreeningClient() {
         recruiter: "",
         remarks: "",
     });
-
-    /**
-     * Ensures we have a live session before touching Supabase.
-     *
-     * getUser() validates against the auth server and transparently refreshes
-     * an expired access token, so this usually self-heals. Without it, an
-     * expired session silently downgrades requests to the `anon` role: reads
-     * return zero rows with no error and writes fail with a bare
-     * "violates row-level security policy", which points nowhere useful.
-     */
-    const requireSession = async (supabase: ReturnType<typeof createClient>) => {
-        const { data, error: authErr } = await supabase.auth.getUser();
-        if (authErr || !data?.user) {
-            toast.error("Your session has expired. Please refresh the page and sign in again.");
-            return null;
-        }
-        return data.user;
-    };
 
     const loadData = async () => {
         setLoading(true);
@@ -418,22 +288,6 @@ export default function InterviewScreeningClient() {
         toast.success(`Imported ${rows.length} row(s).`);
     };
 
-    /**
-     * Imports Interview / Screening rows from Excel into Supabase.
-     *
-     * Accepts three shapes:
-     *  1. A workbook with sheets named "Interview" and/or "Screening" â€”
-     *     i.e. exactly what this page's Export XL produces, so an
-     *     export â†’ edit â†’ import round trip works.
-     *  2. A single sheet laid out like the source Google Sheet, with the
-     *     two tables side by side under an "Interview"/"Screening" group
-     *     header row. Each block is located by its own Date+Candidate header
-     *     pair rather than assumed to start at a fixed column.
-     *  3. One bare 6-column table (Date, Candidate, Client, Stage/Method,
-     *     Recruiter, Remarks) with no headers at all â€” what you get when a
-     *     single table is copied out of the sheet on its own. Nothing in the
-     *     file says which of the two tables it is, so the user is asked.
-     */
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -445,161 +299,15 @@ export default function InterviewScreeningClient() {
         reader.onload = async (evt) => {
             try {
                 const workbook = xlsx.read(evt.target?.result, { type: "binary" });
-                const pick = (row: any, keys: string[]) => {
-                    for (const k of keys) {
-                        const hit = Object.keys(row).find((c) => c.trim().toLowerCase() === k.toLowerCase());
-                        if (hit && String(row[hit] ?? "").trim() !== "") return row[hit];
-                    }
-                    return "";
-                };
-
-                /**
-                 * Dates are taken as the cell's DISPLAYED text, never its
-                 * underlying value.
-                 *
-                 * In the real exports the two disagree: a cell showing
-                 * "May-01" stores 2001-04-30, because whatever produced the
-                 * file read the sheet's "May 1" as May *2001*. The displayed
-                 * text is the only surviving record of the intended date, and
-                 * it also matches how rows pulled from the Google Sheet are
-                 * already stored (entry_date is free text). So no year is
-                 * invented and no serial-number conversion is needed â€”
-                 * `raw: false` below hands us the formatted string directly.
-                 */
-                const text = (v: any) => String(v ?? "").trim();
-
-                const pending: any[] = [];
-                let invalid = 0;
-
-                const pushRow = (section: Section, r: any) => {
-                    const candidate = text(pick(r, ["Candidate", "Candidate Name", "Name"]));
-                    if (!candidate) { invalid++; return; }
-                    pending.push({
-                        section,
-                        entry_date: text(pick(r, ["Date"])),
-                        candidate,
-                        client: text(pick(r, ["Client", "Company", "Company Name"])),
-                        stage:
-                            section === "interview"
-                                ? text(pick(r, ["Stage (No of Round)", "Stage(No of Round)", "Stage", "Round"]))
-                                : text(pick(r, ["Screening/AI", "Screening / AI", "Screening", "Method"])),
-                        recruiter: text(pick(r, ["Recruiter"])),
-                        remarks: text(pick(r, ["Remarks", "Remark"])),
-                        created_by_name: profile?.fullName || null,
-                    });
-                };
-
-                const named = workbook.SheetNames.filter((n) =>
-                    ["interview", "screening"].includes(n.trim().toLowerCase())
+                const result = parseInterviewScreeningWorkbook(
+                    workbook,
+                    fileName,
+                    profile?.fullName || null,
+                    (staged) => setSectionPrompt(staged)
                 );
+                if (!result) return;
 
-                if (named.length > 0) {
-                    // Shape 1: separate named sheets
-                    for (const name of named) {
-                        const section: Section =
-                            name.trim().toLowerCase() === "interview" ? "interview" : "screening";
-                        const rows = xlsx.utils.sheet_to_json(workbook.Sheets[name], {
-                            defval: "", raw: false,
-                        });
-                        (rows as any[]).forEach((r) => pushRow(section, r));
-                    }
-                } else {
-                    const ws = workbook.Sheets[workbook.SheetNames[0]];
-                    // raw: false yields each cell's displayed text â€” see the
-                    // note on `text` above for why that matters for dates.
-                    const grid = xlsx.utils.sheet_to_json<any[]>(ws, {
-                        header: 1, defval: "", blankrows: true, raw: false,
-                    });
-                    const cell = (row: any[], i: number) => row?.[i] ?? "";
-                    const norm = (v: any) => String(v ?? "").trim().toLowerCase();
-
-                    const headerRow = grid.findIndex((r) =>
-                        (r || []).some((c) => norm(c) === "candidate")
-                    );
-
-                    // Each block starts at its own Date+Candidate header pair.
-                    // Locating them beats assuming fixed columns 0 and 6: a
-                    // spacer or extra leading column would otherwise shift every
-                    // field silently (client into stage, stage into recruiter).
-                    const blocks: { section: Section; base: number }[] = [];
-
-                    if (headerRow !== -1) {
-                        const header = grid[headerRow] || [];
-                        // The group header row above carries "Interview" /
-                        // "Screening"; merged cells put the label on the
-                        // block's first column, so scan leftwards for it.
-                        const groupRow = headerRow > 0 ? grid[headerRow - 1] || [] : [];
-
-                        header.forEach((h: any, i: number) => {
-                            if (norm(h) !== "date") return;
-                            if (norm(header[i + 1]) !== "candidate") return;
-                            let section: Section | null = null;
-                            for (let c = i; c >= 0 && section === null; c--) {
-                                const g = norm(groupRow[c]);
-                                if (g.includes("interview")) section = "interview";
-                                else if (g.includes("screening")) section = "screening";
-                            }
-                            // Fall back on the block's own 4th column, which is
-                            // "Stage (No of Round)" vs "Screening/AI".
-                            if (section === null) {
-                                section = norm(header[i + 3]).includes("screening") ? "screening" : "interview";
-                            }
-                            blocks.push({ section, base: i });
-                        });
-                    }
-
-                    const readBlocks = (from: number, into: { section: Section; base: number }[]) => {
-                        for (let i = from; i < grid.length; i++) {
-                            const row = grid[i] || [];
-                            for (const { section, base } of into) {
-                                const span = [0, 1, 2, 3, 4, 5].map((o) => base + o);
-                                // Blocks pad each other with blanks when one
-                                // table is longer, so skip a block that is
-                                // empty on this row.
-                                if (!span.some((c) => String(cell(row, c)).trim() !== "")) continue;
-                                pushRow(section, {
-                                    Date: cell(row, base),
-                                    Candidate: cell(row, base + 1),
-                                    Client: cell(row, base + 2),
-                                    [section === "interview" ? "Stage" : "Screening"]: cell(row, base + 3),
-                                    Recruiter: cell(row, base + 4),
-                                    Remarks: cell(row, base + 5),
-                                });
-                            }
-                        }
-                    };
-
-                    if (blocks.length > 0) {
-                        // Shape 2: labelled, one or both tables present.
-                        readBlocks(headerRow + 1, blocks);
-                    } else {
-                        // Shape 3: a bare table with no headers whatsoever, so
-                        // the file cannot say which section it is. Parse it
-                        // into staged rows and let the user pick.
-                        const staged: any[] = [];
-                        const sink = pending.length;
-                        readBlocks(0, [{ section: "screening", base: 0 }]);
-                        staged.push(...pending.splice(sink));
-
-                        if (staged.length === 0) {
-                            toast.error("No valid rows found. Each row needs at least a Candidate name.");
-                            return;
-                        }
-
-                        // The filename is the only hint available, so it seeds
-                        // the default choice rather than deciding silently.
-                        const guess: Section = /interview/i.test(fileName) ? "interview" : "screening";
-                        setSectionPrompt({ rows: staged, guess, fileName });
-                        return;
-                    }
-                }
-
-                if (pending.length === 0) {
-                    toast.error("No valid rows found. Each row needs at least a Candidate name.");
-                    return;
-                }
-
-                await commitImport(pending, invalid);
+                await commitImport(result.pending, result.invalid);
             } catch (error) {
                 console.error("Error during import:", error);
                 toast.error("Failed to import file. Please check the format.");
@@ -631,15 +339,7 @@ export default function InterviewScreeningClient() {
     };
 
     if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="text-sm text-slate-500 font-medium">Loading sheet data...</span>
-            </div>
-        );
+        return <LoadingSpinner label="Loading sheet data..." />;
     }
 
     const renderTable = (rows: Row[], stageLabel: string) => (
@@ -799,51 +499,14 @@ export default function InterviewScreeningClient() {
             {/* Section picker â€” shown only when the file is one bare table
                 with no Interview/Screening headers to route it by. */}
             {sectionPrompt && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="bg-white rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
-                    >
-                        <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100">
-                            <h2 className="text-xl font-black text-slate-800 tracking-tight">Which table?</h2>
-                            <p className="text-xs font-semibold text-slate-500 mt-1">
-                                <span className="font-mono">{sectionPrompt.fileName}</span> has no
-                                Interview/Screening headers, so it can&apos;t be routed automatically.
-                            </p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-600">
-                                Put all <span className="font-bold">{sectionPrompt.rows.length}</span> rows into:
-                            </p>
-                            <div className="flex gap-3">
-                                {(["interview", "screening"] as Section[]).map((s) => (
-                                    <button
-                                        key={s}
-                                        onClick={() => {
-                                            const rows = sectionPrompt.rows.map((r) => ({ ...r, section: s }));
-                                            setSectionPrompt(null);
-                                            commitImport(rows, 0);
-                                        }}
-                                        className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all capitalize ${
-                                            sectionPrompt.guess === s
-                                                ? "bg-slate-900 text-white shadow-md hover:bg-slate-800"
-                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                        }`}
-                                    >
-                                        {s}
-                                    </button>
-                                ))}
-                            </div>
-                            <button
-                                onClick={() => setSectionPrompt(null)}
-                                className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </motion.div>
-                </div>
+                <SectionChoiceModal
+                    staged={sectionPrompt}
+                    onChoose={(rows) => {
+                        setSectionPrompt(null);
+                        commitImport(rows, 0);
+                    }}
+                    onCancel={() => setSectionPrompt(null)}
+                />
             )}
 
             <ConfirmModal
@@ -858,138 +521,14 @@ export default function InterviewScreeningClient() {
 
             {/* Add Data Modal */}
             {addOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar"
-                    >
-                        <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-800 tracking-tight">Add Data</h2>
-                                <p className="text-xs font-semibold text-slate-500 mt-1">Adds a new Interview or Screening record</p>
-                            </div>
-                            <button
-                                onClick={() => setAddOpen(false)}
-                                className="p-2 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleAddSubmit} className="p-6 space-y-5">
-                            {/* Section selector */}
-                            <div>
-                                <label className="block mb-2 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Section</label>
-                                <div className="flex items-center space-x-2 bg-slate-50 p-1 rounded-xl w-fit border border-slate-200">
-                                    {(["interview", "screening"] as Section[]).map((s) => (
-                                        <button
-                                            key={s}
-                                            type="button"
-                                            onClick={() => setForm((f) => ({ ...f, section: s }))}
-                                            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
-                                                form.section === s ? "bg-slate-900 text-white shadow" : "text-slate-500 hover:text-slate-900"
-                                            }`}
-                                        >
-                                            {s === "interview" ? <CalendarClock className="w-4 h-4" /> : <PhoneCall className="w-4 h-4" />}
-                                            {s}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Date</label>
-                                    <input
-                                        type="date"
-                                        value={form.date}
-                                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm cursor-pointer"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Candidate <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={form.candidate}
-                                        onChange={(e) => setForm((f) => ({ ...f, candidate: e.target.value }))}
-                                        placeholder="e.g. Kaushal"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Client</label>
-                                    <input
-                                        type="text"
-                                        value={form.client}
-                                        onChange={(e) => setForm((f) => ({ ...f, client: e.target.value }))}
-                                        placeholder="e.g. Kollabio"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        {form.section === "interview" ? "Stage (No of Round)" : "Screening / AI"}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={form.stage}
-                                        onChange={(e) => setForm((f) => ({ ...f, stage: e.target.value }))}
-                                        placeholder={form.section === "interview" ? "e.g. Video interview" : "e.g. Screening call"}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Recruiter</label>
-                                    <input
-                                        type="text"
-                                        value={form.recruiter}
-                                        onChange={(e) => setForm((f) => ({ ...f, recruiter: e.target.value }))}
-                                        placeholder="e.g. Pritesh"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Remarks</label>
-                                    <input
-                                        type="text"
-                                        list="remark-options"
-                                        value={form.remarks}
-                                        onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))}
-                                        placeholder="Select or type..."
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                    <datalist id="remark-options">
-                                        {remarkOptions.map((opt) => (
-                                            <option key={opt} value={opt} />
-                                        ))}
-                                    </datalist>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-5 border-t border-slate-100">
-                                <button
-                                    type="submit"
-                                    disabled={addSaving}
-                                    className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-70 flex items-center gap-2 shadow-md"
-                                >
-                                    {addSaving ? "Saving..." : "Save entry"}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setAddOpen(false)}
-                                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    </motion.div>
-                </div>
+                <AddEntryModal
+                    form={form}
+                    setForm={setForm}
+                    remarkOptions={remarkOptions}
+                    saving={addSaving}
+                    onSubmit={handleAddSubmit}
+                    onClose={() => setAddOpen(false)}
+                />
             )}
         </div>
     );

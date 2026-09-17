@@ -31,6 +31,7 @@ import { getUserLeaves, LeaveRequest, calculateAccruedLeaves } from "@/lib/leave
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
 import MarketingClient from "@/components/dashboard/MarketingClient";
 import SalesDataSection from "@/components/dashboard/departments/SalesDataSection";
+import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
 
 interface EmployeeData {
   uid: string;
@@ -160,7 +161,9 @@ export default function EmployeeProfilePage() {
   // own profile) only gets the leads section - no personal/attendance/
   // leave/payroll data, which is Admin/HR-only.
   const isTeamLeadViewingOther =
-    !isAdminOrHR && profile?.designation === "Team-Lead" && profile?.uid !== uid;
+    !isAdminOrHR &&
+    (profile?.designation === "Team-Lead" || hasMarketingTeamLeadOverride(profile?.uid)) &&
+    profile?.uid !== uid;
 
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -356,13 +359,13 @@ export default function EmployeeProfilePage() {
       {/* Back button */}
       <motion.div variants={itemVariants}>
         <button onClick={() => {
-            if (profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead") {
+            if (profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || hasMarketingTeamLeadOverride(profile?.uid)) {
                 router.push('/dashboard/my-team');
             } else {
                 router.push('/dashboard/employees');
             }
         }} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm w-fit">
-          <ArrowLeft className="h-4 w-4" /> {profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" ? "Back to My Team" : "Back to Employees"}
+          <ArrowLeft className="h-4 w-4" /> {(profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || hasMarketingTeamLeadOverride(profile?.uid)) ? "Back to My Team" : "Back to Employees"}
         </button>
       </motion.div>
 

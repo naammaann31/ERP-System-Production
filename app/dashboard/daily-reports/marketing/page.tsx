@@ -9,6 +9,7 @@ import { getTeamLeadReports, getMarketingDailyReports } from "@/app/actions/mark
 import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
 
 export default function MarketingDailyReportsPage() {
   const { profile } = useAuth();
@@ -26,7 +27,7 @@ export default function MarketingDailyReportsPage() {
 
   useEffect(() => {
     // Basic protection: Only HR and Admin should ideally access, but maybe Team Lead too
-    if (profile && profile.role !== "HR" && profile.role !== "Admin" && profile.designation !== "Team-Lead" && profile.jobRole !== "Team-Lead") {
+    if (profile && profile.role !== "HR" && profile.role !== "Admin" && profile.designation !== "Team-Lead" && profile.jobRole !== "Team-Lead" && !hasMarketingTeamLeadOverride(profile.uid)) {
       router.push("/dashboard");
       return;
     }

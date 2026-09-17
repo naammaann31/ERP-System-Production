@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
-    Search, Plus, X, AlertCircle, Trash2, Pencil, UserSearch, Download,
+    Search, Plus, AlertCircle, Trash2, Pencil, UserSearch, Download,
     FolderOpen, ExternalLink,
 } from "lucide-react";
 import * as xlsx from "xlsx";
@@ -11,17 +11,18 @@ import { Card } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { createClient } from "@/lib/supabase/client";
+import { requireSession } from "@/lib/supabase/requireSession";
+import { parseCandidatesWorkbook } from "@/lib/candidatesExcelImport";
 import { useAuth } from "@/components/providers/AuthProvider";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import CandidateFormModal, { Status, AssignableEmployee } from "@/components/dashboard/candidates/CandidateFormModal";
+import { isMarketingTeamLead } from "@/lib/marketingTeamLeadAccess";
 import { toast } from "sonner";
 
 // Shared Drive folder holding candidate documents. Access is governed by
 // Google's own sharing settings, not by this app.
 const CANDIDATE_DOCS_URL =
     "https://drive.google.com/drive/u/1/folders/1nNIXdIQdiFWxQ23_0MBtcffhCyJlpP6o";
-
-// Must stay in step with the status check constraint on public.candidates.
-const STATUSES = ["New", "Contacted", "Interviewing", "Selected", "Rejected", "On Hold"] as const;
-type Status = (typeof STATUSES)[number];
 
 interface Candidate {
     id: string;
@@ -39,12 +40,6 @@ interface Candidate {
     assigned_to_name: string | null;
     created_by_name: string | null;
     created_at: string;
-}
-
-interface AssignableEmployee {
-    id: string;
-    full_name: string;
-    designation: string | null;
 }
 
 const statusColor = (status: string) => {
@@ -125,22 +120,8 @@ export default function CandidatesClient() {
         if (!profile) return false;
         const role = (profile.role || "").toUpperCase();
         if (role === "ADMIN" || role === "HR" || role === "OPS_HR") return true;
-        return role === "MARKETING" && (profile.designation === "Team-Lead" || profile.jobRole === "Team-Lead");
+        return isMarketingTeamLead(profile);
     }, [profile]);
-
-    /**
-     * getUser() validates against the auth server and refreshes an expired
-     * token. Without it a stale session silently downgrades to `anon`, where
-     * reads return zero rows and writes fail with a bare RLS violation.
-     */
-    const requireSession = async (supabase: ReturnType<typeof createClient>) => {
-        const { data, error: authErr } = await supabase.auth.getUser();
-        if (authErr || !data?.user) {
-            toast.error("Your session has expired. Please refresh the page and sign in again.");
-            return null;
-        }
-        return data.user;
-    };
 
     // RLS does the filtering: an employee's select simply returns only the
     // rows assigned to them, so there is no client-side narrowing to bypass.
@@ -353,17 +334,6 @@ export default function CandidatesClient() {
 
     const handleImportClick = () => fileInputRef.current?.click();
 
-    /**
-     * Imports the marketing team's candidate sheet.
-     *
-     * Parsed positionally (`header: 1`) rather than as objects, because the
-     * sheet has TWO columns both headed "Password" â€” one for the marketing
-     * email, one for LinkedIn. Object parsing would silently collapse or
-     * rename the second, so instead each "Password" column is attached to
-     * whichever email column preceded it. Header names are matched loosely,
-     * and the header row is located by finding "NAME" rather than assuming
-     * row 1, since the sheet starts with a blank row.
-     */
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -374,82 +344,9 @@ export default function CandidatesClient() {
         reader.onload = async (evt) => {
             try {
                 const workbook = xlsx.read(evt.target?.result, { type: "binary" });
-                const ws = workbook.Sheets[workbook.SheetNames[0]];
-                const grid = xlsx.utils.sheet_to_json<any[]>(ws, {
-                    header: 1,
-                    defval: "",
-                    blankrows: false,
-                });
-
-                const norm = (v: any) => String(v ?? "").trim().toLowerCase();
-                const headerIdx = grid.findIndex((r) => (r || []).some((c) => norm(c) === "name"));
-                if (headerIdx === -1) {
-                    toast.error('Could not find a "NAME" column header in the sheet.');
-                    return;
-                }
-
-                const cols: Record<string, number> = {};
-                let lastEmail: "marketing" | "linkedin" | null = null;
-
-                (grid[headerIdx] || []).forEach((h: any, i: number) => {
-                    const k = norm(h);
-                    if (!k) return;
-                    if (k === "name" || k === "candidate name") cols.full_name = i;
-                    else if (k.includes("contact") || k.includes("phone") || k.includes("mobile")) cols.phone = i;
-                    else if (k.includes("marketing") && k.includes("email")) {
-                        cols.marketing_email = i;
-                        lastEmail = "marketing";
-                    } else if ((k.includes("linkedin") || k.includes("linked in")) && k.includes("email")) {
-                        cols.linkedin_email = i;
-                        lastEmail = "linkedin";
-                    } else if (k.includes("password")) {
-                        // Belongs to the most recently seen email column.
-                        if (lastEmail === "marketing" && cols.marketing_password === undefined)
-                            cols.marketing_password = i;
-                        else if (lastEmail === "linkedin" && cols.linkedin_password === undefined)
-                            cols.linkedin_password = i;
-                    } else if (k.includes("technology") || k.includes("tech")) cols.technology = i;
-                    else if (k.includes("visa")) cols.visa_status = i;
-                });
-
-                const cell = (row: any[], key: string) => {
-                    const i = cols[key];
-                    if (i === undefined) return null;
-                    const v = String(row?.[i] ?? "").trim();
-                    return v === "" ? null : v;
-                };
-
-                const pending: any[] = [];
-                let skipped = 0;
-
-                for (let r = headerIdx + 1; r < grid.length; r++) {
-                    const row = grid[r] || [];
-                    const name = cell(row, "full_name");
-                    if (!name) {
-                        // Ignore genuinely blank rows; only count rows that had
-                        // some content but no usable name.
-                        if (row.some((c: any) => String(c ?? "").trim() !== "")) skipped++;
-                        continue;
-                    }
-                    pending.push({
-                        full_name: name,
-                        phone: cell(row, "phone"),
-                        marketing_email: cell(row, "marketing_email"),
-                        marketing_password: cell(row, "marketing_password"),
-                        linkedin_email: cell(row, "linkedin_email"),
-                        linkedin_password: cell(row, "linkedin_password"),
-                        technology: cell(row, "technology"),
-                        visa_status: cell(row, "visa_status"),
-                        status: "New",
-                        notes: "",
-                        created_by_name: profile?.fullName || null,
-                    });
-                }
-
-                if (pending.length === 0) {
-                    toast.error("No valid rows found. Each row needs at least a name.");
-                    return;
-                }
+                const parsed = parseCandidatesWorkbook(workbook, profile?.fullName || null);
+                if (!parsed) return;
+                const { pending, skipped } = parsed;
 
                 const supabase = createClient();
                 if (!(await requireSession(supabase))) return;
@@ -514,15 +411,7 @@ export default function CandidatesClient() {
     };
 
     if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="text-sm text-slate-500 font-medium">Loading candidates...</span>
-            </div>
-        );
+        return <LoadingSpinner label="Loading candidates..." />;
     }
 
     return (
@@ -780,212 +669,17 @@ export default function CandidatesClient() {
 
             {/* Add / Edit modal */}
             {formOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar"
-                    >
-                        <div className="bg-slate-50/50 px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-800 tracking-tight">
-                                    {editing ? "Edit Candidate" : "Add Candidate"}
-                                </h2>
-                                <p className="text-xs font-semibold text-slate-500 mt-1">
-                                    Assign a candidate to a marketing employee
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setFormOpen(false)}
-                                className="p-2 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Candidate Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={form.full_name}
-                                        onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-                                        placeholder="e.g. Kaushal Mehta"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Contact Number
-                                    </label>
-                                    <input
-                                        type="tel"
-                                        value={form.phone}
-                                        onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                                        placeholder="e.g. (551) 323-3630"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Marketing Email
-                                    </label>
-                                    <input
-                                        type="email"
-                                        value={form.marketing_email}
-                                        onChange={(e) => setForm((f) => ({ ...f, marketing_email: e.target.value }))}
-                                        placeholder="candidate@gmail.com"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Marketing Email Password
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={form.marketing_password}
-                                        onChange={(e) => setForm((f) => ({ ...f, marketing_password: e.target.value }))}
-                                        placeholder="e.g. Vectra@1234"
-                                        autoComplete="off"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm font-mono"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        LinkedIn Email
-                                    </label>
-                                    <input
-                                        type="email"
-                                        value={form.linkedin_email}
-                                        onChange={(e) => setForm((f) => ({ ...f, linkedin_email: e.target.value }))}
-                                        placeholder="candidate@gmail.com"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        LinkedIn Password
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={form.linkedin_password}
-                                        onChange={(e) => setForm((f) => ({ ...f, linkedin_password: e.target.value }))}
-                                        placeholder="e.g. Vectra@1234"
-                                        autoComplete="off"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm font-mono"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Technology
-                                    </label>
-                                    <input
-                                        type="text"
-                                        list="candidate-technology-options"
-                                        value={form.technology}
-                                        onChange={(e) => setForm((f) => ({ ...f, technology: e.target.value }))}
-                                        placeholder="e.g. Data Scientist"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                    <datalist id="candidate-technology-options">
-                                        {technologyOptions.map((opt) => (
-                                            <option key={opt} value={opt} />
-                                        ))}
-                                    </datalist>
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Visa Status
-                                    </label>
-                                    <input
-                                        type="text"
-                                        list="candidate-visa-options"
-                                        value={form.visa_status}
-                                        onChange={(e) => setForm((f) => ({ ...f, visa_status: e.target.value }))}
-                                        placeholder="e.g. F1 STEM OPT"
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
-                                    />
-                                    <datalist id="candidate-visa-options">
-                                        {visaOptions.map((opt) => (
-                                            <option key={opt} value={opt} />
-                                        ))}
-                                    </datalist>
-                                </div>
-                                <div>
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Status
-                                    </label>
-                                    <select
-                                        value={form.status}
-                                        onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as Status }))}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm cursor-pointer"
-                                    >
-                                        {STATUSES.map((s) => (
-                                            <option key={s} value={s}>
-                                                {s}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Assign To
-                                    </label>
-                                    <select
-                                        value={form.assigned_to}
-                                        onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm cursor-pointer"
-                                    >
-                                        <option value="">Unassigned</option>
-                                        {employees.map((emp) => (
-                                            <option key={emp.id} value={emp.id}>
-                                                {emp.full_name}
-                                                {emp.designation ? ` - ${emp.designation}` : ""}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[11px] text-slate-400 mt-1.5">
-                                        Only the assigned employee can see this candidate.
-                                    </p>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">
-                                        Notes
-                                    </label>
-                                    <textarea
-                                        value={form.notes}
-                                        onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                                        placeholder="Any details the assigned employee should know..."
-                                        rows={3}
-                                        className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm resize-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-5 border-t border-slate-100">
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-70 flex items-center gap-2 shadow-md"
-                                >
-                                    {saving ? "Saving..." : editing ? "Save changes" : "Add candidate"}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormOpen(false)}
-                                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    </motion.div>
-                </div>
+                <CandidateFormModal
+                    isEditing={!!editing}
+                    form={form}
+                    setForm={setForm}
+                    employees={employees}
+                    technologyOptions={technologyOptions}
+                    visaOptions={visaOptions}
+                    saving={saving}
+                    onSubmit={handleSubmit}
+                    onClose={() => setFormOpen(false)}
+                />
             )}
         </div>
     );

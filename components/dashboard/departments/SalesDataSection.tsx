@@ -157,8 +157,12 @@ export default function SalesDataSection({ filterByName }: SalesDataSectionProps
     const handleBulkDelete = async () => {
         try {
             const supabase = createClient();
-            const { error } = await supabase.from("sales").delete().in("id", selectedRows);
-            if (error) throw error;
+            const CHUNK_SIZE = 150;
+            for (let i = 0; i < selectedRows.length; i += CHUNK_SIZE) {
+                const chunk = selectedRows.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase.from("sales").delete().in("id", chunk);
+                if (error) throw error;
+            }
             setSelectedRows([]);
             setBulkDeleteModalOpen(false);
             setSalesData(prev => prev.filter(row => !selectedRows.includes(row.id)));
