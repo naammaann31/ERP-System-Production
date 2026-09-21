@@ -120,7 +120,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                         <p className="text-slate-500 text-xs mt-1">Create a new employee system access</p>
                     </div>
 
-                    <form onSubmit={handleSignUp} className="space-y-4">
+                    <form onSubmit={handleSignUp} className="space-y-4" autoComplete="off">
                         {/* Full Name & Employee ID */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -142,6 +142,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                     value={employeeId}
                                     onChange={(e) => setEmployeeId(e.target.value)}
                                     className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                    autoComplete="off"
                                     required
                                 />
                             </div>
@@ -186,6 +187,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                    autoComplete="off"
                                     required
                                 />
                             </div>
@@ -298,6 +300,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl pl-4 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                        autoComplete="new-password"
                                         required
                                     />
                                     <button
@@ -318,6 +321,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl pl-4 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                        autoComplete="new-password"
                                         required
                                     />
                                     <button
