@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getLocalDateString } from "@/lib/attendance";
+import { computeWorkedSeconds } from "@/lib/attendance";
 
 // We use the service role key to bypass RLS in the cron job
 const supabase = createClient(
@@ -16,57 +16,74 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const dateStr = getLocalDateString();
-    
-    // We want to target people who are still "Checked In" for the *current* business date 
-    // at 5:00 AM. Since the business day rolls over at 6:00 AM, at 5:00 AM, 
-    // `getLocalDateString()` correctly returns "yesterday's" date (e.g., Aug 1).
-    
-    // Fetch all active shifts
+    // 2. Fetch all active shifts (any date, as long as they are still Checked In)
     const { data: activeShifts, error: fetchError } = await supabase
       .from("attendance")
-      .select("id")
-      .eq("status", "Checked In")
-      .eq("date", dateStr);
+      .select("id, date, check_in_time")
+      .eq("status", "Checked In");
 
     if (fetchError) throw fetchError;
     if (!activeShifts || activeShifts.length === 0) {
-      return NextResponse.json({ message: "No active shifts to auto-clock-out" }, { status: 200 });
+      return NextResponse.json({ message: "No active shifts to process" }, { status: 200 });
     }
 
-    // Auto-Clock-Out Penalty: Set status to "Absent" and end shift at 5:00 AM.
-    // 5:00 AM IST in local timestamp logic.
-    const now = new Date(); // It is currently 5:00 AM
-    const p = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
-    }).formatToParts(now);
-    
-    const parts: Record<string, string> = {};
-    for (const { type, value } of p) parts[type] = value;
-    
-    // Hardcode to exactly 05:00:00 AM regardless of when Vercel actually runs this cron job
-    const penaltyTimestamp = `${parts.year}-${parts.month}-${parts.day}T05:00:00.000`;
+    const nowMs = Date.now();
+    let processedCount = 0;
 
-    const shiftIds = activeShifts.map(shift => shift.id);
+    // 3. Process each shift individually
+    for (const shift of activeShifts) {
+      if (!shift.date || !shift.check_in_time) continue;
 
-    const { error: updateError } = await supabase
-      .from("attendance")
-      .update({
-        status: "Absent",
-        check_out_time: penaltyTimestamp,
-        is_half_day: false,
-        is_late: false,
-        working_seconds: 0 // They forfeit their working seconds
-      })
-      .in("id", shiftIds);
+      // Calculate the official cutoff: 5:00 AM IST on the morning FOLLOWING the shift date.
+      // Parse shift.date safely using UTC to avoid server timezone drift.
+      const [yStr, mStr, dStr] = shift.date.split('-');
+      const shiftDate = new Date(Date.UTC(Number(yStr), Number(mStr) - 1, Number(dStr)));
+      
+      // Advance to the next day
+      shiftDate.setUTCDate(shiftDate.getUTCDate() + 1);
+      
+      const nextY = shiftDate.getUTCFullYear();
+      const nextM = String(shiftDate.getUTCMonth() + 1).padStart(2, '0');
+      const nextD = String(shiftDate.getUTCDate()).padStart(2, '0');
 
-    if (updateError) throw updateError;
+      // Absolute timestamp string with +05:30 offset for strict comparison
+      const cutoffTimestamp = `${nextY}-${nextM}-${nextD}T05:00:00+05:30`;
+      const cutoffMs = new Date(cutoffTimestamp).getTime();
+
+      // Safety check: If current time is BEFORE the cutoff, do NOT auto-clock out.
+      if (nowMs < cutoffMs) {
+        continue;
+      }
+
+      // 4. Calculate actual worked seconds up to exactly 5:00 AM.
+      // The DB uses wall-clock time strings without timezone designators.
+      const localCheckoutTime = `${nextY}-${nextM}-${nextD}T05:00:00.000`;
+      
+      const workingSeconds = computeWorkedSeconds({
+        checkInTime: shift.check_in_time,
+        checkOutTime: localCheckoutTime,
+        workingSeconds: 0
+      });
+
+      // 5. Update the shift
+      const { error: updateError } = await supabase
+        .from("attendance")
+        .update({
+          status: "Absent",
+          check_out_time: localCheckoutTime,
+          working_seconds: workingSeconds,
+          is_half_day: false,
+          is_late: false
+        })
+        .eq("id", shift.id);
+
+      if (updateError) throw updateError;
+      processedCount++;
+    }
 
     return NextResponse.json({ 
-      message: "Successfully ran auto-clock-out guillotine",
-      processed: shiftIds.length 
+      message: "Successfully ran auto-clock-out check",
+      processed: processedCount
     }, { status: 200 });
 
   } catch (error: any) {
@@ -74,5 +91,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
-
