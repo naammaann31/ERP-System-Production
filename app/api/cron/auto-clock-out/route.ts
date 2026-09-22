@@ -46,7 +46,8 @@ export async function GET(request: Request) {
     const parts: Record<string, string> = {};
     for (const { type, value } of p) parts[type] = value;
     
-    const penaltyTimestamp = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.000`;
+    // Hardcode to exactly 05:00:00 AM regardless of when Vercel actually runs this cron job
+    const penaltyTimestamp = `${parts.year}-${parts.month}-${parts.day}T05:00:00.000`;
 
     const shiftIds = activeShifts.map(shift => shift.id);
 
@@ -55,7 +56,9 @@ export async function GET(request: Request) {
       .update({
         status: "Absent",
         check_out_time: penaltyTimestamp,
-        // They forfeit their working seconds
+        is_half_day: false,
+        is_late: false,
+        working_seconds: 0 // They forfeit their working seconds
       })
       .in("id", shiftIds);
 
