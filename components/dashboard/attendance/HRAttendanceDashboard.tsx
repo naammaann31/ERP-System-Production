@@ -49,12 +49,15 @@ export default function HRAttendanceDashboard() {
   const handleStatusChange = async (record: AttendanceRecord, newStatusOption: string) => {
     let newStatus: AttendanceRecord["status"] = "Present";
     let isHalfDay = false;
+    
+    // Safety check: Prevent forcing an active shift to complete if HR is just removing a penalty
     if (newStatusOption === "present") {
-      newStatus = "Present";
+      newStatus = record.status === "Checked In" ? "Checked In" : "Present";
+      isHalfDay = false;
     } else if (newStatusOption === "half-day") {
-      newStatus = "Present";
+      newStatus = record.status === "Checked In" ? "Checked In" : "Present";
       isHalfDay = true;
-        } else if (newStatusOption === "absent") {
+    } else if (newStatusOption === "absent") {
       newStatus = "Absent";
     } else if (newStatusOption === "week-off") {
       newStatus = "Week Off";
