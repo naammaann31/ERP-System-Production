@@ -56,7 +56,11 @@ export default function WelcomeHeader() {
   const currentShift = "US Shift (09:00 AM - 06:00 PM EST)";
   const employmentStatus = profile?.designation || "Employee";
 
-  const isMarketing = profile?.department?.toUpperCase() === "MARKETING" || profile?.role?.toUpperCase() === "MARKETING";
+  const isMarketingOrSales = 
+    profile?.department?.toUpperCase() === "MARKETING" || 
+    profile?.role?.toUpperCase() === "MARKETING" ||
+    profile?.department?.toUpperCase() === "SALES" || 
+    profile?.role?.toUpperCase() === "SALES";
 
   return (
     <motion.div
@@ -86,7 +90,7 @@ export default function WelcomeHeader() {
         <div className="text-right pr-5 border-r border-slate-200 hidden md:block">
           <div className="flex items-center justify-end gap-2.5 mb-1">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.1em]">Current Time</p>
-            {isMarketing && (
+            {isMarketingOrSales && (
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
