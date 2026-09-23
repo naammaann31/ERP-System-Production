@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CheckCircle2, XCircle, Clock, Search, Download, Filter } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Search, Download, Filter, ChevronDown, PenLine } from "lucide-react";
 import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime, updateAttendanceStatus } from "@/lib/attendance";
 import { getUsHolidayName } from "@/lib/holidays";
 import { createClient } from "@/lib/supabase/client";
@@ -17,29 +17,43 @@ import EmployeeDetailsModal from "./EmployeeDetailsModal";
 
 const formatTime = formatAttendanceTime;
 
-const getStatusBadge = (status: string, isHalfDay?: boolean, isLate?: boolean) => {
+const getStatusBadge = (status: string, isHalfDay?: boolean, isLate?: boolean, isEdited?: boolean) => {
+  let badge;
   if (isHalfDay) {
-    return <Badge variant="warning" className="bg-amber-50 text-amber-700 border-amber-200">Half Day</Badge>;
+    badge = <Badge variant="warning" className="bg-amber-50 text-amber-700 border-amber-200">Half Day</Badge>;
+  } else {
+    switch (status) {
+      case "Present": badge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>; break;
+      case "Checked In": badge = <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>; break;
+      case "Holiday (Paid)": badge = <Badge variant="info" className="bg-purple-50 text-purple-600 border-purple-200">Holiday</Badge>; break;
+      case "Leave": badge = <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>; break;
+      case "WFH": badge = <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>; break;
+      case "Absent": badge = <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>; break;
+      case "Late": badge = <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>; break;
+      case "Week Off": badge = <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>; break;
+      default: badge = <Badge>{status}</Badge>;
+    }
   }
 
-  switch (status) {
-    case "Present": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Present</Badge>;
-    case "Checked In": return <Badge variant="success" className="bg-emerald-50 text-emerald-600 border-emerald-200">Clocked In</Badge>;
-    case "Holiday (Paid)": return <Badge variant="info" className="bg-purple-50 text-purple-600 border-purple-200">Holiday</Badge>;
-    case "Leave": return <Badge variant="secondary" className="bg-orange-50 text-orange-600 border-orange-200">Leave</Badge>;
-    case "WFH": return <Badge variant="info" className="bg-blue-50 text-blue-600 border-blue-200">WFH</Badge>;
-    case "Absent": return <Badge variant="destructive" className="bg-red-50 text-red-600 border-red-200">Absent</Badge>;
-    case "Late": return <Badge variant="warning" className="bg-amber-50 text-amber-600 border-amber-200">Late</Badge>;
-    case "Week Off": return <Badge variant="outline" className="bg-slate-50 text-slate-500">Week Off</Badge>;
-    default: return <Badge>{status}</Badge>;
+  if (isEdited) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {badge}
+        <Badge variant="outline" className="bg-blue-50/50 text-blue-600 border-blue-200/60 text-[10px] px-1.5 py-0 flex items-center gap-1 font-medium">
+          <PenLine className="w-2.5 h-2.5" />
+          Edited
+        </Badge>
+      </div>
+    );
   }
+  return badge;
 };
 
 const hrStats = [
   { title: "Total Present Today", value: "0", trend: "+12%", trendUp: true, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-100", accent: "bg-emerald-500" },
   { title: "Total Absent", value: "0", trend: "-2%", trendUp: true, icon: XCircle, color: "text-red-600", bg: "bg-red-100", accent: "bg-red-500" },
   { title: "On Leave", value: "0", trend: "0%", trendUp: true, icon: Clock, color: "text-blue-600", bg: "bg-blue-100", accent: "bg-blue-500" },
-  { title: "Late Arrivals", value: "0", trend: "0", trendUp: false, icon: Clock, color: "text-orange-600", bg: "bg-orange-100", accent: "bg-orange-500" },
+  { title: "Late / Half Day", value: "0", trend: "0", trendUp: false, icon: Clock, color: "text-orange-600", bg: "bg-orange-100", accent: "bg-orange-500" },
 ];
 
 export default function HRAttendanceDashboard() {
@@ -49,13 +63,14 @@ export default function HRAttendanceDashboard() {
   const handleStatusChange = async (record: AttendanceRecord, newStatusOption: string) => {
     let newStatus: AttendanceRecord["status"] = "Present";
     let isHalfDay = false;
+    const isActiveShift = Boolean(record.checkInTime && !record.checkOutTime);
     
     // Safety check: Prevent forcing an active shift to complete if HR is just removing a penalty
     if (newStatusOption === "present") {
-      newStatus = record.status === "Checked In" ? "Checked In" : "Present";
+      newStatus = isActiveShift ? "Checked In" : "Present";
       isHalfDay = false;
     } else if (newStatusOption === "half-day") {
-      newStatus = record.status === "Checked In" ? "Checked In" : "Present";
+      newStatus = isActiveShift ? "Checked In" : "Present";
       isHalfDay = true;
     } else if (newStatusOption === "absent") {
       newStatus = "Absent";
@@ -68,7 +83,7 @@ export default function HRAttendanceDashboard() {
       toast.success("Attendance status updated");
       // update local state
       setRecords(prev => prev.map(emp => 
-        emp.id === record.id ? { ...emp, status: newStatus, isHalfDay } : emp
+        emp.id === record.id ? { ...emp, status: newStatus, isHalfDay, isLate: false, isEdited: true } : emp
       ));
     } catch (e) {
       toast.error("Failed to update status");
@@ -85,11 +100,26 @@ export default function HRAttendanceDashboard() {
   const [filterLate, setFilterLate] = useState(false);
   const [filterAbsent, setFilterAbsent] = useState(false);
   const [filterPresent, setFilterPresent] = useState(false);
+  const [selectedDepartment, setSelectedDepartment] = useState("All");
+  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+
+  const formatDepartment = (dept: string) => {
+    if (dept === "All") return "All Departments";
+    if (dept === "OPS_HR") return "Ops HR";
+    if (dept === "HR") return "HR";
+    if (dept === "IT") return "IT";
+    return dept.charAt(0).toUpperCase() + dept.slice(1).toLowerCase();
+  };
 
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: string, name: string } | null>(null);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const departments = useMemo(() => {
+    const roles = new Set(records.map(r => r.role).filter(Boolean));
+    return ["All", ...Array.from(roles)] as string[];
+  }, [records]);
 
   useEffect(() => {
     const fetchRecords = async () => {
@@ -106,7 +136,6 @@ export default function HRAttendanceDashboard() {
       
       if (profiles) {
           const dDate = new Date(selectedDate);
-          const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
           const usHolidayName = getUsHolidayName(selectedDate);
 
           // Filter out profiles whose joining date is after the selected date
@@ -116,15 +145,25 @@ export default function HRAttendanceDashboard() {
              const existing = data.find(r => r.userId === profile.id);
              if (existing) return existing;
              
+             let isProfileWeekOff = false;
+             const dDay = dDate.getDay();
+             const dDateNum = dDate.getDate();
+             
+             if (profile.role === "IMMIGRATION") {
+               isProfileWeekOff = dDay === 0 || (dDay === 6 && dDateNum >= 22 && dDateNum <= 28);
+             } else {
+               isProfileWeekOff = dDay === 0 || dDay === 6;
+             }
+             
              return {
-               id: (usHolidayName ? "holiday-" : isWeekend ? "weekoff-" : "absent-") + profile.id + "-" + selectedDate,
+               id: (usHolidayName ? "holiday-" : isProfileWeekOff ? "weekoff-" : "absent-") + profile.id + "-" + selectedDate,
                userId: profile.id,
                fullName: profile.full_name,
                role: profile.role,
                date: selectedDate,
                checkInTime: null,
                checkOutTime: null,
-               status: usHolidayName ? "Holiday (Paid)" : (isWeekend ? "Week Off" : "Absent"),
+               status: usHolidayName ? "Holiday (Paid)" : (isProfileWeekOff ? "Week Off" : "Absent"),
                workingSeconds: 0,
                isLate: false,
                isHalfDay: false,
@@ -142,16 +181,18 @@ export default function HRAttendanceDashboard() {
     const matchesSearch = emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.status.toLowerCase().includes(searchTerm.toLowerCase());
     
+    const matchesDept = selectedDepartment === "All" || emp.role === selectedDepartment;
+    
     // We treat filters as mutually exclusive for best UX
     if (filterPresent) {
-        return matchesSearch && emp.status !== "Absent";
+        return matchesSearch && matchesDept && emp.status !== "Absent";
     } else if (filterAbsent) {
-        return matchesSearch && emp.status === "Absent";
+        return matchesSearch && matchesDept && emp.status === "Absent";
     } else if (filterLate) {
-        return matchesSearch && emp.isLate;
+        return matchesSearch && matchesDept && (emp.isLate || emp.isHalfDay);
     }
     
-    return matchesSearch;
+    return matchesSearch && matchesDept;
   });
 
   const exportToCSV = () => {
@@ -193,24 +234,24 @@ export default function HRAttendanceDashboard() {
             val = records.filter(r => r.status !== "Absent").length.toString();
           } else if (stat.title === "Total Absent") {
             val = records.filter(r => r.status === "Absent").length.toString();
-          } else if (stat.title === "Late Arrivals") {
-            val = records.filter(r => r.isLate).length.toString();
+          } else if (stat.title === "Late / Half Day") {
+            val = records.filter(r => r.isLate || r.isHalfDay).length.toString();
           }
 
-          const isFilterActive = (filterLate && stat.title === "Late Arrivals") || (filterAbsent && stat.title === "Total Absent") || (filterPresent && stat.title === "Total Present Today");
+          const isFilterActive = (filterLate && stat.title === "Late / Half Day") || (filterAbsent && stat.title === "Total Absent") || (filterPresent && stat.title === "Total Present Today");
 
           return (
             <motion.div
               key={stat.title}
               onClick={() => {
-        if (stat.title === "Late Arrivals") { setFilterLate(!filterLate); setFilterAbsent(false); setFilterPresent(false); }
+        if (stat.title === "Late / Half Day") { setFilterLate(!filterLate); setFilterAbsent(false); setFilterPresent(false); }
         if (stat.title === "Total Absent") { setFilterAbsent(!filterAbsent); setFilterLate(false); setFilterPresent(false); }
         if (stat.title === "Total Present Today") { setFilterPresent(!filterPresent); setFilterLate(false); setFilterAbsent(false); }
     }}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: i * 0.1, ease: "easeOut" }}
-              className={`bg-white rounded-2xl p-4 border shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group ${(stat.title === "Late Arrivals" || stat.title === "Total Absent" || stat.title === "Total Present Today") ? "cursor-pointer" : "cursor-default"} relative overflow-hidden ${isFilterActive ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-100"}`}
+              className={`bg-white rounded-2xl p-4 border shadow-sm flex flex-col justify-between hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 group ${(stat.title === "Late / Half Day" || stat.title === "Total Absent" || stat.title === "Total Present Today") ? "cursor-pointer" : "cursor-default"} relative overflow-hidden ${isFilterActive ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-100"}`}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
               <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 ${stat.accent} group-hover:w-full transition-all duration-500 ease-out`} />
@@ -230,13 +271,55 @@ export default function HRAttendanceDashboard() {
         })}
       </div>
 
-      <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden rounded-2xl">
-        <div className="bg-slate-50/80 border-b border-slate-100 p-4 sm:px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 rounded-2xl">
+        <div className="bg-slate-50/80 border-b border-slate-100 p-4 sm:px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-t-2xl">
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <span className="w-2 h-6 rounded-full bg-[#4f46e5]"></span>
             Employee Details
           </h2>
           <div className="flex w-full sm:w-auto items-center gap-3">
+            <div className="relative">
+              <button
+                onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                className="flex items-center justify-between h-10 w-44 sm:w-52 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] transition-all"
+              >
+                <span className="truncate">{formatDepartment(selectedDepartment)}</span>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {isDeptDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsDeptDropdownOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute z-50 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden py-1"
+                    >
+                      {departments.map((dept) => (
+                        <button
+                          key={dept}
+                          onClick={() => {
+                            setSelectedDepartment(dept);
+                            setIsDeptDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                            selectedDepartment === dept 
+                              ? 'bg-[#4f46e5]/5 text-[#4f46e5] font-bold border-l-2 border-[#4f46e5]' 
+                              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-l-2 border-transparent font-medium'
+                          }`}
+                        >
+                          {formatDepartment(dept)}
+                          {selectedDepartment === dept && <CheckCircle2 className="w-3.5 h-3.5 text-[#4f46e5]" />}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
             <div className="relative flex-1 sm:w-64">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
@@ -298,7 +381,7 @@ export default function HRAttendanceDashboard() {
                         {formatTime(record.checkOutTime)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
-                        {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
+                        {getStatusBadge(record.status, record.isHalfDay, record.isLate, record.isEdited)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
                                                   <select

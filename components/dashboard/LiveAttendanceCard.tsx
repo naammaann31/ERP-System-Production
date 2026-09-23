@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, LogOut, LogIn, Info, X } from "lucide-react";
@@ -163,6 +163,15 @@ export default function LiveAttendanceCard() {
     return hour >= 0 && hour < 6;
   })();
 
+  const isWeekOff = (() => {
+    if (profile?.role !== "IMMIGRATION" || !currentTime) return false;
+    const p = istParts(currentTime);
+    const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
+    const dayOfWeek = d.getUTCDay();
+    const dateNum = d.getUTCDate();
+    return dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+  })();
+
   return (
     <>
       <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col h-full relative overflow-hidden">
@@ -170,6 +179,11 @@ export default function LiveAttendanceCard() {
         <h3 className="font-bold text-slate-800 text-sm">Today's Attendance</h3>
         {loading ? (
           <div className="text-xs text-slate-400">Loading...</div>
+        ) : isWeekOff ? (
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-white text-slate-500 text-[10px] font-semibold rounded-full border border-slate-200">
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+            Week Off
+          </div>
         ) : isCheckedIn ? (
           <div className="flex items-center gap-1.5 px-2 py-1 bg-white text-slate-500 text-[10px] font-semibold rounded-full border border-slate-200">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
@@ -204,8 +218,8 @@ export default function LiveAttendanceCard() {
           <div>
             <p className="text-[10px] font-semibold text-slate-500 mb-0.5">Status</p>
             <p className="text-[10px] font-bold text-blue-600 flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full border-[1.5px] ${isCheckedIn ? 'border-green-500' : alreadyCheckedOut ? 'border-blue-500' : 'border-slate-400'} inline-block`}></span> 
-              {isCheckedIn ? "Clocked In" : alreadyCheckedOut ? "Clocked Out" : "Awaiting Clock In"}
+              <span className={`w-2 h-2 rounded-full border-[1.5px] ${isWeekOff ? 'border-slate-400' : isCheckedIn ? 'border-green-500' : alreadyCheckedOut ? 'border-blue-500' : 'border-slate-400'} inline-block`}></span> 
+              {isWeekOff ? "Week Off" : isCheckedIn ? "Clocked In" : alreadyCheckedOut ? "Clocked Out" : "Awaiting Clock In"}
             </p>
           </div>
           <div className="w-full pr-4">
@@ -222,15 +236,17 @@ export default function LiveAttendanceCard() {
       <div className="flex flex-col gap-2 mt-4">
         <button
           onClick={handleToggleCheckIn}
-          disabled={loading || alreadyCheckedOut || isTooLateToClockIn}
+          disabled={loading || alreadyCheckedOut || isTooLateToClockIn || isWeekOff}
           className={`w-full flex items-center justify-center gap-2 text-white text-[11px] font-bold py-2.5 rounded-lg transition-all shadow-md active:scale-[0.98] ${
-            (alreadyCheckedOut || isTooLateToClockIn) ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
+            (alreadyCheckedOut || isTooLateToClockIn || isWeekOff) ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
               : isCheckedIn 
                 ? 'bg-[#4f46e5] hover:bg-indigo-700' 
                 : 'bg-[#4f46e5] hover:bg-indigo-700'
           }`}
         >
-          {alreadyCheckedOut ? (
+          {isWeekOff ? (
+            <>Week Off</>
+          ) : alreadyCheckedOut ? (
             <>Shift Completed</>
           ) : isCheckedIn ? (
             <><LogOut className="h-3 w-3" /> Clock Out Now</>
@@ -301,24 +317,45 @@ export default function LiveAttendanceCard() {
               </div>
 
               <div className="p-6 max-h-[60vh] overflow-y-auto">
-                <div className="space-y-4 text-sm text-slate-600">
-                  <div>
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
-                    <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
-                      <li>Standard shift starts before <span className="font-semibold text-slate-800">7:45 PM IST</span>.</li>
-                      <li>Clocking in after 7:45 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
-                      <li>Clock In is <span className="font-semibold text-slate-800">disabled after 11:59 PM</span>. You will automatically be marked Absent.</li>
-                    </ul>
+                {profile?.role === "IMMIGRATION" ? (
+                  <div className="space-y-4 text-sm text-slate-600">
+                    <div>
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Standard shift starts before <span className="font-semibold text-slate-800">10:15 AM IST</span>.</li>
+                        <li>Clocking in after 10:15 AM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                        <li>Sunday and the 4th Saturday of the month are recognized as <span className="font-semibold text-slate-800">Week Offs</span>.</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
+                        <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 6:45 PM (Mon-Fri) or 3:30 PM (Sat)</span> and mark you Absent for the entire day.</li>
+                      </ul>
+                    </div>
                   </div>
-                  
-                  <div className="pt-2">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
-                    <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
-                      <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
-                      <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 5:00 AM</span> and mark you Absent for the entire day.</li>
-                    </ul>
+                ) : (
+                  <div className="space-y-4 text-sm text-slate-600">
+                    <div>
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Standard shift starts before <span className="font-semibold text-slate-800">7:45 PM IST</span>.</li>
+                        <li>Clocking in after 7:45 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                        <li>Clock In is <span className="font-semibold text-slate-800">disabled after 11:59 PM</span>. You will automatically be marked Absent.</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
+                        <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 5:00 AM</span> and mark you Absent for the entire day.</li>
+                      </ul>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </motion.div>
           </div>

@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     // 2. Fetch all active shifts (any date, as long as they are still Checked In)
     const { data: activeShifts, error: fetchError } = await supabase
       .from("attendance")
-      .select("id, date, check_in_time")
+      .select("id, date, check_in_time, role")
       .eq("status", "Checked In");
 
     if (fetchError) throw fetchError;
@@ -34,20 +34,53 @@ export async function GET(request: Request) {
     for (const shift of activeShifts) {
       if (!shift.date || !shift.check_in_time) continue;
 
-      // Calculate the official cutoff: 5:00 AM IST on the morning FOLLOWING the shift date.
-      // Parse shift.date safely using UTC to avoid server timezone drift.
       const [yStr, mStr, dStr] = shift.date.split('-');
       const shiftDate = new Date(Date.UTC(Number(yStr), Number(mStr) - 1, Number(dStr)));
       
-      // Advance to the next day
-      shiftDate.setUTCDate(shiftDate.getUTCDate() + 1);
+      let cutoffTimestamp = "";
+      let localCheckoutTime = "";
       
-      const nextY = shiftDate.getUTCFullYear();
-      const nextM = String(shiftDate.getUTCMonth() + 1).padStart(2, '0');
-      const nextD = String(shiftDate.getUTCDate()).padStart(2, '0');
+      if (shift.role === "IMMIGRATION") {
+        // --- IMMIGRATION SHIFT LOGIC ---
+        const dayOfWeek = shiftDate.getUTCDay();
+        const dateNum = shiftDate.getUTCDate();
+        
+        // 4th Saturday or Sunday = Week Off, no auto clock-out
+        const isWeekOff = dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+        if (isWeekOff) {
+          continue;
+        }
+        
+        // Determine cutoff time for Immigration
+        let cutoffHour = 18; // 6 PM
+        let cutoffMinute = 45; // 6:45 PM
+        
+        if (dayOfWeek === 6) { // Saturday
+          cutoffHour = 15; // 3 PM
+          cutoffMinute = 30; // 3:30 PM
+        }
+        
+        const cutoffY = shiftDate.getUTCFullYear();
+        const cutoffM = String(shiftDate.getUTCMonth() + 1).padStart(2, '0');
+        const cutoffD = String(shiftDate.getUTCDate()).padStart(2, '0');
+        
+        cutoffTimestamp = `${cutoffY}-${cutoffM}-${cutoffD}T${String(cutoffHour).padStart(2, '0')}:${String(cutoffMinute).padStart(2, '0')}:00+05:30`;
+        localCheckoutTime = `${cutoffY}-${cutoffM}-${cutoffD}T${String(cutoffHour).padStart(2, '0')}:${String(cutoffMinute).padStart(2, '0')}:00.000`;
+        
+      } else {
+        // --- NIGHT SHIFT LOGIC (Default) ---
+        // Advance to the next day
+        shiftDate.setUTCDate(shiftDate.getUTCDate() + 1);
+        
+        const nextY = shiftDate.getUTCFullYear();
+        const nextM = String(shiftDate.getUTCMonth() + 1).padStart(2, '0');
+        const nextD = String(shiftDate.getUTCDate()).padStart(2, '0');
 
-      // Absolute timestamp string with +05:30 offset for strict comparison
-      const cutoffTimestamp = `${nextY}-${nextM}-${nextD}T05:00:00+05:30`;
+        // Cutoff: 5:00 AM IST on the following day
+        cutoffTimestamp = `${nextY}-${nextM}-${nextD}T05:00:00+05:30`;
+        localCheckoutTime = `${nextY}-${nextM}-${nextD}T05:00:00.000`;
+      }
+
       const cutoffMs = new Date(cutoffTimestamp).getTime();
 
       // Safety check: If current time is BEFORE the cutoff, do NOT auto-clock out.
@@ -55,10 +88,7 @@ export async function GET(request: Request) {
         continue;
       }
 
-      // 4. Calculate actual worked seconds up to exactly 5:00 AM.
-      // The DB uses wall-clock time strings without timezone designators.
-      const localCheckoutTime = `${nextY}-${nextM}-${nextD}T05:00:00.000`;
-      
+      // 4. Calculate actual worked seconds up to exactly the cutoff time.
       const workingSeconds = computeWorkedSeconds({
         checkInTime: shift.check_in_time,
         checkOutTime: localCheckoutTime,

@@ -14,6 +14,7 @@ export interface AttendanceRecord {
   workingSeconds: number;
   isLate?: boolean;
   isHalfDay?: boolean;
+  isEdited?: boolean;
 }
 
 function fromRow(row: any): AttendanceRecord {
@@ -29,6 +30,7 @@ function fromRow(row: any): AttendanceRecord {
     workingSeconds: row.working_seconds,
     isLate: row.is_late,
     isHalfDay: row.is_half_day,
+    isEdited: row.is_edited,
   };
 }
 
@@ -234,22 +236,43 @@ export const checkIn = async (userId: string, fullName: string, role?: string) =
   const hour = Number(p.hour);
   const minute = Number(p.minute);
 
-  // Late Comer Logic: Clock in after 7:45 PM or between 12:00 AM and 6:00 AM
+  // Shift detection logic based on role
+  const isImmigration = role === "IMMIGRATION";
+
   let isLate = false;
   let isAbsent = false;
 
-  if (hour > 19 || (hour === 19 && minute > 45) || hour < 6) {
-    isLate = true;
-  }
-  
-  // Absent Logic: If user clocks in after 11:59 PM (between 12:00 AM and 6:00 AM)
-  if (hour < 6) {
-    isAbsent = true;
+  if (isImmigration) {
+    // 4th Saturday and Sunday detection using local IST date
+    const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
+    const dayOfWeek = d.getUTCDay();
+    const dateNum = d.getUTCDate();
+    const isWeekOff = dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+    
+    if (!isWeekOff) {
+      // Late Comer Logic: Immigration shift starts at 10:00 AM, late if strictly > 10:15 AM
+      if (hour > 10 || (hour === 10 && minute > 15)) {
+        isLate = true;
+      }
+    }
+    // Absent logic is handled strictly by the Cron (auto-clockout) for Immigration.
+  } else {
+    // Existing Night Shift logic
+    // Late Comer Logic: Clock in after 7:45 PM or between 12:00 AM and 6:00 AM
+    if (hour > 19 || (hour === 19 && minute > 45) || hour < 6) {
+      isLate = true;
+    }
+    
+    // Absent Logic: If user clocks in after 11:59 PM (between 12:00 AM and 6:00 AM)
+    if (hour < 6) {
+      isAbsent = true;
+    }
   }
 
   const insertData: any = {
     user_id: userId,
     full_name: fullName,
+    role: role || null,
     date: dateStr,
     check_in_time: toLocalTimestamp(now),
     check_out_time: null,
@@ -285,15 +308,41 @@ export const updateWorkingSeconds = async (docId: string, workingSeconds: number
 export const checkOut = async (docId: string, workingSeconds: number) => {
   const supabase = createClient();
   
+  // Fetch the attendance record to get role and date for specific logic
+  const { data: record } = await supabase
+    .from("attendance")
+    .select("role, date")
+    .eq("id", docId)
+    .single();
+
+  let isHalfDay = false;
+  
+  // Early Leaver Penalty: If total hours < 5 (18,000 seconds), mark as half day.
+  if (workingSeconds < 5 * 3600) {
+    isHalfDay = true;
+    
+    // Exception: Do not penalize if it's a Week Off for Immigration
+    if (record?.role === "IMMIGRATION" && record.date) {
+      const [y, m, d] = record.date.split('-');
+      const dateObj = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+      const dayOfWeek = dateObj.getUTCDay();
+      const dateNum = dateObj.getUTCDate();
+      const isWeekOff = dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+      
+      if (isWeekOff) {
+        isHalfDay = false;
+      }
+    }
+  }
+
   const updatePayload: any = {
     check_out_time: toLocalTimestamp(new Date()),
     status: "Present",
     working_seconds: workingSeconds,
   };
 
-  // Early Leaver Penalty: If total hours < 5 (18,000 seconds), mark as half day.
   // We only set it if true so we don't overwrite an existing 'true' from a late check-in.
-  if (workingSeconds < 5 * 3600) {
+  if (isHalfDay) {
     updatePayload.is_half_day = true;
   }
 
@@ -443,18 +492,27 @@ export const updateAttendanceStatus = async (
       date: dateStr,
       status: status,
       is_half_day: isHalfDay,
+      is_late: false,
+      is_edited: true,
       working_seconds: 0
     });
     if (error) throw error;
   } else {
     // Update existing record
+    const payload: any = { 
+      status, 
+      is_half_day: isHalfDay,
+      is_late: false, // Manually clear late penalty
+      is_edited: true, // Mark as edited by HR
+    };
+    
+    if (status === 'Absent') {
+      payload.working_seconds = 0;
+    }
+
     const { error } = await supabase
       .from("attendance")
-      .update({ 
-        status, 
-        is_half_day: isHalfDay,
-        working_seconds: status === 'Absent' ? 0 : undefined 
-      })
+      .update(payload)
       .eq("id", id);
       
     if (error) throw error;
