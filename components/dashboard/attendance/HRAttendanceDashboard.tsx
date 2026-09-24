@@ -130,7 +130,7 @@ export default function HRAttendanceDashboard() {
       const data = await getAttendanceByDate(selectedDate);
       
       // Fetch all employees
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining").neq("role", "Admin");
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation").neq("role", "Admin");
       
       let mergedRecords = data;
       
@@ -149,7 +149,7 @@ export default function HRAttendanceDashboard() {
              const dDay = dDate.getDay();
              const dDateNum = dDate.getDate();
              
-             if (profile.role === "IMMIGRATION") {
+             if (profile.role === "IMMIGRATION" || profile.designation === "Immigration HR") {
                isProfileWeekOff = dDay === 0 || (dDay === 6 && dDateNum >= 22 && dDateNum <= 28);
              } else {
                isProfileWeekOff = dDay === 0 || dDay === 6;

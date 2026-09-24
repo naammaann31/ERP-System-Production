@@ -173,6 +173,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                     <option value="Employee">Employee</option>
                                     <option value="Team-Lead">Team-Lead</option>
                                     <option value="Manager">Manager</option>
+                                    <option value="Immigration Manager">Immigration Manager</option>
+                                    <option value="Immigration HR">Immigration HR</option>
                                 </select>
                             </div>
                         </div>
@@ -261,18 +263,18 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                 <div className="relative">
                                     <div
                                         onClick={() => setShowDropdown(!showDropdown)}
-                                        className={`relative h-24 p-3 rounded-xl border cursor-pointer transition-all flex flex-col items-center justify-center text-center ${["OPS_HR", "MARKETING", "SALES", "IT"].includes(role) ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm" : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700"}`}
+                                        className={`relative h-24 p-3 rounded-xl border cursor-pointer transition-all flex flex-col items-center justify-center text-center ${["OPS_HR", "MARKETING", "SALES", "IT", "IMMIGRATION"].includes(role) ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm" : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700"}`}
                                     >
-                                        {["OPS_HR", "MARKETING", "SALES", "IT"].includes(role) && (
+                                        {["OPS_HR", "MARKETING", "SALES", "IT", "IMMIGRATION"].includes(role) && (
                                             <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-0.5">
                                                 <Check className="w-3 h-3 text-white" />
                                             </div>
                                         )}
                                         <span className="text-xs font-bold mb-1 uppercase tracking-wider flex items-center justify-center gap-1">
-                                            {["OPS_HR", "MARKETING", "SALES", "IT"].includes(role) ? (role === "OPS_HR" ? "HR" : role) : "Operations"}
+                                            {["OPS_HR", "MARKETING", "SALES", "IT", "IMMIGRATION"].includes(role) ? (role === "OPS_HR" ? "HR" : role) : "Operations"}
                                             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDropdown ? "rotate-180" : ""}`} />
                                         </span>
-                                        <span className={`text-[10px] ${["OPS_HR", "MARKETING", "SALES", "IT"].includes(role) ? "text-blue-600/80" : "text-slate-500"} tracking-wider leading-tight`}>Department access</span>
+                                        <span className={`text-[10px] ${["OPS_HR", "MARKETING", "SALES", "IT", "IMMIGRATION"].includes(role) ? "text-blue-600/80" : "text-slate-500"} tracking-wider leading-tight`}>Department access</span>
                                     </div>
 
                                     {showDropdown && (
@@ -281,7 +283,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                                 { label: "HR", value: "OPS_HR" },
                                                 { label: "MARKETING", value: "MARKETING" },
                                                 { label: "SALES", value: "SALES" },
-                                                { label: "IT", value: "IT" }
+                                                { label: "IT", value: "IT" },
+                                                { label: "IMMIGRATION", value: "IMMIGRATION" }
                                             ].map((opRole) => (
                                                 <div
                                                     key={opRole.value}

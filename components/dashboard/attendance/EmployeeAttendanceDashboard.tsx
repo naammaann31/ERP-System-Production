@@ -138,7 +138,7 @@ export default function EmployeeAttendanceDashboard() {
   const handleClockIn = async () => {
     if (!profile?.uid) return;
     setClockLoading(true);
-    const rec = await checkIn(profile.uid, profile.fullName, profile.role);
+    const rec = await checkIn(profile.uid, profile.fullName, profile.role, profile.designation);
     setTodayRecord(rec);
     setLiveSeconds(0);
     setClockLoading(false);

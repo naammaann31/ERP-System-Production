@@ -173,6 +173,8 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                     <option value="Employee">Employee</option>
                                     <option value="Team-Lead">Team-Lead</option>
                                     <option value="Manager">Manager</option>
+                                    <option value="Immigration Manager">Immigration Manager</option>
+                                    <option value="Immigration HR">Immigration HR</option>
                                 </select>
                             </div>
                         </div>

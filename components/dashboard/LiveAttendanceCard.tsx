@@ -93,7 +93,7 @@ export default function LiveAttendanceCard() {
 
     if (!isCheckedIn) {
       try {
-        const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role);
+        const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role, profile.designation);
         setAttendanceRecord(record);
         setIsCheckedIn(true);
       } catch (error: any) {
@@ -164,7 +164,7 @@ export default function LiveAttendanceCard() {
   })();
 
   const isWeekOff = (() => {
-    if (profile?.role !== "IMMIGRATION" || !currentTime) return false;
+    if ((profile?.role !== "IMMIGRATION" && profile?.designation !== "Immigration HR") || !currentTime) return false;
     const p = istParts(currentTime);
     const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
     const dayOfWeek = d.getUTCDay();
@@ -317,7 +317,7 @@ export default function LiveAttendanceCard() {
               </div>
 
               <div className="p-6 max-h-[60vh] overflow-y-auto">
-                {profile?.role === "IMMIGRATION" ? (
+                {profile?.role === "IMMIGRATION" || profile?.designation === "Immigration HR" ? (
                   <div className="space-y-4 text-sm text-slate-600">
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>

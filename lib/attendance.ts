@@ -218,7 +218,7 @@ export const getRecentMonthOptions = (count = 12): { value: string; label: strin
   }).filter(opt => opt.value >= "2026-08");
 };
 
-export const checkIn = async (userId: string, fullName: string, role?: string) => {
+export const checkIn = async (userId: string, fullName: string, role?: string, designation?: string) => {
   const supabase = createClient();
   const dateStr = getLocalDateString();
 
@@ -237,7 +237,7 @@ export const checkIn = async (userId: string, fullName: string, role?: string) =
   const minute = Number(p.minute);
 
   // Shift detection logic based on role
-  const isImmigration = role === "IMMIGRATION";
+  const isImmigration = role === "IMMIGRATION" || designation === "Immigration HR";
 
   let isLate = false;
   let isAbsent = false;
@@ -311,7 +311,7 @@ export const checkOut = async (docId: string, workingSeconds: number) => {
   // Fetch the attendance record to get role and date for specific logic
   const { data: record } = await supabase
     .from("attendance")
-    .select("role, date")
+    .select("role, date, profiles(designation)")
     .eq("id", docId)
     .single();
 
@@ -322,7 +322,8 @@ export const checkOut = async (docId: string, workingSeconds: number) => {
     isHalfDay = true;
     
     // Exception: Do not penalize if it's a Week Off for Immigration
-    if (record?.role === "IMMIGRATION" && record.date) {
+    const recordDesignation = (record?.profiles as any)?.designation;
+    if ((record?.role === "IMMIGRATION" || recordDesignation === "Immigration HR") && record?.date) {
       const [y, m, d] = record.date.split('-');
       const dateObj = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
       const dayOfWeek = dateObj.getUTCDay();

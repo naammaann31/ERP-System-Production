@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     // 2. Fetch all active shifts (any date, as long as they are still Checked In)
     const { data: activeShifts, error: fetchError } = await supabase
       .from("attendance")
-      .select("id, date, check_in_time, role")
+      .select("id, date, check_in_time, role, profiles(designation)")
       .eq("status", "Checked In");
 
     if (fetchError) throw fetchError;
@@ -40,7 +40,8 @@ export async function GET(request: Request) {
       let cutoffTimestamp = "";
       let localCheckoutTime = "";
       
-      if (shift.role === "IMMIGRATION") {
+      const designation = (shift.profiles as any)?.designation;
+      if (shift.role === "IMMIGRATION" || designation === "Immigration HR") {
         // --- IMMIGRATION SHIFT LOGIC ---
         const dayOfWeek = shiftDate.getUTCDay();
         const dateNum = shiftDate.getUTCDate();
