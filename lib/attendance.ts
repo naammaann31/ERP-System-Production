@@ -402,7 +402,7 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
   const supabase = createClient();
   
   // 1. Fetch user profile for dummy records
-  const { data: profile } = await supabase.from("profiles").select("id, full_name, role, date_of_joining").eq("id", userId).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation").eq("id", userId).maybeSingle();
   if (!profile) return [];
   if (profile.role === "Admin") return [];
 
@@ -443,7 +443,15 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     
     if (!existingDates.has(dateStr)) {
       const dDate = new Date(Number(year), Number(month) - 1, d);
-      const isWeekend = dDate.getDay() === 0 || dDate.getDay() === 6;
+      
+      let isWeekend = false;
+      const dDay = dDate.getDay();
+      
+      if (profile.role === "IMMIGRATION" || profile.designation === "Immigration HR") {
+        isWeekend = dDay === 0 || (dDay === 6 && d >= 22 && d <= 28);
+      } else {
+        isWeekend = dDay === 0 || dDay === 6;
+      }
       const usHolidayName = getUsHolidayName(dateStr);
       
       paddedRecords.push({
