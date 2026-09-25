@@ -24,7 +24,26 @@ export default function LoginPage() {
     const [captchaQuestion, setCaptchaQuestion] = useState("");
     const [captchaAnswer, setCaptchaAnswer] = useState(0);
     const [userCaptchaInput, setUserCaptchaInput] = useState("");
+    const [isMobile, setIsMobile] = useState(false);
+    const [mounted, setMounted] = useState(false);
     const router = useRouter();
+
+    useEffect(() => {
+        setMounted(true); // Signal that client has hydrated
+
+        // More robust mobile detection checking screen width
+        const checkMobile = () => {
+            if (window.innerWidth <= 768) {
+                setIsMobile(true);
+            } else {
+                setIsMobile(false);
+            }
+        };
+        
+        checkMobile(); // Check immediately on mount
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     useEffect(() => {
         if (!authLoading && user) {
@@ -112,6 +131,28 @@ export default function LoginPage() {
             setResetLoading(false);
         }
     };
+
+    // Prevent hydration mismatch by returning nothing until the client has mounted
+    if (!mounted) return null;
+
+    if (isMobile) {
+        return (
+            <div className="relative z-50 w-full max-w-sm px-4 flex items-center justify-center">
+                <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-red-500/50 shadow-2xl text-center w-full">
+                    <div className="bg-red-500/20 text-red-300 p-4 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center border border-red-500/30">
+                        <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                        </svg>
+                    </div>
+                    <h1 className="text-2xl font-bold text-white mb-3 tracking-wide">Desktop Only</h1>
+                    <p className="text-white/80 text-base leading-relaxed">
+                        For security reasons, this system is restricted to desktop access. 
+                        Please switch to a computer.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <>
