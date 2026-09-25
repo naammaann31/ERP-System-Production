@@ -73,21 +73,6 @@ export default function TopStats() {
     };
 
     fetchCounts();
-
-    const profileChannel = supabase
-      .channel(`profiles_count_${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchCounts)
-      .subscribe();
-
-    const attChannel = supabase
-      .channel(`att_count_${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, fetchCounts)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(profileChannel);
-      supabase.removeChannel(attChannel);
-    };
   }, [profile, isAdminOrHR]);
 
   useEffect(() => {

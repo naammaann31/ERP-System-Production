@@ -127,6 +127,8 @@ function listenToQuery(
 ) {
   const supabase = createClient();
 
+  let currentData: LeaveRequest[] = [];
+
   const fetchAndEmit = async () => {
     const { data, error } = await filter(supabase.from("leave_requests").select("*")).order(
       "applied_on",
@@ -136,14 +138,46 @@ function listenToQuery(
       console.error("leave_requests listener error:", error);
       return;
     }
-    callback((data || []).map(fromRow));
+    currentData = (data || []).map(fromRow);
+    callback(currentData);
   };
 
   fetchAndEmit();
 
   const channel = supabase
-    .channel(`leave_requests_${Math.random().toString(36).slice(2)}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, fetchAndEmit)
+    .channel(`leave_requests_global`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, async (payload) => {
+      if (payload.eventType === "DELETE") {
+        currentData = currentData.filter(l => l.id !== payload.old.id);
+        callback(currentData);
+        return;
+      }
+
+      // Targeted query for INSERT or UPDATE to ensure we only get it if it matches the query filter
+      const { data, error } = await filter(
+        supabase.from("leave_requests").select("*").eq("id", payload.new.id)
+      );
+
+      if (error) {
+         console.error("Error fetching single leave:", error);
+         return;
+      }
+
+      const updatedRow = data && data.length > 0 ? fromRow(data[0]) : null;
+
+      if (updatedRow) {
+         const index = currentData.findIndex(l => l.id === updatedRow.id);
+         if (index !== -1) {
+            currentData[index] = updatedRow;
+         } else {
+            currentData.unshift(updatedRow); // It's new or now matches filter, add to top since it's ordered by applied_on desc
+         }
+      } else {
+         // It no longer matches the filter, remove it
+         currentData = currentData.filter(l => l.id !== payload.new.id);
+      }
+      callback([...currentData]);
+    })
     .subscribe();
 
   return () => {

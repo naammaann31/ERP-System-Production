@@ -183,10 +183,10 @@ export default function HRLeaveDashboard() {
                       </td>
                       <td className="px-5 py-3 font-bold text-slate-800">{req.days}</td>
                       <td className="px-5 py-3 font-medium text-slate-500">{formatTimestamp(req.appliedOn)}</td>
-                      <td className="px-5 py-3 max-w-[180px]">
+                      <td className="px-5 py-3 max-w-[300px]">
                         <p
                           title={req.reason}
-                          className="text-sm text-slate-600 font-medium truncate max-w-[160px]"
+                          className="text-sm text-slate-600 font-medium break-words"
                         >
                           {req.reason || <span className="text-slate-400 italic text-xs">No reason given</span>}
                         </p>

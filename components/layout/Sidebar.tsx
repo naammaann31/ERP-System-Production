@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSidebar } from "@/components/providers/SidebarProvider";
+import { useNotifications } from "@/components/providers/NotificationProvider";
 import {
     LayoutDashboard,
     Users,
@@ -44,8 +45,15 @@ export default function Sidebar() {
     const pathname = usePathname();
     const { profile } = useAuth();
     const { isOpen } = useSidebar();
+    const { notifications } = useNotifications();
+    
     const [unreadCount, setUnreadCount] = useState(0);
     const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
+    
+    useEffect(() => {
+        const unreadAnnouncements = notifications.filter(n => n.type === "announcement" && !n.read);
+        setUnreadCount(unreadAnnouncements.length);
+    }, [notifications]);
 
     useEffect(() => {
         if (!profile) return;
@@ -76,16 +84,6 @@ export default function Sidebar() {
             });
         });
 
-        if (profile.uid) {
-            import("@/lib/notifications").then(({ listenToUserNotifications }) => {
-                if (!isMounted) return;
-                unsubscribeNotifs = listenToUserNotifications(profile.uid, (notifs) => {
-                    const unreadAnnouncements = notifs.filter(n => n.type === "announcement" && !n.read);
-                    setUnreadCount(unreadAnnouncements.length);
-                });
-            });
-        }
-
         // Listen to pending leaves for Admin/HR
         const isAdminOrHR = userRole === "Admin" || userRole === "HR";
         let unsubscribeLeaves: (() => void) | undefined;
@@ -104,7 +102,6 @@ export default function Sidebar() {
         return () => {
             isMounted = false;
             if (unsubscribeAnnouncements) unsubscribeAnnouncements();
-            if (unsubscribeNotifs) unsubscribeNotifs();
             if (unsubscribeLeaves) unsubscribeLeaves();
         };
     }, [profile]);

@@ -66,6 +66,8 @@ export const listenToUserNotifications = (
 ) => {
   const supabase = createClient();
 
+  let currentData: Notification[] = [];
+
   const fetchAndEmit = async () => {
     const { data, error } = await supabase
       .from("notifications")
@@ -77,17 +79,33 @@ export const listenToUserNotifications = (
       console.error("notifications listener error:", error);
       return;
     }
-    callback((data || []).map(fromRow));
+    currentData = (data || []).map(fromRow);
+    callback(currentData);
   };
 
   fetchAndEmit();
 
   const channel = supabase
-    .channel(`notifications_${userId}_${Math.random().toString(36).slice(2)}`)
+    .channel(`notifications_${userId}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-      fetchAndEmit
+      (payload) => {
+        if (payload.eventType === "DELETE") {
+          currentData = currentData.filter((n) => n.id !== payload.old.id);
+        } else if (payload.eventType === "INSERT") {
+          currentData = [fromRow(payload.new as any), ...currentData];
+        } else if (payload.eventType === "UPDATE") {
+          const updatedRow = fromRow(payload.new as any);
+          const idx = currentData.findIndex((n) => n.id === updatedRow.id);
+          if (idx !== -1) {
+            currentData[idx] = updatedRow;
+          } else {
+            currentData = [updatedRow, ...currentData];
+          }
+        }
+        callback([...currentData]);
+      }
     )
     .subscribe();
 

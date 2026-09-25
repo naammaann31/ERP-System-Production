@@ -102,13 +102,48 @@ export default function TeamStatusWidget() {
     fetchAttendance();
 
     const usersChannel = supabase
-      .channel(`team_status_profiles_${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, fetchUsers)
+      .channel(`team_status_profiles`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
+        if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+          const newRow = payload.new as any;
+          const isEligible = isAdmin || newRow.role === profile.role;
+          const index = usersData.findIndex((u: any) => u.id === newRow.id);
+          if (index !== -1) {
+            if (isEligible) {
+              // Still eligible — merge the update
+              usersData[index] = { ...usersData[index], ...newRow };
+            } else {
+              // Bug #1 fix: role changed, no longer eligible — remove immediately
+              usersData = usersData.filter((u: any) => u.id !== newRow.id);
+            }
+          } else if (isEligible) {
+            // New user and eligible — add them
+            usersData.push(newRow);
+          }
+        } else if (payload.eventType === "DELETE") {
+          usersData = usersData.filter((u: any) => u.id !== (payload.old as any).id);
+        }
+        updateTeam();
+      })
       .subscribe();
 
     const attChannel = supabase
-      .channel(`team_status_attendance_${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, fetchAttendance)
+      .channel(`team_status_attendance`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, (payload) => {
+        if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+          const newRow = payload.new as any;
+          if (newRow.date === todayDate) {
+            attendanceData[newRow.user_id] = newRow.status;
+          }
+        } else if (payload.eventType === "DELETE") {
+          // Bug #2 fix: attendance row deleted — clear local status immediately
+          const deletedUserId = (payload.old as any).user_id;
+          if (deletedUserId) {
+            delete attendanceData[deletedUserId];
+          }
+        }
+        updateTeam();
+      })
       .subscribe();
 
     return () => {

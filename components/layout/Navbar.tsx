@@ -9,10 +9,10 @@ import { LogOut, User, Menu, ChevronLeft, ArrowLeft, ArrowRight, RotateCw, Bell,
 import { useSidebar } from "@/components/providers/SidebarProvider";
 import {
     Notification,
-    listenToUserNotifications,
     markAsRead,
     markAllAsRead,
 } from "@/lib/notifications";
+import { useNotifications } from "@/components/providers/NotificationProvider";
 import { motion, AnimatePresence } from "framer-motion";
 
 const formatRelativeTime = (ts: any) => {
@@ -34,18 +34,9 @@ export default function Navbar() {
 
     const [showProfile, setShowProfile] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [notifications, setNotifications] = useState<Notification[]>([]);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-    useEffect(() => {
-        if (!profile?.uid) return;
-        const unsubscribe = listenToUserNotifications(profile.uid, (notifs) => {
-            setNotifications(notifs);
-        });
-        return () => unsubscribe();
-    }, [profile]);
-
-    const unreadCount = notifications.filter((n) => !n.read).length;
+    const { notifications, unreadCount } = useNotifications();
 
     const executeLogout = async () => {
         await logoutUser();
