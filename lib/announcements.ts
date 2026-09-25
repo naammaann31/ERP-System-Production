@@ -105,9 +105,9 @@ export const listenToAnnouncements = (callback: (announcements: Announcement[]) 
   fetchAndEmit();
 
     const channel = supabase
-      .channel(`announcements_global`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, fetchAndEmit)
-    .subscribe();
+      .channel(`announcements_${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, fetchAndEmit)
+      .subscribe();
 
   return () => {
     supabase.removeChannel(channel);

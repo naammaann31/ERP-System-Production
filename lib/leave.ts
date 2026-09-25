@@ -145,7 +145,7 @@ function listenToQuery(
   fetchAndEmit();
 
   const channel = supabase
-    .channel(`leave_requests_global`)
+    .channel(`leave_requests_${Math.random().toString(36).slice(2)}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, async (payload) => {
       if (payload.eventType === "DELETE") {
         currentData = currentData.filter(l => l.id !== payload.old.id);
