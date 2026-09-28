@@ -19,17 +19,17 @@ export async function POST(req: Request) {
     let employeeEmail = null;
 
     try {
-        // Try getting user from auth.users (will throw if userId is not a UUID)
-        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
-        employeeEmail = user?.email;
+      // Try getting user from auth.users (will throw if userId is not a UUID)
+      const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
+      employeeEmail = user?.email;
     } catch (e: any) {
-        console.warn('getUserById failed (likely non-UUID):', e.message);
+      console.warn('getUserById failed (likely non-UUID):', e.message);
     }
 
     // Fallback to profiles table if auth.users fails or returns nothing
     if (!employeeEmail) {
-        const { data: profile } = await supabaseAdmin.from('profiles').select('email').eq('id', userId).single();
-        employeeEmail = profile?.email;
+      const { data: profile } = await supabaseAdmin.from('profiles').select('email').eq('id', userId).single();
+      employeeEmail = profile?.email;
     }
 
     if (!employeeEmail) {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       secure: true,
       auth: {
         user: 'damini@vectragroup.in',
-        pass: 'Vectra@12345'
+        pass: ''
       }
     });
 

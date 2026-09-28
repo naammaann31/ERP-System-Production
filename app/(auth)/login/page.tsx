@@ -31,9 +31,19 @@ export default function LoginPage() {
     useEffect(() => {
         setMounted(true); // Signal that client has hydrated
 
-        // More robust mobile detection checking screen width
+        // More robust mobile detection checking screen width and physical screen
         const checkMobile = () => {
-            if (window.innerWidth <= 768) {
+            const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            // Even in "Desktop Site" mode, window.screen remains the physical device size
+            const minPhysicalDimension = Math.min(window.screen.width, window.screen.height);
+            
+            // 1. Window is physically narrow
+            // 2. OR it's a touch device with a small physical screen (< 600px short side catches all phones, ignores desktops/tablets)
+            // 3. OR the User Agent explicitly says it's a phone (extra fallback)
+            const userAgent = navigator.userAgent.toLowerCase();
+            const isMobileUA = /mobi|android|iphone/.test(userAgent);
+
+            if (window.innerWidth <= 768 || (hasTouch && minPhysicalDimension < 600) || (hasTouch && isMobileUA)) {
                 setIsMobile(true);
             } else {
                 setIsMobile(false);
