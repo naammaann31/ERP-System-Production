@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Plus, Table as TableIcon, Trash2, Download, Upload, Search, Save } from "lucide-react";
 import * as xlsx from "xlsx";
 import { createClient } from "@/lib/supabase/client";
@@ -12,62 +12,267 @@ import { Card } from "@/components/ui/card";
 import GenerateReportModal from "@/components/dashboard/marketing/GenerateReportModal";
 import { toast } from "sonner";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 100;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Escape special PostgreSQL ILIKE characters in user-typed input so that
+ * literal `%`, `_`, and `\` are treated as plain text rather than wildcards.
+ * Also strips commas which are PostgREST .or() filter delimiters.
+ */
+function escapeLike(str: string): string {
+    return str
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_")
+        .replace(/,/g, "");
+}
+
+/**
+ * Build an ILIKE pattern for the free-text search box that ignores
+ * differences in spacing/hyphens/underscores between words — e.g. "brain co"
+ * should match "Brain Co", "BrainCo", and "Brain-Co" alike, since that's
+ * what the old client-side search (which normalised both the query AND the
+ * stored value before comparing) used to do.
+ *
+ * We can't normalise the stored column server-side without a schema change,
+ * so instead each run of separator characters in the query is turned into a
+ * `%` wildcard (rather than deleted) so it matches regardless of whatever
+ * separator — or none — actually sits there in the stored value. Literal
+ * backslashes/percent signs are escaped first so they aren't mistaken for
+ * SQL wildcards, and commas are stripped since they delimit PostgREST's
+ * `.or()` filter groups.
+ */
+function buildSearchPattern(str: string): string {
+    const escaped = str
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/,/g, "")
+        .replace(/[\s\-_]+/g, "%");
+    return `%${escaped}%`;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 interface MarketingClientProps {
     restrictToUser?: boolean;
     filterByUid?: string;
     filterByName?: string;
 }
 
-export default function MarketingClient({ restrictToUser = false, filterByUid, filterByName }: MarketingClientProps) {
+export default function MarketingClient({
+    restrictToUser = false,
+    filterByUid,
+    filterByName,
+}: MarketingClientProps) {
+    // ── Data state ─────────────────────────────────────────────────────────
     const [data, setData] = useState<any[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [offset, setOffset] = useState(0);
 
-    // Inline Add State
+    // ── Filter state ───────────────────────────────────────────────────────
+    const [startDate, setStartDate] = useState<string>("");
+    const [endDate, setEndDate] = useState<string>("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+
+    // ── Inline Add state ───────────────────────────────────────────────────
     const [isAddingNew, setIsAddingNew] = useState(false);
 
     const createEmptyRow = () => {
         const today = new Date();
         const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
         return {
             id: Math.random().toString(36).substr(2, 9),
             CandidateName: "",
             Date: `${yyyy}-${mm}-${dd}`,
             CompanyName: "",
-            Link: ""
+            Link: "",
         };
     };
 
     const [newRows, setNewRows] = useState([createEmptyRow()]);
     const [savingRow, setSavingRow] = useState(false);
     const [reportModalOpen, setReportModalOpen] = useState(false);
-
-    const [candidateToDelete, setCandidateToDelete] = useState<any | null>(null);
     const [importSummary, setImportSummary] = useState<string | null>(null);
+
+    // ── Selection + delete state ───────────────────────────────────────────
+    const [selectedRows, setSelectedRows] = useState<string[]>([]);
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+    const [candidateToDelete, setCandidateToDelete] = useState<any | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { profile } = useAuth();
 
-    const [startDate, setStartDate] = useState<string>("");
-    const [endDate, setEndDate] = useState<string>("");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [visibleCount, setVisibleCount] = useState(50);
-
+    // ── Debounce search input (400 ms) ─────────────────────────────────────
     useEffect(() => {
-        setVisibleCount(50);
-    }, [searchQuery, startDate, endDate]);
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+            // Reset pagination whenever the search term changes
+            setOffset(0);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
+    // Reset pagination when date filters change
+    useEffect(() => {
+        setOffset(0);
+    }, [startDate, endDate]);
+
+    // ── Core Supabase query builder ─────────────────────────────────────────
+    //
+    // Returns a query with all filters applied but WITHOUT .range() so it can
+    // be reused for both paginated fetches and full exports.
+    const buildBaseQuery = useCallback(
+        (supabase: ReturnType<typeof createClient>, selectStr: string) => {
+            let query = supabase
+                .from("marketing")
+                .select(selectStr, { count: "exact" })
+                .order("date", { ascending: false })
+                .order("created_at", { ascending: true });
+
+            // ── Ownership filter (Option A: full legacy fallback) ──────────
+            // Replicates the client-side filter that was at lines 107-125 of
+            // the original MarketingClient so that Excel-imported rows whose
+            // created_by points to the admin importer are still visible to the
+            // actual rep whose name is in candidate_name / created_by_name.
+            if (filterByUid || filterByName) {
+                // /dashboard/employees/[uid] path — admin viewing one employee
+                const orParts: string[] = [];
+                if (filterByUid) orParts.push(`created_by.eq.${filterByUid}`);
+                if (filterByName) {
+                    // Escape for ILIKE; names are DB-sourced, not user-typed,
+                    // but we still strip commas (PostgREST delimiter).
+                    const safeName = escapeLike(filterByName);
+                    orParts.push(`created_by_name.ilike.${safeName}`);
+                    orParts.push(`candidate_name.ilike.%${safeName}%`);
+                }
+                if (orParts.length > 0) {
+                    query = query.or(orParts.join(","));
+                }
+            } else if (restrictToUser && profile?.role !== "Admin") {
+                // /dashboard/data path — employee viewing their own records
+                const uid = profile?.uid || "";
+                const userName = escapeLike(profile?.fullName?.toLowerCase() || "");
+                if (uid || userName) {
+                    const orParts: string[] = [];
+                    if (uid) orParts.push(`created_by.eq.${uid}`);
+                    if (userName) {
+                        orParts.push(`created_by_name.ilike.${userName}`);
+                        // Partial name match replicates the original .includes()
+                        orParts.push(`candidate_name.ilike.%${userName}%`);
+                    }
+                    query = query.or(orParts.join(","));
+                }
+            }
+
+            // ── Server-side search ─────────────────────────────────────────
+            if (debouncedSearch) {
+                const pattern = buildSearchPattern(debouncedSearch.toLowerCase());
+                // Match on candidate_name OR company_name, mirroring the
+                // original normalised client-side filter.
+                query = query.or(
+                    `candidate_name.ilike.${pattern},company_name.ilike.${pattern}`
+                );
+            }
+
+            // ── Server-side date range ─────────────────────────────────────
+            if (startDate) query = query.gte("date", startDate);
+            if (endDate) query = query.lte("date", endDate);
+
+            return query;
+        },
+        [debouncedSearch, startDate, endDate, filterByUid, filterByName, restrictToUser, profile?.uid, profile?.role, profile?.fullName]
+    );
+
+    // ── Paginated fetch ────────────────────────────────────────────────────
+    const fetchPage = useCallback(
+        async (reset: boolean) => {
+            if (!profile) return;
+
+            const currentOffset = reset ? 0 : offset;
+            if (reset) {
+                setLoading(true);
+                setSelectedRows([]);
+            } else {
+                setLoadingMore(true);
+            }
+
+            try {
+                const supabase = createClient();
+                const { data: rows, count, error } = await buildBaseQuery(supabase, "*")
+                    .range(currentOffset, currentOffset + PAGE_SIZE - 1);
+
+                if (error) throw error;
+
+                const mapped = (rows || []).map(marketingRowToUi);
+
+                if (reset) {
+                    setData(mapped);
+                    setOffset(PAGE_SIZE);
+                } else {
+                    setData((prev) => [...prev, ...mapped]);
+                    setOffset((prev) => prev + PAGE_SIZE);
+                }
+
+                // Always refresh totalCount so "X of Y" stays accurate after
+                // realtime inserts / deletes from other users.
+                setTotalCount(count ?? 0);
+            } catch (error: any) {
+                if (error?.name !== "AbortError") {
+                    console.error("Failed to fetch marketing data:", error);
+                }
+            } finally {
+                setLoading(false);
+                setLoadingMore(false);
+            }
+        },
+        [buildBaseQuery, offset, profile]
+    );
+
+    // ── Initial fetch + realtime subscription ──────────────────────────────
     useEffect(() => {
         let isMounted = true;
 
-        fetchData();
+        // Full page reset whenever filters or profile change
+        const doReset = async () => {
+            if (!profile) return;
+            setLoading(true);
+            setSelectedRows([]);
 
-        // Live-sync: refetch whenever anyone inserts/updates/deletes a lead.
-        // We use a debounce timeout to prevent network flooding (TypeError: Failed to fetch)
-        // if thousands of bulk delete/update events arrive at once from Supabase.
+            try {
+                const supabase = createClient();
+                const { data: rows, count, error } = await buildBaseQuery(supabase, "*")
+                    .range(0, PAGE_SIZE - 1);
+
+                if (!isMounted) return;
+                if (error) throw error;
+
+                setData((rows || []).map(marketingRowToUi));
+                setOffset(PAGE_SIZE);
+                setTotalCount(count ?? 0);
+            } catch (err: any) {
+                if (err?.name !== "AbortError") console.error(err);
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        doReset();
+
+        // Realtime: any change on the marketing table triggers a page reset
+        // (same filters, back to page 1) so the view stays fresh without
+        // downloading the entire table.
         const supabase = createClient();
         let timeoutId: NodeJS.Timeout;
 
@@ -77,7 +282,7 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                 if (isMounted) {
                     clearTimeout(timeoutId);
                     timeoutId = setTimeout(() => {
-                        if (isMounted) fetchData();
+                        if (isMounted) doReset();
                     }, 500);
                 }
             })
@@ -88,117 +293,122 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
             clearTimeout(timeoutId);
             supabase.removeChannel(channel);
         };
-        // Re-runs once the profile loads, since fetchData filters on it.
-    }, [profile?.uid, profile?.role, filterByUid, filterByName]);
+    // Re-runs when filters or profile change (debounced search already resets offset)
+    }, [profile?.uid, profile?.role, profile?.fullName, filterByUid, filterByName, debouncedSearch, startDate, endDate]);
 
-    const fetchData = async () => {
-        setLoading(true);
+    // ── Delete handlers ────────────────────────────────────────────────────
+
+    const handleDeleteSingle = async () => {
+        if (!recordToDelete) return;
         try {
             const supabase = createClient();
-            const { data: rows, error } = await supabase
+            const { error } = await supabase
                 .from("marketing")
-                .select("*")
-                .order("date", { ascending: false })
-                .order("created_at", { ascending: true });
-
+                .delete()
+                .eq("id", recordToDelete);
             if (error) throw error;
-            const fetched = (rows || []).map(marketingRowToUi);
-
-            let finalData = fetched;
-            if (filterByUid || filterByName) {
-                const targetName = filterByName?.toLowerCase() || "";
-                finalData = fetched.filter(d =>
-                    d["userId"] === filterByUid ||
-                    (targetName && (
-                        d["Name"]?.toLowerCase() === targetName ||
-                        d["marketing"]?.toLowerCase() === targetName
-                    ))
-                );
-            } else if (restrictToUser && profile?.role !== "Admin") {
-                const userName = profile?.fullName?.toLowerCase() || "";
-                finalData = fetched.filter(d =>
-                    d["Name"]?.toLowerCase() === userName ||
-                    d["Name"]?.toLowerCase().includes(userName) ||
-                    d["marketing"]?.toLowerCase() === userName ||
-                    d["userId"] === profile?.uid
-                );
-            }
-
-            setData(finalData);
-        } catch (error: any) {
-            // Ignore abort errors on navigation
-            if (error?.name !== "AbortError") {
-                console.error("Failed to fetch marketing data:", error);
-            }
-        } finally {
-            setLoading(false);
+            // Optimistic removal from local list
+            setData((prev) => prev.filter((r) => r.id !== recordToDelete));
+            setTotalCount((prev) => Math.max(0, prev - 1));
+            setDeleteModalOpen(false);
+            setRecordToDelete(null);
+            toast.success("Record deleted successfully.");
+        } catch (error) {
+            console.error("Error deleting record:", error);
+            toast.error("Error deleting record.");
         }
     };
 
-    const handleDelete = (row: any) => {
-        setCandidateToDelete(row);
-    };
-
     const executeDeleteCandidate = async () => {
-        if (!candidateToDelete || !candidateToDelete.id) return;
+        if (!candidateToDelete?.id) return;
         const row = candidateToDelete;
-
-        setData(prev => prev.filter(r => r.id !== row.id));
-
+        setData((prev) => prev.filter((r) => r.id !== row.id));
+        setTotalCount((prev) => Math.max(0, prev - 1));
         try {
             const supabase = createClient();
-            const { error } = await supabase.from("marketing").delete().eq("id", row.id);
+            const { error } = await supabase
+                .from("marketing")
+                .delete()
+                .eq("id", row.id);
             if (error) throw error;
             toast.success("Record removed.");
         } catch (e) {
             console.error("Error deleting record", e);
             toast.error("Error deleting record.");
-            fetchData();
+            // Rollback on failure: re-run a fresh page reset
+            setOffset(0);
         } finally {
             setCandidateToDelete(null);
         }
     };
 
+    const handleBulkDelete = async () => {
+        try {
+            const supabase = createClient();
+            const CHUNK_SIZE = 150;
+            for (let i = 0; i < selectedRows.length; i += CHUNK_SIZE) {
+                const chunk = selectedRows.slice(i, i + CHUNK_SIZE);
+                const { error } = await supabase
+                    .from("marketing")
+                    .delete()
+                    .in("id", chunk);
+                if (error) throw error;
+            }
+            setData((prev) => prev.filter((r) => !selectedRows.includes(r.id)));
+            setTotalCount((prev) => Math.max(0, prev - selectedRows.length));
+            setSelectedRows([]);
+            setBulkDeleteModalOpen(false);
+            toast.success("Selected records deleted successfully.");
+        } catch (error) {
+            console.error("Error deleting multiple records:", error);
+            toast.error("Error deleting records.");
+        }
+    };
+
+    // ── Inline Add ─────────────────────────────────────────────────────────
+
     const updateNewRow = (id: string, field: string, value: string) => {
-        setNewRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+        setNewRows((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+        );
     };
 
     const handleSaveNewRows = async () => {
-        const validRows = newRows.filter(r => r.CompanyName.trim() !== "");
-
+        const validRows = newRows.filter((r) => r.CompanyName.trim() !== "");
         if (validRows.length === 0) {
             toast.error("Please enter at least one Company Name");
             return;
         }
-
         setSavingRow(true);
         try {
             const supabase = createClient();
-            const rowsToInsert = validRows.map(row => marketingUiToRow(
-                {
-                    "Name": row.CandidateName || "Unknown Candidate",
-                    "Date": row.Date,
-                    "Company Name": row.CompanyName,
-                    "Link": row.Link,
-                },
-                profile?.uid || null,
-                profile?.fullName || "rohit"
-            ));
+            const rowsToInsert = validRows.map((row) =>
+                marketingUiToRow(
+                    {
+                        Name: row.CandidateName || "Unknown Candidate",
+                        Date: row.Date,
+                        "Company Name": row.CompanyName,
+                        Link: row.Link,
+                    },
+                    profile?.uid || null,
+                    profile?.fullName || "rohit"
+                )
+            );
 
-            const { data: inserted, error } = await supabase.from("marketing").insert(rowsToInsert).select();
+            const { data: inserted, error } = await supabase
+                .from("marketing")
+                .insert(rowsToInsert)
+                .select();
             if (error) throw error;
 
             const addedPayloads = (inserted || []).map(marketingRowToUi);
-
-            // Optimistic Update
-            setData(prev => [...addedPayloads, ...prev]);
+            // Optimistic prepend
+            setData((prev) => [...addedPayloads, ...prev]);
+            setTotalCount((prev) => prev + addedPayloads.length);
 
             toast.success(`Successfully saved ${validRows.length} entries!`);
-
-            // Reset state
             setNewRows([createEmptyRow()]);
             setIsAddingNew(false);
-
         } catch (error) {
             console.error("Error adding rows:", error);
             toast.error("Failed to save entries");
@@ -207,64 +417,40 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         }
     };
 
-    // Canonical YYYY-MM-DD → DD/MM/YYYY, built by string surgery only so the
-    // displayed day can never drift from the stored day.
-    const formatDisplayDate = (dateStr: any) => formatCanonicalDate(dateStr);
+    // ── Export XL ──────────────────────────────────────────────────────────
+    // Makes its own FULL (unpaginated) query with the same active filters so
+    // the export always contains every matching row, not just the visible page.
+    const handleExport = async () => {
+        try {
+            toast.info("Preparing export...");
+            const supabase = createClient();
+            // No .range() → full result set
+            const { data: rows, error } = await buildBaseQuery(supabase, "*");
+            if (error) throw error;
 
-    const filteredData = data.filter((row) => {
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase().replace(/[\s\-_]/g, '');
-            const normalize = (val: any) => String(val || "").toLowerCase().replace(/[\s\-_]/g, '');
+            const exportData = (rows || []).map((row: any) => ({
+                Name: row.candidate_name || "",
+                date: row.date || "",
+                "company name": row.company_name || "",
+                link: row.link || "",
+            }));
 
-            const matchesName = normalize(row["Name"]).includes(query);
-            const matchesCompany = normalize(row["Company Name"]).includes(query);
-
-            if (!(matchesName || matchesCompany)) return false;
+            const worksheet = xlsx.utils.json_to_sheet(exportData);
+            const workbook = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(workbook, worksheet, "MarketingData");
+            xlsx.writeFile(
+                workbook,
+                `marketing_data_${new Date().toISOString().split("T")[0]}.xlsx`
+            );
+        } catch (error) {
+            console.error("Export failed:", error);
+            toast.error("Export failed. Please try again.");
         }
-
-        if (!startDate && !endDate) return true;
-        // The date inputs and the stored dates are both canonical YYYY-MM-DD, so
-        // the range check is a plain string comparison — no Date maths, no
-        // timezone, no off-by-one at the edges of the range.
-        const rowDate = toCanonicalForCompare(row["Date"]);
-        if (!rowDate) return false;
-
-        if (startDate && rowDate < startDate) return false;
-        if (endDate && rowDate > endDate) return false;
-        return true;
-    });
-
-    const displayData = [...filteredData].sort((a, b) => {
-        const dateA = toCanonicalForCompare(a.Date);
-        const dateB = toCanonicalForCompare(b.Date);
-        if (dateA !== dateB) {
-            return dateB.localeCompare(dateA); // Date DESC (newest at top)
-        }
-        const createdA = a.createdAt?.seconds || 0;
-        const createdB = b.createdAt?.seconds || 0;
-        return createdA - createdB; // CreatedAt ASC (Excel top-to-bottom order for identical dates)
-    });
-
-    const handleExport = () => {
-        const exportData = displayData.map(row => {
-            return {
-                "Name": row["Name"] || "",
-                "date": row["Date"] || "",
-                "company name": row["Company Name"] || "",
-                "link": row["Link"] || ""
-            };
-        });
-
-        const worksheet = xlsx.utils.json_to_sheet(exportData);
-        const workbook = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(workbook, worksheet, "MarketingData");
-
-        xlsx.writeFile(workbook, `marketing_data_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    const handleImportClick = () => {
-        fileInputRef.current?.click();
-    };
+    // ── Import XL ──────────────────────────────────────────────────────────
+
+    const handleImportClick = () => fileInputRef.current?.click();
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -275,19 +461,10 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
         reader.onload = async (evt) => {
             try {
                 const bstr = evt.target?.result;
-                // cellDates:false to get raw serial numbers — avoids the xlsx
-                // timezone bug that shifts dates backward by 1 day in IST.
                 const workbook = xlsx.read(bstr, { type: "binary", cellDates: false });
-
-                // Header detection, column mapping and calendar-safe date parsing
-                // all live in lib/marketingExcelImport so the same logic can be
-                // exercised against real employee workbooks outside the browser.
                 const parsed = parseMarketingWorkbook(workbook);
 
                 if (!parsed.ok) {
-                    // An empty workbook is a normal result, not a failure the
-                    // user has to fix — only unreadable headers are reported as
-                    // an import failure.
                     if (parsed.kind === "empty-workbook") {
                         setImportSummary(`Import Complete!\n\n${parsed.error}`);
                         toast.info("No valid data rows found in this file.");
@@ -308,7 +485,6 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                         "No valid data rows found in this file."
                     );
                     toast.success("Import processing completed!");
-                    fetchData();
                     return;
                 }
 
@@ -325,28 +501,32 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                 };
 
                 for (const parsedRow of parsedRows) {
-                    pending.push(marketingUiToRow(
-                        {
-                            "Name": parsedRow.name,
-                            "Date": parsedRow.date,          // canonical YYYY-MM-DD or null
-                            "Company Name": parsedRow.companyName,
-                            "Link": parsedRow.link,
-                        },
-                        profile?.uid || null,
-                        profile?.fullName || "rohit"
-                    ));
+                    pending.push(
+                        marketingUiToRow(
+                            {
+                                Name: parsedRow.name,
+                                Date: parsedRow.date,
+                                "Company Name": parsedRow.companyName,
+                                Link: parsedRow.link,
+                            },
+                            profile?.uid || null,
+                            profile?.fullName || "rohit"
+                        )
+                    );
                     newCount++;
-
-                    if (pending.length === BATCH_SIZE) {
-                        await flush();
-                    }
+                    if (pending.length === BATCH_SIZE) await flush();
                 }
-
                 await flush();
 
-                const ambiguousCount = diagnostics.rejects.filter(r => r.reason === "ambiguous-date").length;
-                const unreadableCount = diagnostics.rejects.filter(r => r.reason === "unreadable-date").length;
-                const skippedCount = diagnostics.rejects.filter(r => r.reason === "no-lead-info").length;
+                const ambiguousCount = diagnostics.rejects.filter(
+                    (r) => r.reason === "ambiguous-date"
+                ).length;
+                const unreadableCount = diagnostics.rejects.filter(
+                    (r) => r.reason === "unreadable-date"
+                ).length;
+                const skippedCount = diagnostics.rejects.filter(
+                    (r) => r.reason === "no-lead-info"
+                ).length;
 
                 setImportSummary(
                     "Import Complete!\n\n" +
@@ -361,75 +541,47 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                     (unreadableCount > 0 ? `\nUnreadable Dates Not Imported: ${unreadableCount}` : "")
                 );
                 toast.success("Import processing completed!");
-                fetchData();
+                // Realtime will trigger a page reset automatically; no manual
+                // fetchData() needed.
             } catch (error) {
                 console.error("Error during import:", error);
                 toast.error("Failed to import file. Please check the format.");
             } finally {
                 setImporting(false);
-                if (fileInputRef.current) fileInputRef.current.value = '';
+                if (fileInputRef.current) fileInputRef.current.value = "";
             }
         };
         reader.readAsBinaryString(file);
     };
 
-    const [selectedRows, setSelectedRows] = useState<string[]>([]);
-    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+    // ── Selection helpers ──────────────────────────────────────────────────
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
-            setSelectedRows(displayData.slice(0, visibleCount).map(r => r.id));
+            setSelectedRows(data.map((r) => r.id));
         } else {
             setSelectedRows([]);
         }
     };
 
     const handleSelectRow = (id: string) => {
-        setSelectedRows(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+        setSelectedRows((prev) =>
+            prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+        );
     };
 
-    const handleBulkDelete = async () => {
-        try {
-            const supabase = createClient();
-            const CHUNK_SIZE = 150;
-            for (let i = 0; i < selectedRows.length; i += CHUNK_SIZE) {
-                const chunk = selectedRows.slice(i, i + CHUNK_SIZE);
-                const { error } = await supabase.from("marketing").delete().in("id", chunk);
-                if (error) throw error;
-            }
-            setData(prev => prev.filter(r => !selectedRows.includes(r.id)));
-            setSelectedRows([]);
-            setBulkDeleteModalOpen(false);
-            toast.success("Selected records deleted successfully.");
-        } catch (error) {
-            console.error("Error deleting multiple records:", error);
-            toast.error("Error deleting records.");
-        }
-    };
+    // ── Display helpers ────────────────────────────────────────────────────
 
-    const handleDeleteSingle = async () => {
-        if (!recordToDelete) return;
-        try {
-            const supabase = createClient();
-            const { error } = await supabase.from("marketing").delete().eq("id", recordToDelete);
-            if (error) throw error;
-            setData(prev => prev.filter(r => r.id !== recordToDelete));
-            setDeleteModalOpen(false);
-            setRecordToDelete(null);
-            toast.success("Record deleted successfully.");
-        } catch (error) {
-            console.error("Error deleting record:", error);
-            toast.error("Error deleting record.");
-        }
-    };
+    const formatDisplayDate = (dateStr: any) => formatCanonicalDate(dateStr);
+
+    const hasMore = data.length < totalCount;
+
+    // ── Render ─────────────────────────────────────────────────────────────
 
     return (
         <>
             <div className="space-y-6">
-                {/* Toolbar — sits outside the table card, matching the
-                    Interview & Screening layout. */}
+                {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="relative w-full sm:w-auto sm:min-w-[200px]">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -444,292 +596,313 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                         />
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">From</span>
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
-                                />
-                                <div className="h-5 w-px bg-slate-200" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</span>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
-                                />
-                                {(startDate || endDate) && (
-                                    <button
-                                        onClick={() => { setStartDate(""); setEndDate(""); }}
-                                        className="px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
-                                    >
-                                        Clear
-                                    </button>
-                                )}
-                            </div>
-                            {profile?.role === "Admin" && selectedRows.length > 0 && (
+                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">From</span>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
+                            />
+                            <div className="h-5 w-px bg-slate-200" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="text-sm px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-slate-400 text-slate-700 bg-slate-50 transition-colors"
+                            />
+                            {(startDate || endDate) && (
                                 <button
-                                    onClick={() => setBulkDeleteModalOpen(true)}
-                                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-semibold text-sm rounded-xl transition-all border border-red-200 shadow-sm whitespace-nowrap"
+                                    onClick={() => { setStartDate(""); setEndDate(""); }}
+                                    className="px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete ({selectedRows.length})
+                                    Clear
                                 </button>
                             )}
+                        </div>
+                        {profile?.role === "Admin" && selectedRows.length > 0 && (
                             <button
-                                onClick={() => setIsAddingNew(!isAddingNew)}
-                                className={`flex items-center gap-2 px-4 py-2.5 font-semibold text-sm rounded-xl transition-all shadow-sm whitespace-nowrap shrink-0 ${
-                                    isAddingNew
-                                        ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                                        : "bg-slate-900 text-white hover:bg-slate-800"
-                                }`}
+                                onClick={() => setBulkDeleteModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-semibold text-sm rounded-xl transition-all border border-red-200 shadow-sm whitespace-nowrap"
                             >
-                                <Plus className="w-4 h-4" />
-                                {isAddingNew ? "Cancel Adding" : "Add Data"}
+                                <Trash2 className="w-4 h-4" />
+                                Delete ({selectedRows.length})
                             </button>
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                className="hidden"
-                                ref={fileInputRef}
-                                onChange={handleFileUpload}
-                            />
-                            <button
-                                onClick={handleImportClick}
-                                disabled={importing}
-                                className={`flex items-center gap-2 px-4 py-2.5 ${importing ? 'bg-blue-50 text-blue-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700'} font-semibold text-sm rounded-xl transition-all border border-blue-200 shadow-sm whitespace-nowrap shrink-0`}
-                                title="Import from Excel"
-                            >
-                                <Download className={`w-4 h-4 ${importing ? 'animate-bounce' : ''}`} />
-                                {importing ? "Importing..." : "Import XL"}
-                            </button>
-                                                        <button
-                                onClick={() => setReportModalOpen(true)}
-                                className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800 font-semibold text-sm rounded-xl transition-all border border-purple-200 shadow-sm whitespace-nowrap"
-                                title="Generate Daily Report"
-                            >
-                                <TableIcon className="w-4 h-4" />
-                                Generate Report
-                            </button>
-                            <button
-                                onClick={handleExport}
-                                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 font-semibold text-sm rounded-xl transition-all border border-emerald-200 shadow-sm whitespace-nowrap"
-                                title="Export as Excel"
-                            >
-                                <Upload className="w-4 h-4" />
-                                Export XL
-                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsAddingNew(!isAddingNew)}
+                            className={`flex items-center gap-2 px-4 py-2.5 font-semibold text-sm rounded-xl transition-all shadow-sm whitespace-nowrap shrink-0 ${
+                                isAddingNew
+                                    ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                                    : "bg-slate-900 text-white hover:bg-slate-800"
+                            }`}
+                        >
+                            <Plus className="w-4 h-4" />
+                            {isAddingNew ? "Cancel Adding" : "Add Data"}
+                        </button>
+                        <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            className="hidden"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                        />
+                        <button
+                            onClick={handleImportClick}
+                            disabled={importing}
+                            className={`flex items-center gap-2 px-4 py-2.5 ${
+                                importing
+                                    ? "bg-blue-50 text-blue-400"
+                                    : "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
+                            } font-semibold text-sm rounded-xl transition-all border border-blue-200 shadow-sm whitespace-nowrap shrink-0`}
+                            title="Import from Excel"
+                        >
+                            <Download className={`w-4 h-4 ${importing ? "animate-bounce" : ""}`} />
+                            {importing ? "Importing..." : "Import XL"}
+                        </button>
+                        <button
+                            onClick={() => setReportModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800 font-semibold text-sm rounded-xl transition-all border border-purple-200 shadow-sm whitespace-nowrap"
+                            title="Generate Daily Report"
+                        >
+                            <TableIcon className="w-4 h-4" />
+                            Generate Report
+                        </button>
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 font-semibold text-sm rounded-xl transition-all border border-emerald-200 shadow-sm whitespace-nowrap"
+                            title="Export as Excel"
+                        >
+                            <Upload className="w-4 h-4" />
+                            Export XL
+                        </button>
                     </div>
                 </div>
 
+                {/* Row count — shows server-accurate total */}
                 {!loading && (
                     <p className="text-xs font-medium text-slate-500">
-                        Showing {displayData.length} result{displayData.length === 1 ? "" : "s"}
+                        Showing {data.length.toLocaleString()} of {totalCount.toLocaleString()} result{totalCount === 1 ? "" : "s"}
                     </p>
                 )}
 
                 <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden bg-white">
-                {/* Table */}
-                <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
-                    <div className="overflow-x-auto w-full max-w-full">
-<table className="w-full text-sm text-left relative">
-                        <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
-                            <tr>
-                                {profile?.role === "Admin" && (
-                                    <th className="px-6 py-4 font-semibold whitespace-nowrap w-12">
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            checked={displayData.length > 0 && selectedRows.length === displayData.slice(0, visibleCount).length}
-                                            onChange={handleSelectAll}
-                                        />
-                                    </th>
-                                )}
-                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Candidate Name</th>
-                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Date</th>
-                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Company Name</th>
-                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Link</th>
-                                <th className="px-6 py-4 font-semibold whitespace-nowrap">Added By</th>
-                                {profile?.role === "Admin" && (
-                                    <th className="px-6 py-4 font-semibold whitespace-nowrap text-right">Actions</th>
-                                )}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {/* Inline Add Rows */}
-                            {isAddingNew && (
-                                <>
-                                    {newRows.map((row, index) => (
-                                        <tr key={row.id} className="bg-slate-50/30 border-b border-slate-200/60 hover:bg-slate-50/80 transition-colors group">
-                                            {profile?.role === "Admin" && <td className="px-6 py-4"></td>}
-                                            <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="overflow-auto h-[600px] max-h-[calc(100vh-280px)] custom-scrollbar pb-6">
+                        <div className="overflow-x-auto w-full max-w-full">
+                            <table className="w-full text-sm text-left relative">
+                                <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
+                                    <tr>
+                                        {profile?.role === "Admin" && (
+                                            <th className="px-6 py-4 font-semibold whitespace-nowrap w-12">
                                                 <input
-                                                    type="text"
-                                                    placeholder="Candidate Name..."
-                                                    value={row.CandidateName || ""}
-                                                    onChange={(e) => updateNewRow(row.id, "CandidateName", e.target.value)}
-                                                    className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
-                                                    autoFocus={index === 0}
+                                                    type="checkbox"
+                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                    checked={data.length > 0 && selectedRows.length === data.length}
+                                                    onChange={handleSelectAll}
                                                 />
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <input
-                                                    type="date"
-                                                    value={row.Date}
-                                                    onChange={(e) => updateNewRow(row.id, "Date", e.target.value)}
-                                                    className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 transition-all hover:border-slate-300"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Enter company name..."
-                                                    value={row.CompanyName}
-                                                    onChange={(e) => updateNewRow(row.id, "CompanyName", e.target.value)}
-                                                    className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="url"
-                                                    placeholder="https://example.com/job"
-                                                    value={row.Link}
-                                                    onChange={(e) => updateNewRow(row.id, "Link", e.target.value)}
-                                                    className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-medium text-slate-700">{profile?.fullName || "Unknown"}</span>
-                                                    <span className="text-[10px] text-slate-400 mt-0.5 tracking-wide uppercase">(Auto-tagged)</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-right whitespace-nowrap">
-                                                {newRows.length > 1 && (
-                                                    <button
-                                                        onClick={() => setNewRows(newRows.filter(r => r.id !== row.id))}
-                                                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                        title="Remove row"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr className="bg-slate-50/50 border-b border-slate-200/60">
-                                        <td colSpan={profile?.role === "Admin" ? 7 : 6} className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-between">
-                                                <button
-                                                    onClick={() => setNewRows([...newRows, createEmptyRow()])}
-                                                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-bold px-4 py-2.5 rounded-xl hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-100"
+                                            </th>
+                                        )}
+                                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Candidate Name</th>
+                                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Date</th>
+                                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Company Name</th>
+                                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Link</th>
+                                        <th className="px-6 py-4 font-semibold whitespace-nowrap">Added By</th>
+                                        {profile?.role === "Admin" && (
+                                            <th className="px-6 py-4 font-semibold whitespace-nowrap text-right">Actions</th>
+                                        )}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {/* Inline Add Rows */}
+                                    {isAddingNew && (
+                                        <>
+                                            {newRows.map((row, index) => (
+                                                <tr
+                                                    key={row.id}
+                                                    className="bg-slate-50/30 border-b border-slate-200/60 hover:bg-slate-50/80 transition-colors group"
                                                 >
-                                                    <Plus className="w-4 h-4" />
-                                                    Add another row
-                                                </button>
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => setIsAddingNew(false)}
-                                                        className="text-sm text-slate-500 hover:text-slate-700 font-semibold px-5 py-2.5 rounded-xl hover:bg-slate-200/50 transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        onClick={handleSaveNewRows}
-                                                        disabled={savingRow}
-                                                        className="flex items-center gap-2 text-white bg-slate-900 hover:bg-black px-6 py-2.5 rounded-xl transition-all font-semibold text-sm shadow-md hover:shadow-lg disabled:opacity-70"
-                                                    >
-                                                        <Save className="w-4 h-4" />
-                                                        {savingRow ? "Saving..." : "Save Entries"}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </>
-                            )}
-
-                            {!isAddingNew && (
-                                loading ? (
-                                    <tr>
-                                        <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
-                                            Loading data...
-                                        </td>
-                                    </tr>
-                                ) : displayData.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
-                                            No data available
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    displayData.slice(0, visibleCount).map((row, idx) => (
-                                        <tr key={row.id || idx} className={`hover:bg-slate-100 transition-colors group ${selectedRows.includes(row.id) ? 'bg-blue-50/30' : idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
-                                            {profile?.role === "Admin" && (
-                                                <td className="px-6 py-4">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                        checked={selectedRows.includes(row.id)}
-                                                        onChange={() => handleSelectRow(row.id)}
-                                                    />
+                                                    {profile?.role === "Admin" && <td className="px-6 py-4"></td>}
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Candidate Name..."
+                                                            value={row.CandidateName || ""}
+                                                            onChange={(e) => updateNewRow(row.id, "CandidateName", e.target.value)}
+                                                            className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
+                                                            autoFocus={index === 0}
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <input
+                                                            type="date"
+                                                            value={row.Date}
+                                                            onChange={(e) => updateNewRow(row.id, "Date", e.target.value)}
+                                                            className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 transition-all hover:border-slate-300"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Enter company name..."
+                                                            value={row.CompanyName}
+                                                            onChange={(e) => updateNewRow(row.id, "CompanyName", e.target.value)}
+                                                            className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <input
+                                                            type="url"
+                                                            placeholder="https://example.com/job"
+                                                            value={row.Link}
+                                                            onChange={(e) => updateNewRow(row.id, "Link", e.target.value)}
+                                                            className="w-full text-sm px-4 py-2.5 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white text-slate-900 placeholder:text-slate-400 transition-all hover:border-slate-300"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-medium text-slate-700">{profile?.fullName || "Unknown"}</span>
+                                                            <span className="text-[10px] text-slate-400 mt-0.5 tracking-wide uppercase">(Auto-tagged)</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                        {newRows.length > 1 && (
+                                                            <button
+                                                                onClick={() => setNewRows(newRows.filter((r) => r.id !== row.id))}
+                                                                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Remove row"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            <tr className="bg-slate-50/50 border-b border-slate-200/60">
+                                                <td colSpan={profile?.role === "Admin" ? 7 : 6} className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-between">
+                                                        <button
+                                                            onClick={() => setNewRows([...newRows, createEmptyRow()])}
+                                                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-bold px-4 py-2.5 rounded-xl hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-100"
+                                                        >
+                                                            <Plus className="w-4 h-4" />
+                                                            Add another row
+                                                        </button>
+                                                        <div className="flex items-center gap-3">
+                                                            <button
+                                                                onClick={() => setIsAddingNew(false)}
+                                                                className="text-sm text-slate-500 hover:text-slate-700 font-semibold px-5 py-2.5 rounded-xl hover:bg-slate-200/50 transition-colors"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                onClick={handleSaveNewRows}
+                                                                disabled={savingRow}
+                                                                className="flex items-center gap-2 text-white bg-slate-900 hover:bg-black px-6 py-2.5 rounded-xl transition-all font-semibold text-sm shadow-md hover:shadow-lg disabled:opacity-70"
+                                                            >
+                                                                <Save className="w-4 h-4" />
+                                                                {savingRow ? "Saving..." : "Save Entries"}
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </td>
-                                            )}
-                                            <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                                                {row["Name"] || "-"}
-                                            </td>
-                                            <td className="px-6 py-4 font-mono text-xs text-slate-500 whitespace-nowrap">
-                                                {formatDisplayDate(row["Date"])}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">
-                                                {row["Company Name"] || "-"}
-                                            </td>
-                                            <td className="px-6 py-4 text-xs text-blue-600 hover:underline whitespace-nowrap">
-                                                {row["Link"] ? (
-                                                    <a href={row["Link"]} target="_blank" rel="noopener noreferrer">
-                                                        {String(row["Link"]).substring(0, 40)}{String(row["Link"]).length > 40 ? '...' : ''}
-                                                    </a>
-                                                ) : "-"}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-700 whitespace-nowrap">
-                                                {row["marketing"] || "-"}
-                                            </td>
-                                            {profile?.role === "Admin" && (
-                                                <td className="px-6 py-4 text-right whitespace-nowrap">
-                                                    <button
-                                                        onClick={() => {
-                                                            setRecordToDelete(row.id);
-                                                            setDeleteModalOpen(true);
-                                                        }}
-                                                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-                                                        title="Delete record"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))
-                                )
-                            )}
-                        </tbody>
-                    </table>
-</div>
+                                            </tr>
+                                        </>
+                                    )}
 
-                    {!loading && !isAddingNew && visibleCount < displayData.length && (
-                        <div className="py-6 flex justify-center border-t border-slate-100">
-                            <button
-                                onClick={() => setVisibleCount(prev => prev + 100)}
-                                className="px-6 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-semibold text-sm rounded-xl transition-all border border-blue-100 shadow-sm"
-                            >
-                                Load More Candidates ({displayData.length - visibleCount} remaining)
-                            </button>
+                                    {/* Data rows */}
+                                    {!isAddingNew && (
+                                        loading ? (
+                                            <tr>
+                                                <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
+                                                    Loading data...
+                                                </td>
+                                            </tr>
+                                        ) : data.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={profile?.role === "Admin" ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-medium">
+                                                    No data available
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            data.map((row, idx) => (
+                                                <tr
+                                                    key={row.id || idx}
+                                                    className={`hover:bg-slate-100 transition-colors group ${
+                                                        selectedRows.includes(row.id)
+                                                            ? "bg-blue-50/30"
+                                                            : idx % 2 === 0
+                                                            ? "bg-white"
+                                                            : "bg-slate-50"
+                                                    }`}
+                                                >
+                                                    {profile?.role === "Admin" && (
+                                                        <td className="px-6 py-4">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                checked={selectedRows.includes(row.id)}
+                                                                onChange={() => handleSelectRow(row.id)}
+                                                            />
+                                                        </td>
+                                                    )}
+                                                    <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
+                                                        {row["Name"] || "-"}
+                                                    </td>
+                                                    <td className="px-6 py-4 font-mono text-xs text-slate-500 whitespace-nowrap">
+                                                        {formatDisplayDate(row["Date"])}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">
+                                                        {row["Company Name"] || "-"}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-xs text-blue-600 hover:underline whitespace-nowrap">
+                                                        {row["Link"] ? (
+                                                            <a href={row["Link"]} target="_blank" rel="noopener noreferrer">
+                                                                {String(row["Link"]).substring(0, 40)}
+                                                                {String(row["Link"]).length > 40 ? "..." : ""}
+                                                            </a>
+                                                        ) : "-"}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-medium text-slate-700 whitespace-nowrap">
+                                                        {row["marketing"] || "-"}
+                                                    </td>
+                                                    {profile?.role === "Admin" && (
+                                                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setRecordToDelete(row.id);
+                                                                    setDeleteModalOpen(true);
+                                                                }}
+                                                                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                                                                title="Delete record"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            ))
+                                        )
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
-                </div>
 
+                        {/* Load More */}
+                        {!loading && !isAddingNew && hasMore && (
+                            <div className="py-6 flex justify-center border-t border-slate-100">
+                                <button
+                                    onClick={() => fetchPage(false)}
+                                    disabled={loadingMore}
+                                    className="px-6 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-semibold text-sm rounded-xl transition-all border border-blue-100 shadow-sm disabled:opacity-60"
+                                >
+                                    {loadingMore
+                                        ? "Loading..."
+                                        : `Load More (${(totalCount - data.length).toLocaleString()} remaining)`}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </Card>
             </div>
 
@@ -748,10 +921,7 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                         </div>
                         <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-slate-100">
                             <button
-                                onClick={() => {
-                                    setDeleteModalOpen(false);
-                                    setRecordToDelete(null);
-                                }}
+                                onClick={() => { setDeleteModalOpen(false); setRecordToDelete(null); }}
                                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
                             >
                                 Cancel
@@ -804,15 +974,22 @@ export default function MarketingClient({ restrictToUser = false, filterByUid, f
                 onConfirm={() => setImportSummary(null)}
                 title="Import Summary"
                 description={
-                  <div className="whitespace-pre-line font-mono text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    {importSummary}
-                  </div>
+                    <div className="whitespace-pre-line font-mono text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        {importSummary}
+                    </div>
                 }
                 confirmText="OK"
                 cancelText="Close"
                 variant="success"
             />
-        <GenerateReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} profile={profile} startDate={startDate} endDate={endDate} displayData={displayData} />
+
+            <GenerateReportModal
+                isOpen={reportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+                profile={profile}
+                startDate={startDate}
+                endDate={endDate}
+            />
         </>
     );
 }

@@ -4,61 +4,102 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { submitMarketingDailyReport } from "@/app/actions/marketing";
+import { marketingRowToUi } from "@/lib/salesMarketingMap";
 import { toast } from "sonner";
 
-export default function GenerateReportModal({ isOpen, onClose, profile, startDate, endDate, displayData }: { isOpen: boolean, onClose: () => void, profile: any, startDate: string, endDate: string, displayData: any[] }) {
+interface GenerateReportModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    profile: any;
+    startDate: string;
+    endDate: string;
+    // displayData is no longer used — the modal fetches its own full filtered data
+    // so it is not broken by the parent's 100-row pagination window.
+    displayData?: any[];
+}
+
+export default function GenerateReportModal({
+    isOpen,
+    onClose,
+    profile,
+    startDate,
+    endDate,
+}: GenerateReportModalProps) {
     const [loading, setLoading] = useState(false);
-    const [stats, setStats] = useState({ candidates: 0, applications: 0, screenings: 0, interviews: 0, breakdown: [] as {name: string, applications: number}[] });
+    const [stats, setStats] = useState({
+        candidates: 0,
+        applications: 0,
+        screenings: 0,
+        interviews: 0,
+        breakdown: [] as { name: string; applications: number }[],
+    });
     const [rtr, setRtr] = useState("");
 
     useEffect(() => {
         if (!isOpen || !profile) return;
+
         const fetchStats = async () => {
             const supabase = createClient();
 
-            // Applications (Leads in current UI view)
-            const applicationsCount = displayData.length;
+            // ── Marketing leads: full unpaginated fetch for this user + date range ──
+            // We fetch directly from Supabase so the count is correct regardless
+            // of how many rows the parent table is currently showing.
+            let leadsQuery = supabase
+                .from("marketing")
+                .select("candidate_name, created_by, created_by_name")
+                .eq("created_by", profile.uid);
 
-            // Interviews/Screenings based on same date filters
-            let query = supabase
+            if (startDate) leadsQuery = leadsQuery.gte("date", startDate);
+            if (endDate)   leadsQuery = leadsQuery.lte("date", endDate);
+
+            const { data: leadsData } = await leadsQuery;
+            const leads = leadsData || [];
+
+            // Candidate breakdown (unique names → application count)
+            const breakdownObj: Record<string, number> = {};
+            leads.forEach((d: any) => {
+                const name = d.candidate_name || "Unknown";
+                breakdownObj[name] = (breakdownObj[name] || 0) + 1;
+            });
+            const breakdownArray = Object.keys(breakdownObj).map((k) => ({
+                name: k,
+                applications: breakdownObj[k],
+            }));
+
+            // ── Interviews / Screenings ──
+            let isQuery = supabase
                 .from("interview_screening")
                 .select("stage")
                 .eq("created_by", profile.uid);
 
-            if (startDate) query = query.gte("date", startDate);
-            if (endDate) query = query.lte("date", endDate);
+            if (startDate) isQuery = isQuery.gte("date", startDate);
+            if (endDate)   isQuery = isQuery.lte("date", endDate);
 
-            const { data: isData } = await query;
+            const { data: isData } = await isQuery;
 
             let screenings = 0;
             let interviews = 0;
-            if (isData) {
-                isData.forEach(r => {
-                    const stage = r.stage || "";
-                    if (stage.toLowerCase().includes("screening") || stage.toLowerCase().includes("ai")) {
-                        screenings++;
-                    } else {
-                        interviews++;
-                    }
-                });
-            }
-
-                        // Number of unique candidates from the leads table view
-            const breakdownObj: Record<string, number> = {};
-            displayData.forEach(d => {
-                const name = d.Name || d.CandidateName || "Unknown";
-                breakdownObj[name] = (breakdownObj[name] || 0) + 1;
+            (isData || []).forEach((r: any) => {
+                const stage = r.stage || "";
+                if (
+                    stage.toLowerCase().includes("screening") ||
+                    stage.toLowerCase().includes("ai")
+                ) {
+                    screenings++;
+                } else {
+                    interviews++;
+                }
             });
-            const breakdownArray = Object.keys(breakdownObj).map(k => ({ name: k, applications: breakdownObj[k] }));
 
             setStats({
                 candidates: breakdownArray.length,
-                applications: applicationsCount,
+                applications: leads.length,
                 screenings,
                 interviews,
-                breakdown: breakdownArray
+                breakdown: breakdownArray,
             });
         };
+
         fetchStats();
     }, [isOpen, profile, startDate, endDate]);
 
@@ -78,7 +119,7 @@ export default function GenerateReportModal({ isOpen, onClose, profile, startDat
                 rtr_submissions: parseInt(rtr) || 0,
                 screenings: stats.screenings,
                 interviews: stats.interviews,
-                candidate_breakdown: stats.breakdown
+                candidate_breakdown: stats.breakdown,
             });
 
             toast.success("Daily report sent to Team Lead successfully!");
@@ -90,7 +131,7 @@ export default function GenerateReportModal({ isOpen, onClose, profile, startDat
         }
     };
 
-return (
+    return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
                 <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/80">
@@ -118,7 +159,7 @@ return (
                         </div>
                         <div className="space-y-1.5 col-span-2">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">RTR Submissions</label>
-                            <input type="number" value={rtr} onChange={e => setRtr(e.target.value)} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
+                            <input type="number" value={rtr} onChange={(e) => setRtr(e.target.value)} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Screenings</label>
