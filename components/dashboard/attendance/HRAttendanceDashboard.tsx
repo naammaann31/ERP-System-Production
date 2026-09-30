@@ -60,6 +60,11 @@ export default function HRAttendanceDashboard() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Only Admin/HR can edit attendance status; OPS_HR gets the same
+  // company-wide table but read-only (enforced again server-side by the
+  // attendance_insert/attendance_update RLS policies).
+  const canEditAttendance = profile?.role === "Admin" || profile?.role === "HR";
+
   const handleStatusChange = async (record: AttendanceRecord, newStatusOption: string) => {
     let newStatus: AttendanceRecord["status"] = "Present";
     let isHalfDay = false;
@@ -384,16 +389,22 @@ export default function HRAttendanceDashboard() {
                         {getStatusBadge(record.status, record.isHalfDay, record.isLate, record.isEdited)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
-                                                  <select
-                            className="text-xs border-slate-200 rounded-md py-1 px-2"
-                            value={record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
-                            onChange={(e) => handleStatusChange(record, e.target.value)}
-                          >
-                            <option value="present">Present</option>
-                            <option value="half-day">Half Day</option>
-                            <option value="absent">Absent</option>
-                            <option value="week-off">Week Off</option>
-                          </select>
+                          {canEditAttendance ? (
+                            <select
+                              className="text-xs border-slate-200 rounded-md py-1 px-2"
+                              value={record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
+                              onChange={(e) => handleStatusChange(record, e.target.value)}
+                            >
+                              <option value="present">Present</option>
+                              <option value="half-day">Half Day</option>
+                              <option value="absent">Absent</option>
+                              <option value="week-off">Week Off</option>
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">
+                              {record.status === "Week Off" ? "Week Off" : record.status === "Absent" ? "Absent" : (record.isHalfDay ? "Half Day" : "Present")}
+                            </span>
+                          )}
                       </td>
                     </tr>
                   ))
