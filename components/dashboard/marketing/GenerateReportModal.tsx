@@ -34,6 +34,11 @@ export default function GenerateReportModal({
         breakdown: [] as { name: string; applications: number }[],
     });
     const [rtr, setRtr] = useState("");
+    // RTR has no underlying queryable source anywhere in the schema (unlike
+    // Candidates/Applications, which are computed from the marketing table)
+    // — it's always been a number typed in by hand, so the candidate
+    // name(s) are captured the same way, alongside it.
+    const [rtrNames, setRtrNames] = useState("");
 
     useEffect(() => {
         if (!isOpen || !profile) return;
@@ -128,6 +133,7 @@ export default function GenerateReportModal({
                 no_of_candidates: stats.candidates,
                 applications: stats.applications,
                 rtr_submissions: parseInt(rtr) || 0,
+                rtr_names: rtrNames.trim() || null,
                 screenings: stats.screenings,
                 interviews: stats.interviews,
                 candidate_breakdown: stats.breakdown,
@@ -168,9 +174,13 @@ export default function GenerateReportModal({
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Applications</label>
                             <input type="number" value={stats.applications} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
                         </div>
-                        <div className="space-y-1.5 col-span-2">
+                        <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">RTR Submissions</label>
                             <input type="number" value={rtr} onChange={(e) => setRtr(e.target.value)} placeholder="0" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">RTR Candidate Name(s)</label>
+                            <input type="text" value={rtrNames} onChange={(e) => setRtrNames(e.target.value)} placeholder="e.g. Kaushal, Priya" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" />
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Screenings</label>

@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
-import { getTeamLeadReports, getMarketingDailyReports } from "@/app/actions/marketing";
-import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2 } from "lucide-react";
+import { getTeamLeadReports, getMarketingDailyReports, getInterviewScreeningBreakdown } from "@/app/actions/marketing";
+import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2, CalendarClock, PhoneCall } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
@@ -24,6 +24,13 @@ export default function MarketingDailyReportsPage() {
   const [filterEmployee, setFilterEmployee] = useState<string>("All");
   const [expandedRowId, setExpandedRowId] = useState<number | string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Interview/Screening breakdown (candidate + stage) for the expanded row —
+  // fetched live, on demand, cached per row key.
+  const [breakdownCache, setBreakdownCache] = useState<
+    Record<string, { interviews: { candidate: string; stage: string }[]; screenings: { candidate: string; stage: string }[] }>
+  >({});
+  const [breakdownLoading, setBreakdownLoading] = useState<string | number | null>(null);
 
   useEffect(() => {
     // Basic protection: Only HR and Admin should ideally access, but maybe Team Lead too
@@ -139,6 +146,23 @@ export default function MarketingDailyReportsPage() {
     displayReports = displayReports.filter(r => r.user_id === filterEmployee);
   }
 
+  // Must mirror the rowKey formula used in the table body below exactly,
+  // since that's what expandedRowId is actually set to.
+  useEffect(() => {
+    if (expandedRowId == null || breakdownCache[String(expandedRowId)]) return;
+    const idx = displayReports.findIndex((r, i) => (r.id ?? `${r.user_id ?? "row"}-${i}`) === expandedRowId);
+    if (idx === -1) return;
+    const report = displayReports[idx];
+    if (!report?.user_id || !report?.report_date) return;
+
+    setBreakdownLoading(expandedRowId);
+    getInterviewScreeningBreakdown(report.user_id, report.report_date)
+      .then((result) => setBreakdownCache((prev) => ({ ...prev, [String(expandedRowId)]: result })))
+      .catch((err) => console.error("Failed to load interview/screening breakdown:", err))
+      .finally(() => setBreakdownLoading(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedRowId]);
+
   return (
     <div className="max-w-[1400px] mx-auto p-6 space-y-6">
       <div className="flex items-center gap-4 mb-6">
@@ -236,7 +260,7 @@ export default function MarketingDailyReportsPage() {
                           {report.user_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
                         <span className="group-hover:text-blue-700 transition-colors">{report.user_name}</span>
-                        {report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
+                        {((report.candidate_breakdown && report.candidate_breakdown.length > 0) || report.interviews > 0 || report.screenings > 0) && (
                           <div className="ml-2">
                             {expandedRowId === rowKey ? (
                               <ChevronUp className="w-4 h-4 text-blue-500" />
@@ -257,6 +281,11 @@ export default function MarketingDailyReportsPage() {
                       <span className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-black text-xs border border-blue-100">
                         {report.rtr_submissions}
                       </span>
+                      {report.rtr_names && (
+                        <div className="text-xs text-slate-600 font-semibold mt-1 truncate max-w-[160px] mx-auto" title={report.rtr_names}>
+                          {report.rtr_names}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-purple-50 text-purple-700 font-black text-xs border border-purple-100">
@@ -271,7 +300,10 @@ export default function MarketingDailyReportsPage() {
                   </tr>
                   
                   <AnimatePresence>
-                    {expandedRowId === rowKey && report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
+                    {expandedRowId === rowKey &&
+                      ((report.candidate_breakdown && report.candidate_breakdown.length > 0) ||
+                        report.interviews > 0 ||
+                        report.screenings > 0) && (
                       <motion.tr
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
@@ -279,33 +311,78 @@ export default function MarketingDailyReportsPage() {
                         className="bg-blue-50/10 border-b border-blue-50/50"
                       >
                         <td colSpan={7} className="px-0 py-0">
-                          <div className="px-6 py-6 overflow-hidden">
-                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                              <Search className="w-3.5 h-3.5" />
-                              Candidate Breakdown
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                              {report.candidate_breakdown.map((cb: any, i: number) => (
-                                <motion.div
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  transition={{ delay: i * 0.05 }}
-                                  key={i}
-                                  className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group/card"
-                                >
-                                  <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center text-blue-600 font-black text-xs shrink-0 group-hover/card:from-blue-100 group-hover/card:to-indigo-100 transition-colors">
-                                      {cb.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                          <div className="px-6 py-6 overflow-hidden space-y-4">
+                            {report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
+                              <div>
+                                <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                  <Search className="w-3.5 h-3.5" />
+                                  Candidate Breakdown
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                  {report.candidate_breakdown.map((cb: any, i: number) => (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ delay: i * 0.05 }}
+                                      key={i}
+                                      className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group/card"
+                                    >
+                                      <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center text-blue-600 font-black text-xs shrink-0 group-hover/card:from-blue-100 group-hover/card:to-indigo-100 transition-colors">
+                                          {cb.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <span className="font-bold text-slate-700 text-sm truncate" title={cb.name}>{cb.name}</span>
+                                      </div>
+                                      <div className="flex flex-col items-end shrink-0 ml-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 group-hover/card:bg-blue-50 group-hover/card:border-blue-100 transition-colors">
+                                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Apps</span>
+                                        <span className="font-black text-blue-600 text-sm">{cb.applications}</span>
+                                      </div>
+                                    </motion.div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {(report.interviews > 0 || report.screenings > 0) && (
+                              breakdownLoading === rowKey ? (
+                                <p className="text-xs text-slate-400 font-medium">Loading interview/screening details...</p>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {report.interviews > 0 && (
+                                    <div>
+                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <CalendarClock className="w-3.5 h-3.5 text-orange-500" />
+                                        Interview Details
+                                      </h4>
+                                      <div className="space-y-2">
+                                        {(breakdownCache[String(rowKey)]?.interviews || []).map((it, i) => (
+                                          <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
+                                            <span className="font-bold text-slate-700 truncate capitalize">{it.candidate}</span>
+                                            <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{it.stage || "-"}</span>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                    <span className="font-bold text-slate-700 text-sm truncate" title={cb.name}>{cb.name}</span>
-                                  </div>
-                                  <div className="flex flex-col items-end shrink-0 ml-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 group-hover/card:bg-blue-50 group-hover/card:border-blue-100 transition-colors">
-                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Apps</span>
-                                    <span className="font-black text-blue-600 text-sm">{cb.applications}</span>
-                                  </div>
-                                </motion.div>
-                              ))}
-                            </div>
+                                  )}
+                                  {report.screenings > 0 && (
+                                    <div>
+                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <PhoneCall className="w-3.5 h-3.5 text-purple-500" />
+                                        Screening Details
+                                      </h4>
+                                      <div className="space-y-2">
+                                        {(breakdownCache[String(rowKey)]?.screenings || []).map((sc, i) => (
+                                          <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
+                                            <span className="font-bold text-slate-700 truncate capitalize">{sc.candidate}</span>
+                                            <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{sc.stage || "-"}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            )}
                           </div>
                         </td>
                       </motion.tr>

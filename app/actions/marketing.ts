@@ -243,3 +243,42 @@ export async function getTeamLeadReports() {
     if (error) throw new Error(error.message);
     return data;
 }
+
+/**
+ * Candidate + stage for one employee's Interview/Screening entries on one
+ * specific day — used only by the Daily Report screens (My Team, and the
+ * Admin/HR/T&D Manager Marketing Daily Reports page) to show what's behind
+ * the Interviews/Screenings counts.
+ *
+ * Deliberately a narrow, purpose-built query, not general table access:
+ * uses the service-role key (same as the other functions in this file) so
+ * it isn't subject to interview_screening_entries' RLS policy — which is
+ * intentional, since that policy excludes HR from browsing the table
+ * itself, but HR is still meant to see this specific report detail. Access
+ * to this function is controlled by which pages call it (both already
+ * gated to Team-Lead/Admin/HR/T&D Manager), not by RLS.
+ *
+ * Filters on entry_date_value (a real `date` column — see migration
+ * 00000000000019) rather than the free-text entry_date, so this only ever
+ * returns entries that actually carry a real date for that exact day.
+ */
+export async function getInterviewScreeningBreakdown(userId: string, date: string) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing Supabase credentials");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data, error } = await supabase
+        .from("interview_screening_entries")
+        .select("section, candidate, stage")
+        .eq("created_by", userId)
+        .eq("entry_date_value", date);
+
+    if (error) throw new Error(error.message);
+
+    const rows = data || [];
+    return {
+        interviews: rows.filter((r) => r.section === "interview").map((r) => ({ candidate: r.candidate || "Unknown", stage: r.stage || "" })),
+        screenings: rows.filter((r) => r.section === "screening").map((r) => ({ candidate: r.candidate || "Unknown", stage: r.stage || "" })),
+    };
+}
