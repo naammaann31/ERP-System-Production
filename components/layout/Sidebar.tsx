@@ -148,8 +148,10 @@ export default function Sidebar() {
                             return profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || isManager;
                         }
                         if (link.department) {
-                            // Managers can see all department-specific tabs
-                            if (isManager) return link.roles.includes(userRole);
+                            // Managers and Admin can see all department-specific
+                            // tabs; HR stays subject to the department check below
+                            // (e.g. HR should not see Interview & Screening).
+                            if (isManager || userRole === "Admin") return link.roles.includes(userRole);
                             const userDept = profile?.department?.toLowerCase() || "";
                             const userRoleStr = profile?.role?.toLowerCase() || "";
                             const targetDept = link.department.toLowerCase();

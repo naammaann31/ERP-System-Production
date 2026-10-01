@@ -67,28 +67,27 @@ export default function GenerateReportModal({
             }));
 
             // ── Interviews / Screenings ──
+            // entry_date_value is a real `date` column (see the
+            // 00000000000019 migration) populated only for entries that
+            // carry a real year — i.e. ones added via the Add Data date
+            // picker. Bulk-imported, yearless rows are deliberately left
+            // out of a date-ranged count rather than guessed at.
             let isQuery = supabase
-                .from("interview_screening")
-                .select("stage")
+                .from("interview_screening_entries")
+                .select("section")
                 .eq("created_by", profile.uid);
 
-            if (startDate) isQuery = isQuery.gte("date", startDate);
-            if (endDate)   isQuery = isQuery.lte("date", endDate);
+            if (startDate) isQuery = isQuery.gte("entry_date_value", startDate);
+            if (endDate)   isQuery = isQuery.lte("entry_date_value", endDate);
 
-            const { data: isData } = await isQuery;
+            const { data: isData, error: isErr } = await isQuery;
+            if (isErr) console.error("Interview/Screening stats query failed:", isErr.message, isErr);
 
             let screenings = 0;
             let interviews = 0;
             (isData || []).forEach((r: any) => {
-                const stage = r.stage || "";
-                if (
-                    stage.toLowerCase().includes("screening") ||
-                    stage.toLowerCase().includes("ai")
-                ) {
-                    screenings++;
-                } else {
-                    interviews++;
-                }
+                if (r.section === "screening") screenings++;
+                else if (r.section === "interview") interviews++;
             });
 
             setStats({
@@ -108,12 +107,24 @@ export default function GenerateReportModal({
     const handleSubmit = async () => {
         try {
             setLoading(true);
-            const today = new Date().toISOString().split("T")[0];
+            // A "Daily Report" is always about the previous day's work,
+            // submitted the next morning — so it's dated yesterday, not the
+            // literal moment it was clicked. Uses local calendar-date
+            // arithmetic (not toISOString, which is UTC and can silently
+            // shift the date near midnight) so this lines up with the
+            // business day the employee actually means.
+            const reportDay = new Date();
+            reportDay.setDate(reportDay.getDate() - 1);
+            const reportDate = [
+                reportDay.getFullYear(),
+                String(reportDay.getMonth() + 1).padStart(2, "0"),
+                String(reportDay.getDate()).padStart(2, "0"),
+            ].join("-");
 
             await submitMarketingDailyReport({
                 user_id: profile.uid,
                 user_name: profile.fullName || "Unknown",
-                report_date: today,
+                report_date: reportDate,
                 no_of_candidates: stats.candidates,
                 applications: stats.applications,
                 rtr_submissions: parseInt(rtr) || 0,

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
@@ -11,6 +11,7 @@ import {
     AlertCircle,
     Plus,
     Trash2,
+    Pencil,
 } from "lucide-react";
 import * as xlsx from "xlsx";
 import { Card } from "@/components/ui/card";
@@ -19,24 +20,108 @@ import { createClient } from "@/lib/supabase/client";
 import { requireSession } from "@/lib/supabase/requireSession";
 import { useAuth } from "@/components/providers/AuthProvider";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
-import { compareDatesDesc } from "@/lib/dateSort";
 import { parseInterviewScreeningWorkbook, Section } from "@/lib/interviewScreeningExcelImport";
 import RemarkCell, { Row } from "@/components/dashboard/interviewScreening/RemarkCell";
 import AddEntryModal, { AddEntryForm } from "@/components/dashboard/interviewScreening/AddEntryModal";
+import EditEntryModal, { EditEntryForm } from "@/components/dashboard/interviewScreening/EditEntryModal";
 import SectionChoiceModal from "@/components/dashboard/interviewScreening/SectionChoiceModal";
+import { isMarketingTeamLead } from "@/lib/marketingTeamLeadAccess";
 import { toast } from "sonner";
 
-const normalize = (val: any) => String(val || "").toLowerCase().replace(/[\s\-_]/g, "");
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 100;
+
+// ── Helpers (local to this file — intentionally not shared with
+//    MarketingClient.tsx, which must not be touched by this change) ──────────
+
+/**
+ * Escape special PostgreSQL ILIKE characters in user-typed input so that
+ * literal `%`, `_`, and `\` are treated as plain text rather than wildcards.
+ * Also strips commas which are PostgREST .or() filter delimiters.
+ */
+function escapeLike(str: string): string {
+    return str
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_")
+        .replace(/,/g, "");
+}
+
+/**
+ * Build an ILIKE pattern that ignores differences in spacing/hyphens/
+ * underscores between words (e.g. "brain co" should match "Brain Co",
+ * "BrainCo", and "Brain-Co" alike). Each run of separator characters in the
+ * query becomes a `%` wildcard instead of being deleted, so it matches
+ * regardless of whatever separator — or none — sits there in the stored
+ * value. Backslashes/percent signs are escaped first so they aren't
+ * mistaken for SQL wildcards, and commas are stripped since they delimit
+ * PostgREST's `.or()` filter groups.
+ */
+function buildSearchPattern(str: string): string {
+    const escaped = str
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/,/g, "")
+        .replace(/[\s\-_]+/g, "%");
+    return `%${escaped}%`;
+}
+
+const toRow = (e: any): Row => ({
+    key: e.id,
+    sig: e.id,
+    date: e.entry_date || "",
+    candidate: e.candidate || "",
+    client: e.client || "",
+    stage: e.stage || "",
+    recruiter: e.recruiter || "",
+    remarks: e.remarks || "",
+    createdBy: e.created_by ?? null,
+});
 
 export default function InterviewScreeningClient() {
     const { profile } = useAuth();
-    const [localEntries, setLocalEntries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+
+    // ── Per-section paginated state ─────────────────────────────────────────
+    const [interviewData, setInterviewData] = useState<any[]>([]);
+    const [interviewOffset, setInterviewOffset] = useState(0);
+    const [interviewTotalCount, setInterviewTotalCount] = useState(0);
+    const [interviewLoadingMore, setInterviewLoadingMore] = useState(false);
+
+    const [screeningData, setScreeningData] = useState<any[]>([]);
+    const [screeningOffset, setScreeningOffset] = useState(0);
+    const [screeningTotalCount, setScreeningTotalCount] = useState(0);
+    const [screeningLoadingMore, setScreeningLoadingMore] = useState(false);
+
+    // Always reflects the latest debounced search term, read by the
+    // long-lived realtime handler below so it never queries with a stale
+    // (captured-at-subscribe-time) search value.
+    const searchRef = useRef("");
+
+    // Admin or Marketing Team Lead (including the T&D Manager override) get
+    // full edit + delete rights on every row; mirrors the DB-level
+    // enforcement in migration 00000000000021 — this only controls what the
+    // UI offers, the trigger/policy is what actually protects the data.
+    const canManage = profile?.role === "Admin" || isMarketingTeamLead(profile);
 
     // Delete confirmation
     const [rowToDelete, setRowToDelete] = useState<Row | null>(null);
+
+    // Edit modal (Admin / Marketing Team Lead only)
+    const [editingRow, setEditingRow] = useState<{ row: Row; section: Section } | null>(null);
+    const [editForm, setEditForm] = useState<EditEntryForm>({
+        date: "",
+        candidate: "",
+        client: "",
+        stage: "",
+        recruiter: "",
+        remarks: "",
+    });
+    const [editSaving, setEditSaving] = useState(false);
 
     // Excel import
     const [importing, setImporting] = useState(false);
@@ -61,95 +146,118 @@ export default function InterviewScreeningClient() {
         remarks: "",
     });
 
-    const loadData = async () => {
-        setLoading(true);
-        const supabase = createClient();
-        const { data, error: err } = await supabase
+    // ── Debounce search input (400 ms) ──────────────────────────────────────
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // ── Query builder — section-scoped, search-filtered, no .range() yet ───
+    // No ownership filter here by design: every marketing employee is meant
+    // to see every Interview/Screening row (shared team resource), unchanged
+    // from how this table has always worked.
+    //
+    // Ordered by entry_date_sort (a trigger-maintained column — see the
+    // 00000000000019 migration — that parses the free-text entry_date into
+    // a real comparable number) so the most recent date is always first,
+    // with created_at as the tie-breaker for rows sharing the same date.
+    // nullsFirst:false sinks unparseable/empty dates to the bottom instead
+    // of letting them float to the top.
+    const buildQuery = (supabase: ReturnType<typeof createClient>, section: Section) => {
+        let query = supabase
             .from("interview_screening_entries")
-            .select("*")
-            // Descending so that rows sharing a date show the most recently
-            // added first, once buildRows' stable sort runs over them.
+            .select("*", { count: "exact" })
+            .eq("section", section)
+            .order("entry_date_sort", { ascending: false, nullsFirst: false })
             .order("created_at", { ascending: false });
 
-        if (err) {
-            console.error("Load failed:", err.message, err);
-            setError("Could not load Interview & Screening records.");
-        } else {
-            setError(null);
+        const search = searchRef.current;
+        if (search) {
+            const pattern = buildSearchPattern(escapeLike(search.toLowerCase()));
+            query = query.or(
+                `entry_date.ilike.${pattern},candidate.ilike.${pattern},client.ilike.${pattern},stage.ilike.${pattern},recruiter.ilike.${pattern},remarks.ilike.${pattern}`
+            );
         }
-        setLocalEntries(data || []);
-        setLoading(false);
+        return query;
     };
 
-    useEffect(() => {
-        loadData();
+    /**
+     * Fetches one page of one section. `append: false` replaces that
+     * section's loaded rows (used for the initial load, a search change, and
+     * a realtime-triggered refresh); `append: true` adds the next page (used
+     * by that section's "Load More" button).
+     */
+    const fetchPage = async (section: Section, offsetVal: number, append: boolean) => {
+        const supabase = createClient();
+        const { data, count, error: err } = await buildQuery(supabase, section).range(
+            offsetVal,
+            offsetVal + PAGE_SIZE - 1
+        );
 
-        // Live-sync so records added/edited/removed by anyone appear without
-        // a manual page refresh.
+        if (err) {
+            console.error(`Load ${section} failed:`, err.message, err);
+            setError("Could not load Interview & Screening records.");
+            return;
+        }
+        setError(null);
+
+        const rows = data || [];
+        const setData = section === "interview" ? setInterviewData : setScreeningData;
+        const setOffset = section === "interview" ? setInterviewOffset : setScreeningOffset;
+        const setTotal = section === "interview" ? setInterviewTotalCount : setScreeningTotalCount;
+
+        setData((prev) => (append ? [...prev, ...rows] : rows));
+        setOffset(offsetVal + PAGE_SIZE);
+        setTotal(count ?? 0);
+    };
+
+    // ── Initial load + reload on search change ──────────────────────────────
+    useEffect(() => {
+        searchRef.current = debouncedSearch;
+        Promise.all([
+            fetchPage("interview", 0, false),
+            fetchPage("screening", 0, false),
+        ]).finally(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [debouncedSearch]);
+
+    // ── Realtime: refresh only the section the change actually affects ─────
+    // (Option 2 — a targeted refresh, not a blanket "any change → reload
+    // everything.") Uses a fixed channel name so repeated mounts don't pile
+    // up duplicate subscriptions.
+    useEffect(() => {
         const supabase = createClient();
         const channel = supabase
-            .channel(`interview_screening_live_${Math.random().toString(36).slice(2)}`)
+            .channel("interview_screening_live")
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "interview_screening_entries" },
-                () => loadData()
+                (payload) => {
+                    const row = (payload.new ?? payload.old) as any;
+                    const section: Section = row?.section === "interview" ? "interview" : "screening";
+                    fetchPage(section, 0, false);
+                }
             )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const buildRows = (section: Section): Row[] =>
-        localEntries
-            .filter((e) => e.section === section)
-            .map((e) => ({
-                key: e.id,
-                sig: e.id,
-                date: e.entry_date || "",
-                candidate: e.candidate || "",
-                client: e.client || "",
-                stage: e.stage || "",
-                recruiter: e.recruiter || "",
-                remarks: e.remarks || "",
-                createdBy: e.created_by ?? null,
-            }))
-            // Most recent first. entry_date is yearless text ("Apr-30"), so
-            // this goes through dateSortKey rather than new Date(); sort is
-            // stable, so rows sharing a date keep the created_at order the
-            // query returned them in.
-            .sort((a, b) => compareDatesDesc(a.date, b.date));
+    const interviewRows = useMemo(() => interviewData.map(toRow), [interviewData]);
+    const screeningRows = useMemo(() => screeningData.map(toRow), [screeningData]);
 
-    const allInterviewRows = useMemo(() => buildRows("interview"), [localEntries]);
-    const allScreeningRows = useMemo(() => buildRows("screening"), [localEntries]);
-
-    const applySearch = (rows: Row[]) => {
-        if (!searchQuery) return rows;
-        const q = normalize(searchQuery);
-        return rows.filter(
-            (r) =>
-                normalize(r.date).includes(q) ||
-                normalize(r.candidate).includes(q) ||
-                normalize(r.client).includes(q) ||
-                normalize(r.stage).includes(q) ||
-                normalize(r.recruiter).includes(q) ||
-                normalize(r.remarks).includes(q)
-        );
-    };
-
-    const filteredInterviews = useMemo(() => applySearch(allInterviewRows), [allInterviewRows, searchQuery]);
-    const filteredScreenings = useMemo(() => applySearch(allScreeningRows), [allScreeningRows, searchQuery]);
-
-    // Dropdown options = every distinct remark currently in use.
+    // Dropdown options = every distinct remark among currently loaded rows.
     const remarkOptions = useMemo(() => {
         const set = new Map<string, string>();
-        [...allInterviewRows, ...allScreeningRows].forEach((r) => {
+        [...interviewRows, ...screeningRows].forEach((r) => {
             const v = r.remarks.trim();
             if (v) set.set(v.toLowerCase(), v);
         });
         return [...set.values()].sort((a, b) => a.localeCompare(b));
-    }, [allInterviewRows, allScreeningRows]);
+    }, [interviewRows, screeningRows]);
 
     const handleSaveRemark = async (row: Row, value: string) => {
         const supabase = createClient();
@@ -165,7 +273,10 @@ export default function InterviewScreeningClient() {
             toast.error(err.message || "Could not save remark.");
             return;
         }
-        setLocalEntries((prev) => prev.map((e) => (e.id === row.sig ? { ...e, remarks: value } : e)));
+        // Only one of these will actually contain the row; the other is a
+        // harmless no-op, which avoids needing to track section on Row.
+        setInterviewData((prev) => prev.map((e) => (e.id === row.sig ? { ...e, remarks: value } : e)));
+        setScreeningData((prev) => prev.map((e) => (e.id === row.sig ? { ...e, remarks: value } : e)));
         toast.success("Remark updated.");
     };
 
@@ -196,20 +307,78 @@ export default function InterviewScreeningClient() {
         }
 
         if (!deleted || deleted.length === 0) {
-            toast.error("You can only delete entries you added.");
+            toast.error("Only Admin or the Marketing Team Lead can delete entries.");
             setRowToDelete(null);
             return;
         }
 
-        setLocalEntries((prev) => prev.filter((e) => e.id !== id));
+        const wasInterview = interviewData.some((e) => e.id === id);
+        setInterviewData((prev) => prev.filter((e) => e.id !== id));
+        setScreeningData((prev) => prev.filter((e) => e.id !== id));
+        if (wasInterview) {
+            setInterviewTotalCount((prev) => Math.max(0, prev - 1));
+        } else {
+            setScreeningTotalCount((prev) => Math.max(0, prev - 1));
+        }
+
         toast.success("Entry deleted.");
         setRowToDelete(null);
     };
 
-    /** Mirrors the RLS delete policy so the UI only offers what will succeed. */
-    const canDelete = (row: Row) => {
-        const isAdminOrHR = ["Admin", "HR", "OPS_HR"].includes(profile?.role || "");
-        return isAdminOrHR || (!!profile?.uid && row.createdBy === profile.uid);
+    const openEdit = (row: Row, section: Section) => {
+        setEditingRow({ row, section });
+        setEditForm({
+            date: row.date,
+            candidate: row.candidate,
+            client: row.client,
+            stage: row.stage,
+            recruiter: row.recruiter,
+            remarks: row.remarks,
+        });
+    };
+
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingRow) return;
+        if (!editForm.candidate.trim()) {
+            toast.error("Candidate name is required.");
+            return;
+        }
+        setEditSaving(true);
+
+        const supabase = createClient();
+        if (!(await requireSession(supabase))) {
+            setEditSaving(false);
+            return;
+        }
+
+        const { data, error: err } = await supabase
+            .from("interview_screening_entries")
+            .update({
+                entry_date: editForm.date.trim(),
+                candidate: editForm.candidate.trim(),
+                client: editForm.client.trim(),
+                stage: editForm.stage.trim(),
+                recruiter: editForm.recruiter.trim(),
+                remarks: editForm.remarks.trim(),
+            })
+            .eq("id", editingRow.row.sig)
+            .select()
+            .single();
+
+        setEditSaving(false);
+
+        if (err) {
+            console.error("Edit entry failed:", err.message, err);
+            toast.error(err.message || "Could not save changes.");
+            return;
+        }
+
+        const setData = editingRow.section === "interview" ? setInterviewData : setScreeningData;
+        setData((prev) => prev.map((r) => (r.id === data.id ? data : r)));
+
+        toast.success("Entry updated.");
+        setEditingRow(null);
     };
 
     const handleAddSubmit = async (e: React.FormEvent) => {
@@ -225,7 +394,7 @@ export default function InterviewScreeningClient() {
             setAddSaving(false);
             return;
         }
-        // created_by is deliberately NOT sent â€” a BEFORE INSERT trigger stamps
+        // created_by is deliberately NOT sent — a BEFORE INSERT trigger stamps
         // it from the authenticated session. Sending it from the client broke
         // for non-Admin users whenever the profile hadn't loaded yet, and it
         // would be spoofable besides.
@@ -252,7 +421,14 @@ export default function InterviewScreeningClient() {
             return;
         }
 
-        setLocalEntries((prev) => [data, ...prev]);
+        if (data.section === "interview") {
+            setInterviewData((prev) => [data, ...prev]);
+            setInterviewTotalCount((prev) => prev + 1);
+        } else {
+            setScreeningData((prev) => [data, ...prev]);
+            setScreeningTotalCount((prev) => prev + 1);
+        }
+
         toast.success("Entry added.");
         setAddOpen(false);
         setForm({ section: form.section, date: "", candidate: "", client: "", stage: "", recruiter: "", remarks: "" });
@@ -262,7 +438,12 @@ export default function InterviewScreeningClient() {
 
     /**
      * Writes parsed rows and reports what landed where. Shared by the normal
-     * path and by the section prompt, so both report identically.
+     * path and by the section prompt, so both report identically. Rows are
+     * prepended into whichever section(s) they belong to, same as the
+     * existing optimistic-update convention elsewhere in this app — the
+     * loaded list is allowed to temporarily exceed one page's size right
+     * after an import/add, which is exactly what makes a just-imported batch
+     * immediately visible without needing a reload.
      */
     const commitImport = async (rows: any[], invalid: number) => {
         const supabase = createClient();
@@ -279,9 +460,20 @@ export default function InterviewScreeningClient() {
             return;
         }
 
-        setLocalEntries((prev) => [...(inserted || []), ...prev]);
-        const iCount = rows.filter((p) => p.section === "interview").length;
-        const sCount = rows.length - iCount;
+        const insertedInterview = (inserted || []).filter((r) => r.section === "interview");
+        const insertedScreening = (inserted || []).filter((r) => r.section === "screening");
+
+        if (insertedInterview.length > 0) {
+            setInterviewData((prev) => [...insertedInterview, ...prev]);
+            setInterviewTotalCount((prev) => prev + insertedInterview.length);
+        }
+        if (insertedScreening.length > 0) {
+            setScreeningData((prev) => [...insertedScreening, ...prev]);
+            setScreeningTotalCount((prev) => prev + insertedScreening.length);
+        }
+
+        const iCount = insertedInterview.length;
+        const sCount = insertedScreening.length;
         setImportSummary(
             `Import Complete!\n\nInterview rows imported: ${iCount}\nScreening rows imported: ${sCount}\nSkipped (no candidate name): ${invalid}`
         );
@@ -320,29 +512,47 @@ export default function InterviewScreeningClient() {
         reader.readAsBinaryString(file);
     };
 
-    const handleExport = () => {
-        const workbook = xlsx.utils.book_new();
-        const toSheet = (rows: Row[], stageLabel: string) =>
-            xlsx.utils.json_to_sheet(
-                rows.map((r) => ({
-                    Date: r.date,
-                    Candidate: r.candidate,
-                    Client: r.client,
-                    [stageLabel]: r.stage,
-                    Recruiter: r.recruiter,
-                    Remarks: r.remarks,
-                }))
-            );
-        xlsx.utils.book_append_sheet(workbook, toSheet(filteredInterviews, "Stage (No of Round)"), "Interview");
-        xlsx.utils.book_append_sheet(workbook, toSheet(filteredScreenings, "Screening/AI"), "Screening");
-        xlsx.writeFile(workbook, `interview_screening_${new Date().toISOString().split("T")[0]}.xlsx`);
+    // Makes its own full (unpaginated) query per section, with the same
+    // active search filter, so the export always contains every matching
+    // row — not just whatever happens to be loaded on screen.
+    const handleExport = async () => {
+        try {
+            toast.info("Preparing export...");
+            const supabase = createClient();
+            const [{ data: iData, error: iErr }, { data: sData, error: sErr }] = await Promise.all([
+                buildQuery(supabase, "interview"),
+                buildQuery(supabase, "screening"),
+            ]);
+            if (iErr) throw iErr;
+            if (sErr) throw sErr;
+
+            const toSheet = (rows: any[], stageLabel: string) =>
+                xlsx.utils.json_to_sheet(
+                    rows.map(toRow).map((r) => ({
+                        Date: r.date,
+                        Candidate: r.candidate,
+                        Client: r.client,
+                        [stageLabel]: r.stage,
+                        Recruiter: r.recruiter,
+                        Remarks: r.remarks,
+                    }))
+                );
+
+            const workbook = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(workbook, toSheet(iData || [], "Stage (No of Round)"), "Interview");
+            xlsx.utils.book_append_sheet(workbook, toSheet(sData || [], "Screening/AI"), "Screening");
+            xlsx.writeFile(workbook, `interview_screening_${new Date().toISOString().split("T")[0]}.xlsx`);
+        } catch (error) {
+            console.error("Export failed:", error);
+            toast.error("Export failed. Please try again.");
+        }
     };
 
     if (loading) {
         return <LoadingSpinner label="Loading sheet data..." />;
     }
 
-    const renderTable = (rows: Row[], stageLabel: string) => (
+    const renderTable = (rows: Row[], stageLabel: string, section: Section) => (
         <div className="overflow-x-auto w-full max-w-full">
 <table className="w-full text-sm text-left relative">
             <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
@@ -353,13 +563,13 @@ export default function InterviewScreeningClient() {
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">{stageLabel}</th>
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Recruiter</th>
                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Remarks</th>
-                    
+                    {canManage && <th className="px-6 py-4 font-semibold whitespace-nowrap text-right">Actions</th>}
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
                 {rows.length === 0 ? (
                     <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                        <td colSpan={canManage ? 7 : 6} className="px-6 py-12 text-center text-slate-500">
                             No records found.
                         </td>
                     </tr>
@@ -379,7 +589,26 @@ export default function InterviewScreeningClient() {
                             <td className="px-6 py-4">
                                 <RemarkCell row={row} options={remarkOptions} onSave={handleSaveRemark} />
                             </td>
-                            
+                            {canManage && (
+                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-1">
+                                        <button
+                                            onClick={() => openEdit(row, section)}
+                                            className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors"
+                                            title="Edit entry"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => setRowToDelete(row)}
+                                            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                                            title="Delete entry"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            )}
                         </tr>
                     ))
                 )}
@@ -455,12 +684,31 @@ export default function InterviewScreeningClient() {
                             <CalendarClock className="h-5 w-5 text-blue-500" />
                             Interview
                             <span className="bg-blue-200 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-semibold">
-                                {filteredInterviews.length}
+                                {interviewRows.length.toLocaleString()} of {interviewTotalCount.toLocaleString()}
                             </span>
                         </h2>
                         <p className="text-sm text-slate-500 mt-1">Scheduled and completed candidate interviews.</p>
                     </div>
-                    <div className="overflow-auto max-h-[520px] custom-scrollbar">{renderTable(filteredInterviews, "Stage")}</div>
+                    <div className="overflow-auto max-h-[520px] custom-scrollbar">
+                        {renderTable(interviewRows, "Stage", "interview")}
+                        {interviewData.length < interviewTotalCount && (
+                            <div className="py-5 flex justify-center border-t border-slate-100">
+                                <button
+                                    onClick={async () => {
+                                        setInterviewLoadingMore(true);
+                                        await fetchPage("interview", interviewOffset, true);
+                                        setInterviewLoadingMore(false);
+                                    }}
+                                    disabled={interviewLoadingMore}
+                                    className="px-6 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-semibold text-sm rounded-xl transition-all border border-blue-100 shadow-sm disabled:opacity-60"
+                                >
+                                    {interviewLoadingMore
+                                        ? "Loading..."
+                                        : `Load More (${(interviewTotalCount - interviewData.length).toLocaleString()} remaining)`}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </Card>
             </motion.div>
 
@@ -472,12 +720,31 @@ export default function InterviewScreeningClient() {
                             <PhoneCall className="h-5 w-5 text-indigo-500" />
                             Screening
                             <span className="bg-indigo-200 text-indigo-800 text-xs py-0.5 px-2.5 rounded-full font-semibold">
-                                {filteredScreenings.length}
+                                {screeningRows.length.toLocaleString()} of {screeningTotalCount.toLocaleString()}
                             </span>
                         </h2>
                         <p className="text-sm text-slate-500 mt-1">Initial screening calls and intro meetings with clients.</p>
                     </div>
-                    <div className="overflow-auto max-h-[600px] custom-scrollbar">{renderTable(filteredScreenings, "Screening/AI")}</div>
+                    <div className="overflow-auto max-h-[600px] custom-scrollbar">
+                        {renderTable(screeningRows, "Screening/AI", "screening")}
+                        {screeningData.length < screeningTotalCount && (
+                            <div className="py-5 flex justify-center border-t border-slate-100">
+                                <button
+                                    onClick={async () => {
+                                        setScreeningLoadingMore(true);
+                                        await fetchPage("screening", screeningOffset, true);
+                                        setScreeningLoadingMore(false);
+                                    }}
+                                    disabled={screeningLoadingMore}
+                                    className="px-6 py-2.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 font-semibold text-sm rounded-xl transition-all border border-indigo-100 shadow-sm disabled:opacity-60"
+                                >
+                                    {screeningLoadingMore
+                                        ? "Loading..."
+                                        : `Load More (${(screeningTotalCount - screeningData.length).toLocaleString()} remaining)`}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </Card>
             </motion.div>
 
@@ -496,7 +763,7 @@ export default function InterviewScreeningClient() {
                 variant="success"
             />
 
-            {/* Section picker â€” shown only when the file is one bare table
+            {/* Section picker — shown only when the file is one bare table
                 with no Interview/Screening headers to route it by. */}
             {sectionPrompt && (
                 <SectionChoiceModal
@@ -530,7 +797,19 @@ export default function InterviewScreeningClient() {
                     onClose={() => setAddOpen(false)}
                 />
             )}
+
+            {/* Edit Entry Modal (Admin / Marketing Team Lead only) */}
+            {editingRow && (
+                <EditEntryModal
+                    sectionLabel={editingRow.section === "interview" ? "Interview" : "Screening"}
+                    form={editForm}
+                    setForm={setEditForm}
+                    remarkOptions={remarkOptions}
+                    saving={editSaving}
+                    onSubmit={handleEditSubmit}
+                    onClose={() => setEditingRow(null)}
+                />
+            )}
         </div>
     );
 }
-
