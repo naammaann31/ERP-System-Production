@@ -262,6 +262,38 @@ export async function getTeamLeadReports() {
  * 00000000000019) rather than the free-text entry_date, so this only ever
  * returns entries that actually carry a real date for that exact day.
  */
+/**
+ * "Yesterday" in India Standard Time (Asia/Kolkata), computed entirely on
+ * the server so it can never be thrown off by an employee's device clock,
+ * timezone setting, or VPN exit location. India has a single fixed
+ * UTC+5:30 offset with no daylight saving, so this is exact year-round.
+ *
+ * This is deliberately NOT the normal source of a Daily Report's date —
+ * the employee's own picked date range is (see GenerateReportModal). It
+ * exists only as the fallback label for the one path where no single date
+ * was picked at all (the "Submit Anyway" choice on the no-date warning),
+ * so that edge case still gets a sane, clock-proof date instead of
+ * whatever the browser's `new Date()` happens to say.
+ */
+export async function getIstYesterday(): Promise<string> {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(new Date());
+    const get = (type: string) => parts.find((p) => p.type === type)!.value;
+
+    // Subtract one day via a UTC-anchored Date so the Y/M/D arithmetic
+    // itself never crosses a timezone boundary — same calendar-safe
+    // pattern used in lib/marketingExcelImport.ts.
+    const istToday = new Date(Date.UTC(+get("year"), +get("month") - 1, +get("day")));
+    istToday.setUTCDate(istToday.getUTCDate() - 1);
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${istToday.getUTCFullYear()}-${pad(istToday.getUTCMonth() + 1)}-${pad(istToday.getUTCDate())}`;
+}
+
 export async function getInterviewScreeningBreakdown(userId: string, date: string) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

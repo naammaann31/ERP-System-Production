@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { submitMarketingDailyReport } from "@/app/actions/marketing";
+import { submitMarketingDailyReport, getIstYesterday } from "@/app/actions/marketing";
 import { marketingRowToUi } from "@/lib/salesMarketingMap";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "sonner";
 
 interface GenerateReportModalProps {
@@ -39,6 +40,16 @@ export default function GenerateReportModal({
     // — it's always been a number typed in by hand, so the candidate
     // name(s) are captured the same way, alongside it.
     const [rtrNames, setRtrNames] = useState("");
+
+    // ── Report date ──────────────────────────────────────────────────────
+    // The report is always dated exactly whatever single day the employee
+    // has selected (From === To) — never guessed from "now minus one day",
+    // since that guess goes stale the moment someone submits late. If no
+    // single day is selected, submitting is blocked behind an explicit
+    // warning rather than silently reporting every lead they've ever added.
+    const hasSingleDay = !!startDate && !!endDate && startDate === endDate;
+    const [dateWarningOpen, setDateWarningOpen] = useState(false);
+    const [confirmingAnyway, setConfirmingAnyway] = useState(false);
 
     useEffect(() => {
         if (!isOpen || !profile) return;
@@ -109,42 +120,54 @@ export default function GenerateReportModal({
 
     if (!isOpen) return null;
 
+    const doSubmit = async (reportDate: string) => {
+        await submitMarketingDailyReport({
+            user_id: profile.uid,
+            user_name: profile.fullName || "Unknown",
+            report_date: reportDate,
+            no_of_candidates: stats.candidates,
+            applications: stats.applications,
+            rtr_submissions: parseInt(rtr) || 0,
+            rtr_names: rtrNames.trim() || null,
+            screenings: stats.screenings,
+            interviews: stats.interviews,
+            candidate_breakdown: stats.breakdown,
+        });
+
+        toast.success("Daily report sent to Team Lead successfully!");
+        onClose();
+    };
+
+    // Entry point for the normal case: a single day is selected, so the
+    // report is dated exactly that day — no guessing, no clock involved.
     const handleSubmit = async () => {
+        if (!hasSingleDay) {
+            setDateWarningOpen(true);
+            return;
+        }
         try {
             setLoading(true);
-            // A "Daily Report" is always about the previous day's work,
-            // submitted the next morning — so it's dated yesterday, not the
-            // literal moment it was clicked. Uses local calendar-date
-            // arithmetic (not toISOString, which is UTC and can silently
-            // shift the date near midnight) so this lines up with the
-            // business day the employee actually means.
-            const reportDay = new Date();
-            reportDay.setDate(reportDay.getDate() - 1);
-            const reportDate = [
-                reportDay.getFullYear(),
-                String(reportDay.getMonth() + 1).padStart(2, "0"),
-                String(reportDay.getDate()).padStart(2, "0"),
-            ].join("-");
-
-            await submitMarketingDailyReport({
-                user_id: profile.uid,
-                user_name: profile.fullName || "Unknown",
-                report_date: reportDate,
-                no_of_candidates: stats.candidates,
-                applications: stats.applications,
-                rtr_submissions: parseInt(rtr) || 0,
-                rtr_names: rtrNames.trim() || null,
-                screenings: stats.screenings,
-                interviews: stats.interviews,
-                candidate_breakdown: stats.breakdown,
-            });
-
-            toast.success("Daily report sent to Team Lead successfully!");
-            onClose();
+            await doSubmit(startDate);
         } catch (error: any) {
             toast.error(error.message || "Failed to submit report");
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Entry point for the warning's "Submit Anyway" choice: no single day
+    // was picked, so there's nothing to derive a date from — falls back to
+    // the server-computed IST "yesterday" instead of the device clock.
+    const handleConfirmSubmitAnyway = async () => {
+        try {
+            setConfirmingAnyway(true);
+            const fallbackDate = await getIstYesterday();
+            await doSubmit(fallbackDate);
+            setDateWarningOpen(false);
+        } catch (error: any) {
+            toast.error(error.message || "Failed to submit report");
+        } finally {
+            setConfirmingAnyway(false);
         }
     };
 
@@ -164,6 +187,18 @@ export default function GenerateReportModal({
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Name</label>
                         <input type="text" value={profile?.fullName || ""} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-900 cursor-not-allowed" />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Report Date</label>
+                        {hasSingleDay ? (
+                            <div className="w-full bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-sm font-bold text-blue-700">
+                                {new Date(`${startDate}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                            </div>
+                        ) : (
+                            <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-amber-700">
+                                No single date selected. Set the From and To filters on the Data page to the same day before generating this report.
+                            </div>
+                        )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
@@ -197,6 +232,26 @@ export default function GenerateReportModal({
                     <button type="button" onClick={handleSubmit} disabled={loading} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm disabled:opacity-50">{loading ? "Sending..." : "Submit to Team Lead"}</button>
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={dateWarningOpen}
+                onClose={() => setDateWarningOpen(false)}
+                onConfirm={handleConfirmSubmitAnyway}
+                title="No Report Date Selected"
+                description={
+                    <>
+                        You haven&apos;t selected a single date (From and To must match) on the Data page.
+                        Submitting now will count <strong>every lead you&apos;ve ever added</strong> — not just one
+                        day&apos;s work — and label it with yesterday&apos;s date.
+                        <br /><br />
+                        Go back and set a date, or continue only if you really mean to submit everything.
+                    </>
+                }
+                confirmText="Submit All Anyway"
+                cancelText="Select Date"
+                variant="danger"
+                isLoading={confirmingAnyway}
+            />
         </div>
     );
 }
