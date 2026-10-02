@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { getTeamLeadReports, getMarketingDailyReports, getInterviewScreeningBreakdown } from "@/app/actions/marketing";
-import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2, CalendarClock, PhoneCall } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Search, Filter, Megaphone, CheckCircle2, CalendarClock, PhoneCall, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
@@ -28,7 +28,7 @@ export default function MarketingDailyReportsPage() {
   // Interview/Screening breakdown (candidate + stage) for the expanded row —
   // fetched live, on demand, cached per row key.
   const [breakdownCache, setBreakdownCache] = useState<
-    Record<string, { interviews: { candidate: string; stage: string }[]; screenings: { candidate: string; stage: string }[] }>
+    Record<string, { interviews: { candidate: string; client: string; stage: string; remarks: string }[]; screenings: { candidate: string; client: string; stage: string; remarks: string }[] }>
   >({});
   const [breakdownLoading, setBreakdownLoading] = useState<string | number | null>(null);
 
@@ -260,7 +260,7 @@ export default function MarketingDailyReportsPage() {
                           {report.user_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
                         <span className="group-hover:text-blue-700 transition-colors">{report.user_name}</span>
-                        {((report.candidate_breakdown && report.candidate_breakdown.length > 0) || report.interviews > 0 || report.screenings > 0) && (
+                        {((report.candidate_breakdown && report.candidate_breakdown.length > 0) || report.interviews > 0 || report.screenings > 0 || report.rtr_names) && (
                           <div className="ml-2">
                             {expandedRowId === rowKey ? (
                               <ChevronUp className="w-4 h-4 text-blue-500" />
@@ -281,11 +281,6 @@ export default function MarketingDailyReportsPage() {
                       <span className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-black text-xs border border-blue-100">
                         {report.rtr_submissions}
                       </span>
-                      {report.rtr_names && (
-                        <div className="text-xs text-slate-600 font-semibold mt-1 truncate max-w-[160px] mx-auto" title={report.rtr_names}>
-                          {report.rtr_names}
-                        </div>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === rowKey ? null : rowKey)}>
                       <span className="inline-flex px-3 py-1 rounded-full bg-purple-50 text-purple-700 font-black text-xs border border-purple-100">
@@ -303,7 +298,8 @@ export default function MarketingDailyReportsPage() {
                     {expandedRowId === rowKey &&
                       ((report.candidate_breakdown && report.candidate_breakdown.length > 0) ||
                         report.interviews > 0 ||
-                        report.screenings > 0) && (
+                        report.screenings > 0 ||
+                        report.rtr_names) && (
                       <motion.tr
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
@@ -312,6 +308,27 @@ export default function MarketingDailyReportsPage() {
                       >
                         <td colSpan={7} className="px-0 py-0">
                           <div className="px-6 py-6 overflow-hidden space-y-4">
+                            {report.rtr_names && (
+                              <div>
+                                <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                  <UserCircle className="w-3.5 h-3.5 text-indigo-500" />
+                                  RTR Details
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                  {report.rtr_names.split(",").map((n: string) => n.trim()).filter(Boolean).map((name: string, i: number) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-sm font-bold text-slate-700"
+                                    >
+                                      <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0">
+                                        {name.charAt(0).toUpperCase()}
+                                      </span>
+                                      {name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             {report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
                               <div>
                                 <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -347,18 +364,27 @@ export default function MarketingDailyReportsPage() {
                               breakdownLoading === rowKey ? (
                                 <p className="text-xs text-slate-400 font-medium">Loading interview/screening details...</p>
                               ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                   {report.interviews > 0 && (
                                     <div>
-                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
                                         <CalendarClock className="w-3.5 h-3.5 text-orange-500" />
                                         Interview Details
                                       </h4>
-                                      <div className="space-y-2">
+                                      <div className="space-y-1.5">
                                         {(breakdownCache[String(rowKey)]?.interviews || []).map((it, i) => (
-                                          <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
-                                            <span className="font-bold text-slate-700 truncate capitalize">{it.candidate}</span>
-                                            <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{it.stage || "-"}</span>
+                                          <div key={i} className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 py-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                            <span className="font-bold text-slate-900 text-base capitalize">{it.candidate}</span>
+                                            <span className="flex items-center gap-2">
+                                              <span className="text-xs text-slate-500 font-bold uppercase tracking-wide">Stage</span>
+                                              <span className="text-sm font-bold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full capitalize">{it.stage || "-"}</span>
+                                            </span>
+                                            <span className="text-sm text-slate-700 font-semibold"><span className="text-slate-500 font-bold">Client</span> {it.client || "-"}</span>
+                                            {it.remarks && (
+                                              <span className="text-sm text-slate-700 font-semibold italic">
+                                                <span className="text-slate-500 font-bold not-italic">Remarks</span> "{it.remarks}"
+                                              </span>
+                                            )}
                                           </div>
                                         ))}
                                       </div>
@@ -366,15 +392,24 @@ export default function MarketingDailyReportsPage() {
                                   )}
                                   {report.screenings > 0 && (
                                     <div>
-                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2.5 flex items-center gap-2">
                                         <PhoneCall className="w-3.5 h-3.5 text-purple-500" />
                                         Screening Details
                                       </h4>
-                                      <div className="space-y-2">
+                                      <div className="space-y-1.5">
                                         {(breakdownCache[String(rowKey)]?.screenings || []).map((sc, i) => (
-                                          <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
-                                            <span className="font-bold text-slate-700 truncate capitalize">{sc.candidate}</span>
-                                            <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{sc.stage || "-"}</span>
+                                          <div key={i} className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 py-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                            <span className="font-bold text-slate-900 text-base capitalize">{sc.candidate}</span>
+                                            <span className="flex items-center gap-2">
+                                              <span className="text-xs text-slate-500 font-bold uppercase tracking-wide">Screening/AI</span>
+                                              <span className="text-sm font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full capitalize">{sc.stage || "-"}</span>
+                                            </span>
+                                            <span className="text-sm text-slate-700 font-semibold"><span className="text-slate-500 font-bold">Client</span> {sc.client || "-"}</span>
+                                            {sc.remarks && (
+                                              <span className="text-sm text-slate-700 font-semibold italic">
+                                                <span className="text-slate-500 font-bold not-italic">Remarks</span> "{sc.remarks}"
+                                              </span>
+                                            )}
                                           </div>
                                         ))}
                                       </div>

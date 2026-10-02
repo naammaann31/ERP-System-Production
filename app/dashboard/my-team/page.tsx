@@ -29,7 +29,7 @@ export default function MyTeamPage() {
   // fetched live, on demand, cached per report id so re-expanding doesn't
   // re-fetch.
   const [breakdownCache, setBreakdownCache] = useState<
-    Record<number, { interviews: { candidate: string; stage: string }[]; screenings: { candidate: string; stage: string }[] }>
+    Record<number, { interviews: { candidate: string; client: string; stage: string; remarks: string }[]; screenings: { candidate: string; client: string; stage: string; remarks: string }[] }>
   >({});
   const [breakdownLoading, setBreakdownLoading] = useState<number | null>(null);
 
@@ -432,7 +432,7 @@ export default function MyTeamPage() {
                             {report.user_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                           </div>
                           <span className="group-hover:text-blue-700 transition-colors">{report.user_name}</span>
-                          {((report.candidate_breakdown && report.candidate_breakdown.length > 0) || report.interviews > 0 || report.screenings > 0) && (
+                          {((report.candidate_breakdown && report.candidate_breakdown.length > 0) || report.interviews > 0 || report.screenings > 0 || report.rtr_names) && (
                             <div className="ml-2">
                               {expandedRowId === report.id ? (
                                 <ChevronUp className="w-4 h-4 text-blue-500" />
@@ -449,14 +449,7 @@ export default function MyTeamPage() {
                           {report.applications}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>
-                        <div className="font-semibold text-slate-600">{report.rtr_submissions}</div>
-                        {report.rtr_names && (
-                          <div className="text-xs text-slate-600 font-semibold mt-1 truncate max-w-[160px] mx-auto" title={report.rtr_names}>
-                            {report.rtr_names}
-                          </div>
-                        )}
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600 font-semibold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>{report.rtr_submissions}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600 font-semibold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>{report.screenings}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-slate-600 font-semibold cursor-pointer" onClick={() => setExpandedRowId(expandedRowId === report.id ? null : report.id)}>{report.interviews}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -479,12 +472,13 @@ export default function MyTeamPage() {
                       </td>
                     </tr>
                     
-                    {/* EXPANDED ROW: CANDIDATE BREAKDOWN + INTERVIEW/SCREENING DETAILS */}
+                    {/* EXPANDED ROW: CANDIDATE BREAKDOWN + RTR/INTERVIEW/SCREENING DETAILS */}
                     <AnimatePresence>
                       {expandedRowId === report.id &&
                         ((report.candidate_breakdown && report.candidate_breakdown.length > 0) ||
                           report.interviews > 0 ||
-                          report.screenings > 0) && (
+                          report.screenings > 0 ||
+                          report.rtr_names) && (
                         <motion.tr
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: "auto" }}
@@ -492,6 +486,27 @@ export default function MyTeamPage() {
                           className="bg-slate-50/50 border-t-0"
                         >
                           <td colSpan={8} className="px-8 py-6 space-y-4">
+                            {report.rtr_names && (
+                              <div className="bg-gradient-to-b from-white to-slate-50/80 p-6 rounded-2xl border border-slate-200/60 shadow-sm">
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                  <UserCircle className="w-4 h-4 text-indigo-500" />
+                                  RTR Details
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                  {report.rtr_names.split(",").map((n: string) => n.trim()).filter(Boolean).map((name: string, i: number) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-sm font-bold text-slate-700"
+                                    >
+                                      <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0">
+                                        {name.charAt(0).toUpperCase()}
+                                      </span>
+                                      {name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             {report.candidate_breakdown && report.candidate_breakdown.length > 0 && (
                               <div className="bg-gradient-to-b from-white to-slate-50/80 p-6 rounded-2xl border border-slate-200/60 shadow-sm">
                                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -524,22 +539,31 @@ export default function MyTeamPage() {
                             )}
 
                             {(report.interviews > 0 || report.screenings > 0) && (
-                              <div className="bg-gradient-to-b from-white to-slate-50/80 p-6 rounded-2xl border border-slate-200/60 shadow-sm">
+                              <div className="bg-gradient-to-b from-white to-slate-50/80 p-5 rounded-2xl border border-slate-200/60 shadow-sm">
                                 {breakdownLoading === report.id ? (
                                   <p className="text-xs text-slate-400 font-medium">Loading interview/screening details...</p>
                                 ) : (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     {report.interviews > 0 && (
                                       <div>
-                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-2.5 flex items-center gap-2">
                                           <CalendarClock className="w-4 h-4 text-orange-500" />
                                           Interview Details
                                         </h4>
-                                        <div className="space-y-2">
+                                        <div className="space-y-1.5">
                                           {(breakdownCache[report.id]?.interviews || []).map((it, i) => (
-                                            <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
-                                              <span className="font-bold text-slate-700 truncate capitalize">{it.candidate}</span>
-                                              <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{it.stage || "-"}</span>
+                                            <div key={i} className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 py-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                              <span className="font-bold text-slate-900 text-base capitalize">{it.candidate}</span>
+                                              <span className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500 font-bold uppercase tracking-wide">Stage</span>
+                                                <span className="text-sm font-bold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full capitalize">{it.stage || "-"}</span>
+                                              </span>
+                                              <span className="text-sm text-slate-700 font-semibold"><span className="text-slate-500 font-bold">Client</span> {it.client || "-"}</span>
+                                              {it.remarks && (
+                                                <span className="text-sm text-slate-700 font-semibold italic">
+                                                  <span className="text-slate-500 font-bold not-italic">Remarks</span> "{it.remarks}"
+                                                </span>
+                                              )}
                                             </div>
                                           ))}
                                         </div>
@@ -547,15 +571,24 @@ export default function MyTeamPage() {
                                     )}
                                     {report.screenings > 0 && (
                                       <div>
-                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-2.5 flex items-center gap-2">
                                           <PhoneCall className="w-4 h-4 text-purple-500" />
                                           Screening Details
                                         </h4>
-                                        <div className="space-y-2">
+                                        <div className="space-y-1.5">
                                           {(breakdownCache[report.id]?.screenings || []).map((sc, i) => (
-                                            <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-sm">
-                                              <span className="font-bold text-slate-700 truncate capitalize">{sc.candidate}</span>
-                                              <span className="text-xs text-slate-500 capitalize ml-2 shrink-0">{sc.stage || "-"}</span>
+                                            <div key={i} className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 py-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                              <span className="font-bold text-slate-900 text-base capitalize">{sc.candidate}</span>
+                                              <span className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500 font-bold uppercase tracking-wide">Screening/AI</span>
+                                                <span className="text-sm font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full capitalize">{sc.stage || "-"}</span>
+                                              </span>
+                                              <span className="text-sm text-slate-700 font-semibold"><span className="text-slate-500 font-bold">Client</span> {sc.client || "-"}</span>
+                                              {sc.remarks && (
+                                                <span className="text-sm text-slate-700 font-semibold italic">
+                                                  <span className="text-slate-500 font-bold not-italic">Remarks</span> "{sc.remarks}"
+                                                </span>
+                                              )}
                                             </div>
                                           ))}
                                         </div>

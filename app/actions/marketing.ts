@@ -245,10 +245,10 @@ export async function getTeamLeadReports() {
 }
 
 /**
- * Candidate + stage for one employee's Interview/Screening entries on one
- * specific day — used only by the Daily Report screens (My Team, and the
- * Admin/HR/T&D Manager Marketing Daily Reports page) to show what's behind
- * the Interviews/Screenings counts.
+ * Candidate + Client + Stage + Remarks for one employee's Interview/Screening
+ * entries on one specific day — used only by the Daily Report screens (My
+ * Team, and the Admin/HR/T&D Manager Marketing Daily Reports page) to show
+ * what's behind the Interviews/Screenings counts.
  *
  * Deliberately a narrow, purpose-built query, not general table access:
  * uses the service-role key (same as the other functions in this file) so
@@ -270,15 +270,21 @@ export async function getInterviewScreeningBreakdown(userId: string, date: strin
 
     const { data, error } = await supabase
         .from("interview_screening_entries")
-        .select("section, candidate, stage")
+        .select("section, candidate, client, stage, remarks")
         .eq("created_by", userId)
         .eq("entry_date_value", date);
 
     if (error) throw new Error(error.message);
 
     const rows = data || [];
+    const toDetail = (r: any) => ({
+        candidate: r.candidate || "Unknown",
+        client: r.client || "",
+        stage: r.stage || "",
+        remarks: r.remarks || "",
+    });
     return {
-        interviews: rows.filter((r) => r.section === "interview").map((r) => ({ candidate: r.candidate || "Unknown", stage: r.stage || "" })),
-        screenings: rows.filter((r) => r.section === "screening").map((r) => ({ candidate: r.candidate || "Unknown", stage: r.stage || "" })),
+        interviews: rows.filter((r) => r.section === "interview").map(toDetail),
+        screenings: rows.filter((r) => r.section === "screening").map(toDetail),
     };
 }
