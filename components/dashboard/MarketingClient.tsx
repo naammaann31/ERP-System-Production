@@ -138,7 +138,7 @@ export default function MarketingClient({
             let query = supabase
                 .from("marketing")
                 .select(selectStr, { count: "exact" })
-                .order("date", { ascending: false })
+                .order("date", { ascending: false, nullsFirst: false })
                 .order("created_at", { ascending: true });
 
             // ── Ownership filter (Option A: full legacy fallback) ──────────
