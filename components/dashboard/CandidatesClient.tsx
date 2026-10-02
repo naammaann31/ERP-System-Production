@@ -24,6 +24,25 @@ import { toast } from "sonner";
 const CANDIDATE_DOCS_URL =
     "https://drive.google.com/drive/u/1/folders/1nNIXdIQdiFWxQ23_0MBtcffhCyJlpP6o";
 
+const PAGE_SIZE = 100;
+
+/**
+ * Build an ILIKE pattern that ignores differences in spacing/hyphens
+ * between words, matching the old in-memory search's behaviour. Escapes
+ * `%`/`\` and strips commas (PostgREST's `.or()` delimiter) itself, so the
+ * raw query string is passed straight in — not pre-escaped — matching
+ * Marketing's usage (duplicated locally rather than shared, so each table's
+ * search stays independent).
+ */
+function buildSearchPattern(str: string): string {
+    const escaped = str
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/,/g, "")
+        .replace(/[\s\-_]+/g, "%");
+    return `%${escaped}%`;
+}
+
 interface Candidate {
     id: string;
     full_name: string;
@@ -59,14 +78,6 @@ const statusColor = (status: string) => {
     }
 };
 
-/** created_at (a UTC timestamp) as the local calendar day, YYYY-MM-DD. */
-const localDay = (iso: string) => {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
 const formatDate = (iso: string) => {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "-";
@@ -90,10 +101,14 @@ const emptyForm = {
 export default function CandidatesClient() {
     const { profile } = useAuth();
     const [candidates, setCandidates] = useState<Candidate[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [offset, setOffset] = useState(0);
     const [employees, setEmployees] = useState<AssignableEmployee[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
 
@@ -123,24 +138,96 @@ export default function CandidatesClient() {
         return isMarketingTeamLead(profile);
     }, [profile]);
 
-    // RLS does the filtering: an employee's select simply returns only the
-    // rows assigned to them, so there is no client-side narrowing to bypass.
-    const loadCandidates = useCallback(async () => {
-        const supabase = createClient();
-        const { data, error: err } = await supabase
-            .from("candidates")
-            .select("*")
-            .order("created_at", { ascending: false });
+    // ── Debounce search input (400 ms), mirroring Marketing/Interview&Screening ──
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+            setOffset(0);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
-        if (err) {
-            console.error("Load candidates failed:", err.message, err);
-            setError("Could not load candidates.");
-        } else {
-            setError(null);
-            setCandidates((data || []) as Candidate[]);
-        }
-        setLoading(false);
-    }, []);
+    useEffect(() => {
+        setOffset(0);
+    }, [startDate, endDate]);
+
+    // RLS does the row-level filtering (assignee sees only their own rows,
+    // Team-Lead/Admin/HR/OPS_HR see everything) — this only adds search and
+    // date-range filters on top, not an ownership boundary.
+    const buildBaseQuery = useCallback(
+        (supabase: ReturnType<typeof createClient>) => {
+            let query = supabase
+                .from("candidates")
+                .select("*", { count: "exact" })
+                .order("created_at", { ascending: false });
+
+            if (debouncedSearch) {
+                const pattern = buildSearchPattern(debouncedSearch.toLowerCase());
+                query = query.or(
+                    [
+                        `full_name.ilike.${pattern}`,
+                        `phone.ilike.${pattern}`,
+                        `marketing_email.ilike.${pattern}`,
+                        `linkedin_email.ilike.${pattern}`,
+                        `technology.ilike.${pattern}`,
+                        `visa_status.ilike.${pattern}`,
+                        `status.ilike.${pattern}`,
+                        `assigned_to_name.ilike.${pattern}`,
+                        `notes.ilike.${pattern}`,
+                    ].join(",")
+                );
+            }
+
+            // created_at is a UTC timestamp; the From/To pickers are local
+            // calendar days, so the boundaries are built from local midnight
+            // (not UTC) — same semantics as the old client-side localDay()
+            // comparison, just computed as a server-side range instead.
+            if (startDate) {
+                query = query.gte("created_at", new Date(`${startDate}T00:00:00`).toISOString());
+            }
+            if (endDate) {
+                query = query.lte("created_at", new Date(`${endDate}T23:59:59.999`).toISOString());
+            }
+
+            return query;
+        },
+        [debouncedSearch, startDate, endDate]
+    );
+
+    const fetchPage = useCallback(
+        async (reset: boolean) => {
+            if (!profile) return;
+            const currentOffset = reset ? 0 : offset;
+
+            if (reset) setLoading(true);
+            else setLoadingMore(true);
+
+            try {
+                const supabase = createClient();
+                const { data, count, error: err } = await buildBaseQuery(supabase)
+                    .range(currentOffset, currentOffset + PAGE_SIZE - 1);
+
+                if (err) throw err;
+
+                setError(null);
+                if (reset) {
+                    setCandidates((data || []) as Candidate[]);
+                    setOffset(PAGE_SIZE);
+                } else {
+                    setCandidates((prev) => [...prev, ...((data || []) as Candidate[])]);
+                    setOffset((prev) => prev + PAGE_SIZE);
+                }
+                setTotalCount(count ?? 0);
+            } catch (err: any) {
+                console.error("Load candidates failed:", err?.message, err);
+                setError("Could not load candidates.");
+            } finally {
+                setLoading(false);
+                setLoadingMore(false);
+            }
+        },
+        [buildBaseQuery, offset, profile]
+    );
 
     const loadEmployees = useCallback(async () => {
         const supabase = createClient();
@@ -159,15 +246,24 @@ export default function CandidatesClient() {
 
     useEffect(() => {
         if (!profile) return;
+        let isMounted = true;
 
-        loadCandidates();
+        fetchPage(true);
         if (canManage) loadEmployees();
 
+        // Realtime: any change on the table triggers a debounced page-1
+        // reset (same filters), same pattern as Marketing/Interview &
+        // Screening — keeps the view fresh without downloading everything.
         const supabase = createClient();
+        let timeoutId: NodeJS.Timeout;
         const channel = supabase
             .channel(`candidates_live_${Math.random().toString(36).slice(2)}`)
             .on("postgres_changes", { event: "*", schema: "public", table: "candidates" }, () => {
-                loadCandidates();
+                if (!isMounted) return;
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    if (isMounted) fetchPage(true);
+                }, 500);
             })
             .subscribe();
 
@@ -183,43 +279,21 @@ export default function CandidatesClient() {
          * just stops the stale copy lingering on screen.
          */
         const refetchIfVisible = () => {
-            if (document.visibilityState === "visible") loadCandidates();
+            if (document.visibilityState === "visible") fetchPage(true);
         };
         document.addEventListener("visibilitychange", refetchIfVisible);
         window.addEventListener("focus", refetchIfVisible);
 
         return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
             supabase.removeChannel(channel);
             document.removeEventListener("visibilitychange", refetchIfVisible);
             window.removeEventListener("focus", refetchIfVisible);
         };
-    }, [profile, canManage, loadCandidates, loadEmployees]);
-
-    const filtered = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-
-        return candidates.filter((c) => {
-            if (q) {
-                const hit = [
-                    c.full_name, c.phone, c.marketing_email, c.linkedin_email,
-                    c.technology, c.visa_status, c.status, c.assigned_to_name, c.notes,
-                ].some((v) => String(v || "").toLowerCase().includes(q));
-                if (!hit) return false;
-            }
-
-            if (!startDate && !endDate) return true;
-
-            // Compare as local YYYY-MM-DD strings rather than Date objects:
-            // `new Date("2026-08-13")` is parsed as UTC midnight, so a direct
-            // comparison shifts the boundary by the timezone offset and drops
-            // rows added late in the day.
-            const day = localDay(c.created_at);
-            if (!day) return false;
-            if (startDate && day < startDate) return false;
-            if (endDate && day > endDate) return false;
-            return true;
-        });
-    }, [candidates, searchQuery, startDate, endDate]);
+    // fetchPage already depends on debouncedSearch/startDate/endDate, so this
+    // effect re-runs (and resets to page 1) whenever those change too.
+    }, [profile, canManage, debouncedSearch, startDate, endDate]);
 
     // Suggestions built from what's already in use, so the team converges on
     // consistent values without being locked into a fixed list.
@@ -323,7 +397,7 @@ export default function CandidatesClient() {
             setFormOpen(false);
             setEditing(null);
             setForm({ ...emptyForm });
-            loadCandidates();
+            fetchPage(true);
         } catch (err: any) {
             console.error("Save candidate failed:", err?.message, err);
             toast.error(err?.message || "Could not save candidate.");
@@ -370,7 +444,7 @@ export default function CandidatesClient() {
                     `Import Complete!\n\nCandidates imported: ${inserted.length}\nSkipped (no name): ${skipped}\n\nImported candidates are Unassigned â€” use the edit button on a row to assign each one to an employee.`
                 );
                 toast.success(`Imported ${inserted.length} candidate(s).`);
-                loadCandidates();
+                fetchPage(true);
             } catch (error) {
                 console.error("Error during candidate import:", error);
                 toast.error("Failed to import file. Please check the format.");
@@ -401,6 +475,8 @@ export default function CandidatesClient() {
             }
 
             setCandidates((prev) => prev.filter((c) => c.id !== toDelete.id));
+            setTotalCount((prev) => Math.max(0, prev - 1));
+            setOffset((prev) => Math.max(0, prev - 1));
             toast.success("Candidate deleted.");
         } catch (err: any) {
             console.error("Delete candidate failed:", err?.message, err);
@@ -519,7 +595,7 @@ export default function CandidatesClient() {
                             <UserSearch className="h-5 w-5 text-blue-500" />
                             {canManage ? "All Candidates" : "My Candidates"}
                             <span className="bg-blue-200 text-blue-800 text-xs py-0.5 px-2.5 rounded-full font-semibold">
-                                {filtered.length}
+                                {totalCount.toLocaleString()}
                             </span>
                         </h2>
                         <p className="text-sm text-slate-500 mt-1">
@@ -550,7 +626,7 @@ export default function CandidatesClient() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filtered.length === 0 ? (
+                                {candidates.length === 0 ? (
                                     <tr>
                                         <td colSpan={canManage ? 11 : 10} className="px-6 py-12 text-center text-slate-500">
                                             {searchQuery || startDate || endDate
@@ -561,7 +637,7 @@ export default function CandidatesClient() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    filtered.map((c, index) => (
+                                    candidates.map((c, index) => (
                                         <tr
                                             key={c.id}
                                             className={`hover:bg-slate-100 transition-colors ${index % 2 === 0 ? "bg-white" : "bg-slate-50"}`}
@@ -639,6 +715,21 @@ export default function CandidatesClient() {
                         </table>
 </div>
                     </div>
+
+                    {/* Load More */}
+                    {!loading && candidates.length < totalCount && (
+                        <div className="py-6 flex justify-center border-t border-slate-100">
+                            <button
+                                onClick={() => fetchPage(false)}
+                                disabled={loadingMore}
+                                className="px-6 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-semibold text-sm rounded-xl transition-all border border-blue-100 shadow-sm disabled:opacity-60"
+                            >
+                                {loadingMore
+                                    ? "Loading..."
+                                    : `Load More (${(totalCount - candidates.length).toLocaleString()} remaining)`}
+                            </button>
+                        </div>
+                    )}
                 </Card>
             </motion.div>
 

@@ -38,7 +38,42 @@ export function parseCandidatesWorkbook(
     });
 
     const norm = (v: any) => String(v ?? "").trim().toLowerCase();
-    const headerIdx = grid.findIndex((r) => (r || []).some((c) => norm(c) === "name"));
+    let headerIdx = grid.findIndex((r) =>
+        (r || []).some((c) => norm(c) === "name" || norm(c) === "candidate name")
+    );
+
+    // Some real exports of this sheet (confirmed on the actual "Candidates
+    // Details" tab) leave the Name column's own header blank while still
+    // labelling every other column. Rather than fail outright, fall back to
+    // locating the header row by its OTHER recognisable fields, the same way
+    // the Marketing Leads importer scores a header row — and if Name still
+    // isn't found but column 0 is free, assume it holds the name, which is
+    // how every sheet of this shape seen so far is laid out.
+    let nameColOverride: number | null = null;
+    if (headerIdx === -1) {
+        const HEADER_SCAN_ROWS = 25;
+        for (let r = 0; r < Math.min(HEADER_SCAN_ROWS, grid.length); r++) {
+            const row = grid[r] || [];
+            let score = 0;
+            let col0Labelled = false;
+            row.forEach((h: any, i: number) => {
+                const k = norm(h);
+                if (!k) return;
+                if (i === 0) col0Labelled = true;
+                if (k.includes("contact") || k.includes("phone") || k.includes("mobile")) score++;
+                else if (k.includes("marketing") && k.includes("email")) score++;
+                else if ((k.includes("linkedin") || k.includes("linked in")) && k.includes("email")) score++;
+                else if (k.includes("technology") || k.includes("tech")) score++;
+                else if (k.includes("visa")) score++;
+            });
+            if (score >= 2 && !col0Labelled) {
+                headerIdx = r;
+                nameColOverride = 0;
+                break;
+            }
+        }
+    }
+
     if (headerIdx === -1) {
         toast.error('Could not find a "NAME" column header in the sheet.');
         return null;
@@ -67,6 +102,10 @@ export function parseCandidatesWorkbook(
         } else if (k.includes("technology") || k.includes("tech")) cols.technology = i;
         else if (k.includes("visa")) cols.visa_status = i;
     });
+
+    if (cols.full_name === undefined && nameColOverride !== null) {
+        cols.full_name = nameColOverride;
+    }
 
     const cell = (row: any[], key: string) => {
         const i = cols[key];
