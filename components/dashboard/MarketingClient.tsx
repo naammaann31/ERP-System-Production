@@ -10,6 +10,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { Card } from "@/components/ui/card";
 import GenerateReportModal from "@/components/dashboard/marketing/GenerateReportModal";
+import { isMarketingTeamLead } from "@/lib/marketingTeamLeadAccess";
 import { toast } from "sonner";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -160,8 +161,10 @@ export default function MarketingClient({
                 if (orParts.length > 0) {
                     query = query.or(orParts.join(","));
                 }
-            } else if (restrictToUser && profile?.role !== "Admin") {
-                // /dashboard/data path — employee viewing their own records
+            } else if (restrictToUser && profile?.role !== "Admin" && !isMarketingTeamLead(profile)) {
+                // /dashboard/data path — employee viewing their own records.
+                // Admin and Marketing Team Lead (incl. T&D Manager override)
+                // see every employee's rows, same as the unrestricted table.
                 const uid = profile?.uid || "";
                 const userName = escapeLike(profile?.fullName?.toLowerCase() || "");
                 if (uid || userName) {
