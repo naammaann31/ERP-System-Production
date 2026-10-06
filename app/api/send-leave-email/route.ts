@@ -1,9 +1,36 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/lib/supabase/server';
 
 export async function POST(req: Request) {
   try {
+    // ── Auth guard ────────────────────────────────────────────────────────────
+    // Verify the caller is a logged-in Admin or HR user.
+    // lib/leave.ts calls this endpoint from the browser, so the session cookie
+    // is sent automatically — no changes to lib/leave.ts are needed.
+    const supabaseSession = await createServerClient();
+    const { data: { user }, error: sessionError } = await supabaseSession.auth.getUser();
+
+    if (sessionError || !user) {
+      return NextResponse.json({ error: 'Unauthorized: valid session required.' }, { status: 401 });
+    }
+
+    // Fetch the caller's role from the profiles table
+    const { data: callerProfile } = await supabaseSession
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const callerRole = callerProfile?.role ?? '';
+    const isAllowed = callerRole === 'Admin' || callerRole === 'HR' || callerRole === 'OPS_HR';
+
+    if (!isAllowed) {
+      return NextResponse.json({ error: 'Forbidden: only Admin or HR may send leave emails.' }, { status: 403 });
+    }
+    // ── End auth guard ────────────────────────────────────────────────────────
+
     const { userId, employeeName, leaveType, duration, days, reason, status } = await req.json();
 
     if (!userId) {
@@ -20,8 +47,8 @@ export async function POST(req: Request) {
 
     try {
       // Try getting user from auth.users (will throw if userId is not a UUID)
-      const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
-      employeeEmail = user?.email;
+      const { data: { user: targetUser } } = await supabaseAdmin.auth.admin.getUserById(userId);
+      employeeEmail = targetUser?.email;
     } catch (e: any) {
       console.warn('getUserById failed (likely non-UUID):', e.message);
     }
@@ -73,3 +100,4 @@ If you have any questions, please contact HR.`
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
