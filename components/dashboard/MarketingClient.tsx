@@ -492,9 +492,65 @@ export default function MarketingClient({
                 }
 
                 const supabase = createClient();
+
+                // ── Duplicate prevention ─────────────────────────────────────
+                // A row counts as a duplicate of one this employee already has
+                // when Company Name + Link + Candidate Name + Date all match
+                // (case/whitespace-insensitive) — verified against real data:
+                // "company + link" alone is too loose (the same candidate
+                // legitimately reapplies to the same link on different days —
+                // seen dozens of times in the real sheets), but the full row
+                // together reliably means "this exact entry already exists."
+                // Checked against both what this employee already has in the
+                // database AND earlier rows already kept from this same file,
+                // so re-importing the same file twice — or a file that already
+                // has its own internal repeats — never doubles up data.
+                const dedupeKey = (companyName: unknown, link: unknown, name: unknown, date: unknown) =>
+                    [companyName, link, name, date]
+                        .map((v) => String(v ?? "").trim().toLowerCase())
+                        .join("|");
+
+                const seenKeys = new Set<string>();
+
+                if (profile?.uid) {
+                    const CHUNK = 1000;
+                    let offset = 0;
+                    // Explicit chunked fetch rather than one unbounded select:
+                    // a single request would silently be capped at whatever
+                    // the project's PostgREST row limit is, which would make
+                    // this check miss duplicates for exactly the
+                    // heaviest-volume employees who need it most.
+                    while (true) {
+                        const { data: existingRows, error: existingErr } = await supabase
+                            .from("marketing")
+                            .select("candidate_name, date, company_name, link")
+                            .eq("created_by", profile.uid)
+                            .range(offset, offset + CHUNK - 1);
+
+                        if (existingErr) throw existingErr;
+                        for (const r of existingRows || []) {
+                            seenKeys.add(dedupeKey(r.company_name, r.link, r.candidate_name, r.date));
+                        }
+                        if (!existingRows || existingRows.length < CHUNK) break;
+                        offset += CHUNK;
+                    }
+                }
+
+                const rowsToInsert: typeof parsedRows = [];
+                let duplicateCount = 0;
+                for (const row of parsedRows) {
+                    const key = dedupeKey(row.companyName, row.link, row.name, row.date);
+                    if (seenKeys.has(key)) {
+                        duplicateCount++;
+                        continue;
+                    }
+                    seenKeys.add(key);
+                    rowsToInsert.push(row);
+                }
+
                 const BATCH_SIZE = 490;
                 let pending: any[] = [];
-                let newCount = 0;
+                const newCount = rowsToInsert.length;
 
                 const flush = async () => {
                     if (pending.length === 0) return;
@@ -503,7 +559,7 @@ export default function MarketingClient({
                     pending = [];
                 };
 
-                for (const parsedRow of parsedRows) {
+                for (const parsedRow of rowsToInsert) {
                     pending.push(
                         marketingUiToRow(
                             {
@@ -516,7 +572,6 @@ export default function MarketingClient({
                             profile?.fullName || "rohit"
                         )
                     );
-                    newCount++;
                     if (pending.length === BATCH_SIZE) await flush();
                 }
                 await flush();
@@ -537,6 +592,7 @@ export default function MarketingClient({
                     `Columns Detected: Name, Date, Company Name${diagnostics.columns.link >= 0 ? ", Link" : ""}\n` +
                     `Total Rows Found: ${diagnostics.rowsScanned - diagnostics.blankRowsSkipped}\n` +
                     `New Records Imported: ${newCount}\n` +
+                    (duplicateCount > 0 ? `Already Existed (Skipped As Duplicate): ${duplicateCount}\n` : "") +
                     `Invalid Rows Skipped: ${skippedCount}` +
                     (diagnostics.missingDateRows > 0 ? `\nRows Without A Date: ${diagnostics.missingDateRows}` : "") +
                     (diagnostics.repairedDateRows > 0 ? `\nDates Corrected (day/month swapped by Excel): ${diagnostics.repairedDateRows}` : "") +
