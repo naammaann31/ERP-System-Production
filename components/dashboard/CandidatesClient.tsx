@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
@@ -127,7 +127,7 @@ export default function CandidatesClient() {
     /**
      * Team-Leads and Admin/HR manage candidates; everyone else is read-only.
      *
-     * This only decides what the UI offers â€” the same rule is enforced by the
+     * This only decides what the UI offers — the same rule is enforced by the
      * candidates_insert/update/delete policies, so hiding a button is never
      * what actually protects the data.
      */
@@ -195,12 +195,23 @@ export default function CandidatesClient() {
     );
 
     const fetchPage = useCallback(
-        async (reset: boolean) => {
+        async (reset: boolean, silent: boolean = false) => {
             if (!profile) return;
             const currentOffset = reset ? 0 : offset;
 
-            if (reset) setLoading(true);
-            else setLoadingMore(true);
+            // `silent` is for background refreshes (realtime updates, the
+            // tab-focus-regain refetch below) that can fire at any moment,
+            // including mid-interaction with something like a native file
+            // picker. Toggling `loading` for those trips the `if (loading)
+            // return <LoadingSpinner />` early-return further down, which
+            // unmounts the whole toolbar — including the hidden file <input>
+            // — out from under a native event already in flight for it,
+            // silently dropping the file selection. A real first load or a
+            // user-driven filter/search change still gets the normal spinner.
+            if (!silent) {
+                if (reset) setLoading(true);
+                else setLoadingMore(true);
+            }
 
             try {
                 const supabase = createClient();
@@ -222,8 +233,10 @@ export default function CandidatesClient() {
                 console.error("Load candidates failed:", err?.message, err);
                 setError("Could not load candidates.");
             } finally {
-                setLoading(false);
-                setLoadingMore(false);
+                if (!silent) {
+                    setLoading(false);
+                    setLoadingMore(false);
+                }
             }
         },
         [buildBaseQuery, offset, profile]
@@ -262,7 +275,7 @@ export default function CandidatesClient() {
                 if (!isMounted) return;
                 clearTimeout(timeoutId);
                 timeoutId = setTimeout(() => {
-                    if (isMounted) fetchPage(true);
+                    if (isMounted) fetchPage(true, true);
                 }, 500);
             })
             .subscribe();
@@ -271,15 +284,22 @@ export default function CandidatesClient() {
          * Realtime alone cannot clear a row that was reassigned away.
          *
          * Realtime applies RLS to every event, so when a Team-Lead reassigns a
-         * candidate to someone else the previous assignee is â€” correctly â€” no
+         * candidate to someone else the previous assignee is — correctly — no
          * longer allowed to see that row and therefore receives no event at
          * all. Their open tab would keep showing it until something else
          * happened to trigger a refetch. Re-reading on focus closes that gap;
          * the row is already inaccessible to them at the database level, this
          * just stops the stale copy lingering on screen.
+         *
+         * Silent (no loading spinner): this can fire at any moment, including
+         * the instant a native file picker dialog closes and hands focus back
+         * — a non-silent fetchPage(true) here was found to unmount the whole
+         * toolbar (via the `if (loading) return <LoadingSpinner />` below)
+         * right as the browser tried to deliver the picked file to the hidden
+         * <input>, silently dropping every Import XL attempt.
          */
         const refetchIfVisible = () => {
-            if (document.visibilityState === "visible") fetchPage(true);
+            if (document.visibilityState === "visible") fetchPage(true, true);
         };
         document.addEventListener("visibilitychange", refetchIfVisible);
         window.addEventListener("focus", refetchIfVisible);
@@ -415,9 +435,18 @@ export default function CandidatesClient() {
         setImporting(true);
         const reader = new FileReader();
 
+        reader.onerror = () => {
+            console.error("Error reading candidate file:", reader.error);
+            toast.error(
+                "Could not read the selected file. It may still be syncing from the cloud (OneDrive/Google Drive) or be in use by another program — please try again."
+            );
+            setImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+
         reader.onload = async (evt) => {
             try {
-                const workbook = xlsx.read(evt.target?.result, { type: "binary" });
+                const workbook = xlsx.read(evt.target?.result, { type: "array" });
                 const parsed = parseCandidatesWorkbook(workbook, profile?.fullName || null);
                 if (!parsed) return;
                 const { pending, skipped } = parsed;
@@ -441,7 +470,7 @@ export default function CandidatesClient() {
                 }
 
                 setImportSummary(
-                    `Import Complete!\n\nCandidates imported: ${inserted.length}\nSkipped (no name): ${skipped}\n\nImported candidates are Unassigned â€” use the edit button on a row to assign each one to an employee.`
+                    `Import Complete!\n\nCandidates imported: ${inserted.length}\nSkipped (no name): ${skipped}\n\nImported candidates are Unassigned — use the edit button on a row to assign each one to an employee.`
                 );
                 toast.success(`Imported ${inserted.length} candidate(s).`);
                 fetchPage(true);
@@ -454,7 +483,7 @@ export default function CandidatesClient() {
             }
         };
 
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
 
     const handleDeleteConfirmed = async () => {
@@ -537,7 +566,7 @@ export default function CandidatesClient() {
                         )}
                     </div>
 
-                    {/* Available to employees as well as leads â€” anyone working
+                    {/* Available to employees as well as leads — anyone working
                         a candidate needs their documents. */}
                     <a
                         href={CANDIDATE_DOCS_URL}
@@ -632,7 +661,7 @@ export default function CandidatesClient() {
                                             {searchQuery || startDate || endDate
                                                 ? "No candidates match the current search or date range."
                                                 : canManage
-                                                  ? "No candidates yet. Use â€œAdd Candidateâ€ to create one."
+                                                  ? 'No candidates yet. Use "Add Candidate" to create one.'
                                                   : "No candidates have been assigned to you yet."}
                                         </td>
                                     </tr>
