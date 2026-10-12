@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Avatar } from "@/components/ui/avatar";
 import { Users, Search, Filter, Plus, Trash2, Download, CheckSquare, Edit } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import AddEmployeeModal from "@/components/employees/AddEmployeeModal";
@@ -120,6 +121,7 @@ export default function EmployeesPage() {
         phone: row.phone || "",
         dateOfJoining: row.date_of_joining || "",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
+        avatarUrl: row.avatar_url,
       }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);
@@ -329,7 +331,16 @@ export default function EmployeesPage() {
                         </td>
                       )}
                       <td className="px-6 py-4 font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => router.push(`/dashboard/employees/${employee.uid}`)}>
-                        {employee.name}
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            src={employee.avatarUrl}
+                            alt={employee.name}
+                            fallback={(employee.name || "U").charAt(0).toUpperCase()}
+                            size="sm"
+                            fallbackClassName="bg-slate-100 text-slate-500 font-bold text-xs"
+                          />
+                          {employee.name}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-slate-500 font-mono text-xs">
                         {employee.id}

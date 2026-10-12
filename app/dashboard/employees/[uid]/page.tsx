@@ -6,6 +6,7 @@ import { motion, Variants, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/AuthProvider";
 import {
   ArrowLeft,
@@ -50,6 +51,7 @@ interface EmployeeData {
   bankAccountName?: string;
   bankDetails?: string;
   ifscCode?: string;
+  avatarUrl?: string;
 }
 
 const containerVariants: Variants = {
@@ -220,6 +222,7 @@ export default function EmployeeProfilePage() {
           phone: row.phone,
             dateOfJoining: row.date_of_joining,
           status: row.status,
+          avatarUrl: row.avatar_url,
           aadhar: priv?.aadhar,
           pan: priv?.pan,
           bankAccountName: priv?.bank_account_name,
@@ -373,9 +376,14 @@ export default function EmployeeProfilePage() {
       <motion.div variants={itemVariants}>
         <Card className="border border-slate-200 shadow-sm overflow-hidden bg-white">
           <div className="px-6 py-8 flex flex-col md:flex-row items-start md:items-center gap-5">
-            <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-2xl border border-slate-200 shadow-sm shrink-0">
-              {initials}
-            </div>
+            <Avatar
+              src={employee.avatarUrl}
+              alt={employee.fullName}
+              fallback={initials}
+              size="2xl"
+              className="h-20 w-20 border border-slate-200 shadow-sm shrink-0"
+              fallbackClassName="bg-slate-50 text-slate-600 font-bold text-2xl"
+            />
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{employee.fullName}</h1>
               <p className="text-slate-500 text-sm font-medium mt-1">{employee.jobRole || "Employee"} · {employee.role === "OPS_HR" ? "HR" : (employee.department || employee.role)}</p>

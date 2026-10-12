@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, MapPin, ChevronDown } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { Avatar } from "@/components/ui/avatar";
 
 export default function WelcomeHeader() {
   const { profile } = useAuth();
@@ -70,10 +71,15 @@ export default function WelcomeHeader() {
       className="bg-white rounded-2xl p-4 md:p-5 flex flex-col md:flex-row items-center justify-between border border-slate-100 shadow-sm relative z-10"
     >
       <div className="flex items-center gap-4 z-10">
-        <div className="w-14 h-14 rounded-full bg-slate-50 border-2 border-white shadow flex items-center justify-center text-blue-600 text-xl font-bold relative">
-          {profile?.fullName?.split(' ').map(n => n[0]).join('').substring(0, 2) || "U"}
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-        </div>
+        <Avatar
+          src={profile?.avatarUrl}
+          alt={profile?.fullName}
+          fallback={profile?.fullName?.split(' ').map(n => n[0]).join('').substring(0, 2) || "U"}
+          size="2xl"
+          rounded="2xl"
+          className="h-28 w-28 border-4 border-blue-100 ring-4 ring-blue-500/10 shadow-lg"
+          fallbackClassName="bg-slate-50 text-blue-600 text-3xl font-bold"
+        />
 
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center gap-2">

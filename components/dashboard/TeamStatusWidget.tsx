@@ -17,6 +17,7 @@ type TeamMember = {
   status: string;
   label?: string;
   isMe?: boolean;
+  avatarUrl?: string;
 };
 
 export default function TeamStatusWidget() {
@@ -56,7 +57,8 @@ export default function TeamStatusWidget() {
           role: row.job_role || row.role || "Employee",
           status: finalStatus,
           label: row.status === "On Leave" ? "On Leave" : undefined,
-          isMe
+          isMe,
+          avatarUrl: row.avatar_url,
         });
       });
 
@@ -176,9 +178,11 @@ export default function TeamStatusWidget() {
                 }}
                 className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-300 ${isAdmin ? "cursor-pointer" : ""} ${member.isMe ? "bg-indigo-50/80 border border-indigo-100 shadow-sm" : "hover:bg-slate-50 border border-transparent hover:-translate-y-0.5 hover:shadow-sm"}`}
               >
-                <Avatar 
-                  size="default" 
-                  fallback={member.name.charAt(0)} 
+                <Avatar
+                  src={member.avatarUrl}
+                  alt={member.name}
+                  size="default"
+                  fallback={member.name.charAt(0)}
                   status={member.status as any}
                 />
                 <div className="flex-1 min-w-0">

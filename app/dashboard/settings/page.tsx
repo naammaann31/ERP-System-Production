@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Bell, Lock, User, Globe, Moon, Save, Check, ChevronDown } from "lucide-react";
+import { Bell, Lock, User, Globe, Moon, Save, Check, ChevronDown, Camera } from "lucide-react";
 import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings";
+import { uploadAvatar, AvatarUploadError } from "@/lib/avatar";
 import { toast, Toaster } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
@@ -29,6 +31,10 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // Profile photo
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Profile form
   const [fullName, setFullName] = useState("");
@@ -90,6 +96,23 @@ export default function SettingsPage() {
       toast.error("Failed to save settings.");
     }
     setSaving(false);
+  };
+
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile?.uid) return;
+
+    setUploadingPhoto(true);
+    try {
+      await uploadAvatar(file, profile.uid);
+      toast.success("Profile photo updated!");
+    } catch (error) {
+      console.error("Avatar upload failed:", error);
+      const message = error instanceof AvatarUploadError ? error.message : "Failed to upload photo.";
+      toast.error(message);
+    }
+    setUploadingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const handleThemeChange = (newTheme: "light" | "dark") => {
@@ -175,6 +198,50 @@ export default function SettingsPage() {
                 <CardDescription>Update your personal details here.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex items-center gap-5 pb-2">
+                  <div className="relative group">
+                    <Avatar
+                      src={profile?.avatarUrl}
+                      alt={profile?.fullName}
+                      fallback={profile?.fullName?.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase() || "U"}
+                      size="2xl"
+                      className="border border-slate-200 shadow-sm"
+                      fallbackClassName="bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold text-2xl"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center shadow-md border-2 border-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      title="Change photo"
+                    >
+                      {uploadingPhoto ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handlePhotoSelected}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Profile Photo</p>
+                    <p className="text-xs text-slate-500 mt-0.5">JPG, PNG, WEBP or GIF. Max 5 MB.</p>
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 mt-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {uploadingPhoto ? "Uploading..." : "Change photo"}
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold uppercase text-slate-500">Full Name</label>

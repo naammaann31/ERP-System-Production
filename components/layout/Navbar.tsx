@@ -14,6 +14,7 @@ import {
 } from "@/lib/notifications";
 import { useNotifications } from "@/components/providers/NotificationProvider";
 import { motion, AnimatePresence } from "framer-motion";
+import { Avatar } from "@/components/ui/avatar";
 
 const formatRelativeTime = (ts: any) => {
     if (!ts || !ts.toDate) return "";
@@ -170,9 +171,15 @@ export default function Navbar() {
                 <div className="relative">
                     <button
                         onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
-                        className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white border border-slate-100 hover:ring-blue-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        className="inline-flex items-center justify-center p-0 leading-none rounded-full shadow-md ring-2 ring-white border border-slate-100 hover:ring-blue-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     >
-                        {initials}
+                        <Avatar
+                            src={profile?.avatarUrl}
+                            alt={profile?.fullName}
+                            fallback={initials}
+                            size="lg"
+                            fallbackClassName="bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold text-base"
+                        />
                     </button>
 
                     {showProfile && (
@@ -180,9 +187,14 @@ export default function Navbar() {
                             <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
                             <div className="absolute top-14 right-0 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 text-left z-50 animate-in fade-in slide-in-from-top-2 cursor-default">
                                 <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 mb-4">
-                                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-2xl shadow-md mb-3">
-                                        {initials}
-                                    </div>
+                                    <Avatar
+                                        src={profile?.avatarUrl}
+                                        alt={profile?.fullName}
+                                        fallback={initials}
+                                        size="2xl"
+                                        className="shadow-md mb-3"
+                                        fallbackClassName="bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold text-3xl"
+                                    />
                                     <h3 className="font-bold text-slate-800 text-lg tracking-tight">{profile?.fullName}</h3>
                                     <p className="text-xs font-semibold text-slate-500 mb-2">{profile?.email}</p>
                                     <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full uppercase tracking-wider">

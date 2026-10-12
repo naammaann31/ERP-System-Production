@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, ChevronDown } from "lucide-react";
+import { X, Check, ChevronDown, Camera } from "lucide-react";
 import { updateEmployeeAction } from "@/app/actions/employees";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { Avatar } from "@/components/ui/avatar";
+import { uploadAvatar, AvatarUploadError } from "@/lib/avatar";
 
 interface EditEmployeeModalProps {
     isOpen: boolean;
@@ -25,7 +27,10 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [showDropdown, setShowDropdown] = useState(false);
     const [phone, setPhone] = useState("");
     const [dateOfJoining, setDateOfJoining] = useState("");
-    
+    const [avatarUrl, setAvatarUrl] = useState("");
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+    const photoInputRef = useRef<HTMLInputElement>(null);
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -40,6 +45,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setDesignation(employee.designation || "Employee");
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
+            setAvatarUrl(employee.avatarUrl || employee.avatar_url || "");
             setPassword("");
             
             const fetchEmail = async () => {
@@ -50,6 +56,25 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             fetchEmail().catch(() => setEmail(""));
         }
     }, [employee, isOpen]);
+
+    const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !employee?.uid) return;
+
+        setUploadingPhoto(true);
+        try {
+            const newUrl = await uploadAvatar(file, employee.uid);
+            setAvatarUrl(newUrl);
+            toast.success("Photo updated.");
+            onSuccess?.();
+        } catch (err) {
+            console.error("Avatar upload failed:", err);
+            const message = err instanceof AvatarUploadError ? err.message : "Failed to upload photo.";
+            toast.error(message);
+        }
+        setUploadingPhoto(false);
+        if (photoInputRef.current) photoInputRef.current.value = "";
+    };
 
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -119,6 +144,39 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                     <div className="mb-6 text-center">
                         <h2 className="text-xl font-bold text-slate-900 tracking-widest uppercase">Edit Clearance</h2>
                         <p className="text-slate-500 text-xs mt-1">Update employee details and system access</p>
+                    </div>
+
+                    <div className="flex items-center justify-center mb-6">
+                        <div className="relative group">
+                            <Avatar
+                                src={avatarUrl}
+                                alt={fullName}
+                                fallback={(fullName || "U").split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
+                                size="2xl"
+                                className="border border-slate-200 shadow-sm"
+                                fallbackClassName="bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-bold text-2xl"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => photoInputRef.current?.click()}
+                                disabled={uploadingPhoto}
+                                className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center shadow-md border-2 border-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                title="Change photo"
+                            >
+                                {uploadingPhoto ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <Camera className="w-3.5 h-3.5" />
+                                )}
+                            </button>
+                            <input
+                                ref={photoInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                className="hidden"
+                                onChange={handlePhotoSelected}
+                            />
+                        </div>
                     </div>
 
                     <form onSubmit={handleUpdate} className="space-y-4">

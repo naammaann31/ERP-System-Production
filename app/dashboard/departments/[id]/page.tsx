@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
+import { Avatar } from "@/components/ui/avatar";
 import { 
   Building2, 
   Megaphone, 
@@ -85,6 +86,7 @@ export default function DepartmentPage() {
         employeeId: row.employee_id,
         jobRole: row.job_role,
         designation: row.designation,
+        avatarUrl: row.avatar_url,
       }));
       setEmployees(emps);
       setLoading(false);
@@ -184,9 +186,14 @@ export default function DepartmentPage() {
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm ${dept.lightBg} ${dept.textColor}`}>
-                            {(employee.fullName || "U").charAt(0).toUpperCase()}
-                          </div>
+                          <Avatar
+                            src={employee.avatarUrl}
+                            alt={employee.fullName}
+                            fallback={(employee.fullName || "U").charAt(0).toUpperCase()}
+                            size="default"
+                            className="shadow-sm"
+                            fallbackClassName={`${dept.lightBg} ${dept.textColor} font-bold text-sm`}
+                          />
                           <div>
                             <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors cursor-pointer" onClick={() => router.push(`/dashboard/employees/${employee.uid}`)}>
                               {employee.fullName || "Unnamed"}
