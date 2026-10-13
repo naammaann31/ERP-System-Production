@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CalendarCheck, Clock, Palmtree, Users, Wallet, Activity } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { computeWorkedSeconds, getLocalDateString } from "@/lib/attendance";
 import { getUserLeaves, calculateAccruedLeaves } from "@/lib/leave";
 import { getEmployeePayrolls } from "@/lib/payroll";
 import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
+import { fetchAllProfilesForDashboard, fetchTodayAttendanceForDashboard } from "@/lib/dashboardQueries";
 
 export default function TopStats() {
   const { profile } = useAuth();
@@ -30,52 +31,62 @@ export default function TopStats() {
   const [salaryStatus, setSalaryStatus] = useState("Pending");
   const [salarySubtitle, setSalarySubtitle] = useState(new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }));
 
+  const todayDateForCounts = getLocalDateString();
+
+  // Shared with TeamStatusWidget (for an Admin viewer only — see
+  // lib/dashboardQueries.ts for why) via React Query's cache: both used to
+  // independently fetch essentially this same data at the same moment on
+  // every Dashboard load. Query stays disabled (never fetches) for anyone
+  // who isn't Admin/HR/OPS_HR, matching the original effect's guard.
+  const { data: allProfiles } = useQuery({
+    queryKey: ["dashboard", "profiles", "all"],
+    queryFn: fetchAllProfilesForDashboard,
+    enabled: !!profile && isAdminOrHR,
+  });
+  const { data: todayAttendanceRows } = useQuery({
+    queryKey: ["dashboard", "attendance", "today", todayDateForCounts],
+    queryFn: () => fetchTodayAttendanceForDashboard(todayDateForCounts),
+    enabled: !!profile && isAdminOrHR,
+  });
+
   useEffect(() => {
-    if (!profile || !isAdminOrHR) return;
+    if (!allProfiles) return;
+    // role !== "Admin" replicates the original query's .neq("role","Admin")
+    // — now applied client-side since the fetch is shared, unfiltered data.
+    const profiles = allProfiles.filter((p) => p.role !== "Admin");
 
-    const supabase = createClient();
+    setTotalEmployees(profiles.length);
 
-    const fetchCounts = async () => {
-      const todayDate = getLocalDateString();
-      const [profilesRes, attRes] = await Promise.all([
-        supabase.from("profiles").select("id, status").neq("role", "Admin"),
-        supabase.from("attendance").select("user_id, status, is_late").eq("date", todayDate)
-      ]);
+    let onLeave = 0;
+    profiles.forEach((p) => {
+      if (p.status === "On Leave") onLeave++;
+    });
+    setOnLeaveToday(onLeave);
+  }, [allProfiles]);
 
-      const profiles = profilesRes.data || [];
-      const attendance = attRes.data || [];
+  useEffect(() => {
+    if (!todayAttendanceRows) return;
 
-      setTotalEmployees(profiles.length);
+    let presentCount = 0;
+    let lateCount = 0;
+    let absentCount = 0;
 
-      let onLeave = 0;
-      profiles.forEach((p) => {
-        if (p.status === "On Leave") onLeave++;
-      });
-      setOnLeaveToday(onLeave);
+    todayAttendanceRows.forEach((record) => {
+      if (record.status === "Present" || record.status === "Checked In") {
+        presentCount++;
+      }
+      if (record.is_late) {
+        lateCount++;
+      }
+      if (record.status === "Absent") {
+        absentCount++;
+      }
+    });
 
-      let presentCount = 0;
-      let lateCount = 0;
-      let absentCount = 0;
-
-      attendance.forEach(record => {
-        if (record.status === "Present" || record.status === "Checked In") {
-          presentCount++;
-        }
-        if (record.is_late) {
-          lateCount++;
-        }
-        if (record.status === "Absent") {
-          absentCount++;
-        }
-      });
-
-      setPresentToday(presentCount);
-      setLateToday(lateCount);
-      setAbsentToday(absentCount);
-    };
-
-    fetchCounts();
-  }, [profile, isAdminOrHR]);
+    setPresentToday(presentCount);
+    setLateToday(lateCount);
+    setAbsentToday(absentCount);
+  }, [todayAttendanceRows]);
 
   // Today's attendance now comes from TodayAttendanceProvider (shared with
   // LiveAttendanceCard/WeeklyOverview) instead of its own fetch — see that

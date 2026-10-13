@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { getLocalDateString } from "@/lib/attendance";
 import { useRouter } from "next/navigation";
+import {
+  fetchAllProfilesForDashboard,
+  fetchProfilesByRoleForDashboard,
+  fetchTodayAttendanceForDashboard,
+} from "@/lib/dashboardQueries";
 
 type TeamMember = {
   id: string;
@@ -27,7 +33,101 @@ export default function TeamStatusWidget() {
   const isAdmin = profile?.role === "Admin";
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const todayDate = getLocalDateString();
 
+  // Admin sees every employee — shares the exact same cache entry as
+  // TopStats' own counts query (see lib/dashboardQueries.ts for why that's
+  // safe: both were independently fetching essentially this same data at
+  // once). HR/regular employees see only their own role/department, same
+  // as before — a separately-scoped query, never shared with anything,
+  // since broadening it would mean downloading the whole company's
+  // profiles just to show a same-department list.
+  const { data: allProfilesData } = useQuery({
+    queryKey: ["dashboard", "profiles", "all"],
+    queryFn: fetchAllProfilesForDashboard,
+    enabled: !!profile?.role && isAdmin,
+  });
+  const { data: roleProfilesData } = useQuery({
+    queryKey: ["dashboard", "profiles", "role", profile?.role],
+    queryFn: () => fetchProfilesByRoleForDashboard(profile!.role!),
+    enabled: !!profile?.role && !isAdmin,
+  });
+  // Safe to share across every viewer role — this query was never
+  // filtered by role to begin with (unlike the profiles one above).
+  const { data: todayAttendanceRows } = useQuery({
+    queryKey: ["dashboard", "attendance", "today", todayDate],
+    queryFn: () => fetchTodayAttendanceForDashboard(todayDate),
+    enabled: !!profile?.role,
+  });
+
+  // React Query's cache is the source of truth for the INITIAL fetch only.
+  // Realtime patches below mutate these local refs directly, exactly as
+  // before this migration — a live update doesn't get written back
+  // through the shared cache, it just keeps updating this component's own
+  // copy the same way it always did.
+  const usersDataRef = useRef<any[]>([]);
+  const attendanceDataRef = useRef<Record<string, string>>({});
+
+  const updateTeam = () => {
+    const members: TeamMember[] = [];
+    usersDataRef.current.forEach((row: any) => {
+      const isMe = row.id === profile?.uid;
+      const attStatus = attendanceDataRef.current[row.id];
+
+      let finalStatus = "offline";
+      if (attStatus === "Checked In" || attStatus === "Present") {
+        finalStatus = "online";
+      } else if (row.status === "Active" || !row.status) {
+        finalStatus = "online";
+      }
+
+      members.push({
+        id: row.id,
+        name: row.full_name || "Unknown",
+        role: row.job_role || row.role || "Employee",
+        status: finalStatus,
+        label: row.status === "On Leave" ? "On Leave" : undefined,
+        isMe,
+        avatarUrl: row.avatar_url,
+        avatarThumbUrl: row.avatar_thumb_url,
+      });
+    });
+
+    // Sort so the logged-in user is at the top, then alphabetically
+    members.sort((a, b) => {
+      if (a.isMe) return -1;
+      if (b.isMe) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    setTeam(members);
+    setLoading(false);
+  };
+
+  // Seed the local copy from whichever profiles query applies.
+  useEffect(() => {
+    const sourceData = isAdmin ? allProfilesData : roleProfilesData;
+    if (!sourceData) return;
+    usersDataRef.current = sourceData;
+    updateTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, allProfilesData, roleProfilesData]);
+
+  // Seed the local copy of today's attendance.
+  useEffect(() => {
+    if (!todayAttendanceRows) return;
+    const newAtt: Record<string, string> = {};
+    todayAttendanceRows.forEach((row) => {
+      newAtt[row.user_id] = row.status;
+    });
+    attendanceDataRef.current = newAtt;
+    updateTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayAttendanceRows]);
+
+  // Realtime: patches the same local refs the two effects above seed —
+  // unchanged from before this migration, only the initial fetch moved to
+  // a shared cache.
   useEffect(() => {
     if (!profile?.role) {
       setLoading(false);
@@ -35,75 +135,6 @@ export default function TeamStatusWidget() {
     }
 
     const supabase = createClient();
-    const todayDate = getLocalDateString();
-    let usersData: any[] = [];
-    let attendanceData: Record<string, string> = {};
-
-    const updateTeam = () => {
-      const members: TeamMember[] = [];
-      usersData.forEach((row) => {
-        const isMe = row.id === profile.uid;
-        const attStatus = attendanceData[row.id];
-
-        let finalStatus = "offline";
-        if (attStatus === "Checked In" || attStatus === "Present") {
-          finalStatus = "online";
-        } else if (row.status === "Active" || !row.status) {
-          finalStatus = "online";
-        }
-
-        members.push({
-          id: row.id,
-          name: row.full_name || "Unknown",
-          role: row.job_role || row.role || "Employee",
-          status: finalStatus,
-          label: row.status === "On Leave" ? "On Leave" : undefined,
-          isMe,
-          avatarUrl: row.avatar_url,
-          avatarThumbUrl: row.avatar_thumb_url,
-        });
-      });
-
-      // Sort so the logged-in user is at the top, then alphabetically
-      members.sort((a, b) => {
-        if (a.isMe) return -1;
-        if (b.isMe) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      setTeam(members);
-      setLoading(false);
-    };
-
-    const fetchUsers = async () => {
-      let q = supabase.from("profiles").select("*");
-      if (!isAdmin) q = q.eq("role", profile.role);
-      const { data, error } = await q;
-      if (error) {
-        console.error("Error fetching team users:", error);
-        setLoading(false);
-        return;
-      }
-      usersData = data || [];
-      updateTeam();
-    };
-
-    const fetchAttendance = async () => {
-      const { data, error } = await supabase.from("attendance").select("*").eq("date", todayDate);
-      if (error) {
-        console.error("Error fetching attendance:", error);
-        return;
-      }
-      const newAtt: Record<string, string> = {};
-      (data || []).forEach((row) => {
-        newAtt[row.user_id] = row.status;
-      });
-      attendanceData = newAtt;
-      updateTeam();
-    };
-
-    fetchUsers();
-    fetchAttendance();
 
     const usersChannel = supabase
       .channel(`team_status_profiles`)
@@ -111,21 +142,21 @@ export default function TeamStatusWidget() {
         if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
           const newRow = payload.new as any;
           const isEligible = isAdmin || newRow.role === profile.role;
-          const index = usersData.findIndex((u: any) => u.id === newRow.id);
+          const index = usersDataRef.current.findIndex((u: any) => u.id === newRow.id);
           if (index !== -1) {
             if (isEligible) {
               // Still eligible — merge the update
-              usersData[index] = { ...usersData[index], ...newRow };
+              usersDataRef.current[index] = { ...usersDataRef.current[index], ...newRow };
             } else {
               // Bug #1 fix: role changed, no longer eligible — remove immediately
-              usersData = usersData.filter((u: any) => u.id !== newRow.id);
+              usersDataRef.current = usersDataRef.current.filter((u: any) => u.id !== newRow.id);
             }
           } else if (isEligible) {
             // New user and eligible — add them
-            usersData.push(newRow);
+            usersDataRef.current = [...usersDataRef.current, newRow];
           }
         } else if (payload.eventType === "DELETE") {
-          usersData = usersData.filter((u: any) => u.id !== (payload.old as any).id);
+          usersDataRef.current = usersDataRef.current.filter((u: any) => u.id !== (payload.old as any).id);
         }
         updateTeam();
       })
@@ -137,13 +168,13 @@ export default function TeamStatusWidget() {
         if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
           const newRow = payload.new as any;
           if (newRow.date === todayDate) {
-            attendanceData[newRow.user_id] = newRow.status;
+            attendanceDataRef.current[newRow.user_id] = newRow.status;
           }
         } else if (payload.eventType === "DELETE") {
           // Bug #2 fix: attendance row deleted — clear local status immediately
           const deletedUserId = (payload.old as any).user_id;
           if (deletedUserId) {
-            delete attendanceData[deletedUserId];
+            delete attendanceDataRef.current[deletedUserId];
           }
         }
         updateTeam();
@@ -154,7 +185,8 @@ export default function TeamStatusWidget() {
       supabase.removeChannel(usersChannel);
       supabase.removeChannel(attChannel);
     };
-  }, [profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.uid, profile?.role, isAdmin]);
 
   return (
     <Card className="h-full">
@@ -171,8 +203,8 @@ export default function TeamStatusWidget() {
         {team.length > 0 ? (
           <div className="space-y-3">
             {team.map((member) => (
-              <div 
-                key={member.id} 
+              <div
+                key={member.id}
                 onClick={() => {
                   if (isAdmin) {
                     router.push(`/dashboard/employees/${member.id}`);
@@ -189,7 +221,7 @@ export default function TeamStatusWidget() {
                 />
                 <div className="flex-1 min-w-0">
                   <p className={`text-base font-black tracking-tight truncate flex items-center gap-1.5 ${member.isMe ? "text-indigo-900" : "text-slate-800"}`}>
-                    {member.name} 
+                    {member.name}
                     {member.isMe && <span className="text-[9px] font-black bg-indigo-200/50 text-indigo-700 px-1.5 py-0.5 rounded uppercase tracking-wider">You</span>}
                   </p>
                   <p className={`text-[11px] font-semibold truncate ${member.isMe ? "text-indigo-600/70" : "text-slate-500"}`}>{member.role}</p>

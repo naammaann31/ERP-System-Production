@@ -273,27 +273,98 @@ export default function MarketingClient({
 
         doReset();
 
-        // Realtime: any change on the marketing table triggers a page reset
-        // (same filters, back to page 1) so the view stays fresh without
-        // downloading the entire table.
+        // Realtime: UPDATE/DELETE get a targeted single-row patch instead of
+        // a full page reset — see Candidates/Vectra Team for the same
+        // pattern. INSERT stays on doReset (debounced): Excel import can
+        // insert hundreds of rows in one go, and the import's own UI update
+        // already relies entirely on this debounced reset (see
+        // handleFileUpload's "Realtime will trigger a page reset
+        // automatically" comment below) — a per-row targeted fetch here
+        // would turn one bulk import into hundreds of individual queries
+        // instead of one.
         const supabase = createClient();
-        let timeoutId: NodeJS.Timeout;
+        let insertTimeoutId: NodeJS.Timeout;
+        let patchTimeoutId: NodeJS.Timeout;
+        const pendingUpdatedIds = new Set<string>();
+        const pendingDeletedIds = new Set<string>();
+
+        const flushPatches = async () => {
+            if (!isMounted) return;
+            const updatedIds = Array.from(pendingUpdatedIds);
+            const deletedIds = Array.from(pendingDeletedIds);
+            pendingUpdatedIds.clear();
+            pendingDeletedIds.clear();
+            if (updatedIds.length === 0 && deletedIds.length === 0) return;
+
+            let updatedRowsMap = new Map<string, any>();
+            if (updatedIds.length > 0) {
+                const { data: rows, error: err } = await buildBaseQuery(supabase, "*").in("id", updatedIds);
+                if (!isMounted) return;
+                if (err) {
+                    console.error("Realtime patch fetch failed:", err.message, err);
+                } else {
+                    updatedRowsMap = new Map((rows || []).map((r: any) => [r.id, marketingRowToUi(r)]));
+                }
+            }
+
+            setData((prev) => {
+                let next = prev.filter((r) => !deletedIds.includes(r.id));
+                next = next
+                    .map((r) => (updatedIds.includes(r.id) ? (updatedRowsMap.get(r.id) ?? null) : r))
+                    .filter((r): r is any => r !== null);
+                // An id that now matches the filter but wasn't already
+                // loaded — no reliable position to insert it at among an
+                // unloaded remainder, so it goes to the top — same choice
+                // lib/leave.ts's listenToQuery already makes.
+                const existingIds = new Set(next.map((r) => r.id));
+                const newlyMatching = updatedIds
+                    .filter((id) => updatedRowsMap.has(id) && !existingIds.has(id))
+                    .map((id) => updatedRowsMap.get(id));
+                return [...newlyMatching, ...next];
+            });
+
+            // Refresh the total count once per flush — cheap (1 row, id
+            // column only, exact count), avoids re-implementing the
+            // ownership/search/date filter-matching logic in JS.
+            try {
+                const { count } = await buildBaseQuery(supabase, "id").range(0, 0);
+                if (isMounted && typeof count === "number") setTotalCount(count);
+            } catch (err) {
+                console.error("Realtime count refresh failed:", err);
+            }
+        };
 
         const channel = supabase
             .channel(`marketing_live_${Math.random().toString(36).slice(2)}`)
-            .on("postgres_changes", { event: "*", schema: "public", table: "marketing" }, () => {
-                if (isMounted) {
-                    clearTimeout(timeoutId);
-                    timeoutId = setTimeout(() => {
+            .on("postgres_changes", { event: "*", schema: "public", table: "marketing" }, (payload) => {
+                if (!isMounted) return;
+
+                if (payload.eventType === "INSERT") {
+                    clearTimeout(insertTimeoutId);
+                    insertTimeoutId = setTimeout(() => {
                         if (isMounted) doReset();
                     }, 500);
+                    return;
                 }
+
+                const id = payload.eventType === "DELETE" ? (payload.old as any)?.id : (payload.new as any)?.id;
+                if (!id) return;
+                if (payload.eventType === "DELETE") {
+                    pendingDeletedIds.add(id);
+                } else {
+                    pendingUpdatedIds.add(id);
+                }
+                clearTimeout(patchTimeoutId);
+                patchTimeoutId = setTimeout(() => {
+                    if (isMounted) flushPatches();
+                }, 400);
             })
             .subscribe();
 
         return () => {
             isMounted = false;
-            clearTimeout(timeoutId);
+            clearTimeout(insertTimeoutId);
+            clearTimeout(patchTimeoutId);
             supabase.removeChannel(channel);
         };
     // Re-runs when filters or profile change (debounced search already resets offset)

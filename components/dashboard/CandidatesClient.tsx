@@ -264,19 +264,91 @@ export default function CandidatesClient() {
         fetchPage(true);
         if (canManage) loadEmployees();
 
-        // Realtime: any change on the table triggers a debounced page-1
-        // reset (same filters), same pattern as Marketing/Interview &
-        // Screening — keeps the view fresh without downloading everything.
+        // Realtime: UPDATE/DELETE get a targeted single-row patch instead of
+        // a full page-1 reset — one candidate's status changing shouldn't
+        // re-download page 1 for everyone else's open tab. INSERT stays on
+        // the debounced full reset: Excel import can insert hundreds of rows
+        // in one go, and collapsing that burst into a single refetch (what
+        // the debounce already did) is better than one targeted query per
+        // inserted row, which would make a bulk import slower, not faster.
         const supabase = createClient();
-        let timeoutId: NodeJS.Timeout;
+        let insertTimeoutId: NodeJS.Timeout;
+        let patchTimeoutId: NodeJS.Timeout;
+        const pendingUpdatedIds = new Set<string>();
+        const pendingDeletedIds = new Set<string>();
+
+        const flushPatches = async () => {
+            if (!isMounted) return;
+            const updatedIds = Array.from(pendingUpdatedIds);
+            const deletedIds = Array.from(pendingDeletedIds);
+            pendingUpdatedIds.clear();
+            pendingDeletedIds.clear();
+            if (updatedIds.length === 0 && deletedIds.length === 0) return;
+
+            let updatedRowsMap = new Map<string, Candidate>();
+            if (updatedIds.length > 0) {
+                const { data, error: err } = await buildBaseQuery(supabase).in("id", updatedIds);
+                if (!isMounted) return;
+                if (err) {
+                    console.error("Realtime patch fetch failed:", err.message, err);
+                } else {
+                    updatedRowsMap = new Map((data || []).map((row: any) => [row.id, row as Candidate]));
+                }
+            }
+
+            setCandidates((prev) => {
+                let next = prev.filter((c) => !deletedIds.includes(c.id));
+                next = next
+                    .map((c) => (updatedIds.includes(c.id) ? (updatedRowsMap.get(c.id) ?? null) : c))
+                    .filter((c): c is Candidate => c !== null);
+                // An id that now matches the filter but wasn't already
+                // loaded — e.g. just reassigned to the current viewer. No
+                // reliable position to insert it at (page is sorted by
+                // created_at desc, but we only know this one row's value
+                // relative to an unloaded remainder), so it goes to the top —
+                // same choice lib/leave.ts's listenToQuery already makes.
+                const existingIds = new Set(next.map((c) => c.id));
+                const newlyMatching = updatedIds
+                    .filter((id) => updatedRowsMap.has(id) && !existingIds.has(id))
+                    .map((id) => updatedRowsMap.get(id)!);
+                return [...newlyMatching, ...next];
+            });
+
+            // Refresh the total count once per flush — cheap (1 row, exact
+            // count), avoids re-implementing the filter-matching logic in JS
+            // just to decide whether the total went up or down.
+            try {
+                const { count } = await buildBaseQuery(supabase).range(0, 0);
+                if (isMounted && typeof count === "number") setTotalCount(count);
+            } catch (err) {
+                console.error("Realtime count refresh failed:", err);
+            }
+        };
+
         const channel = supabase
             .channel(`candidates_live_${Math.random().toString(36).slice(2)}`)
-            .on("postgres_changes", { event: "*", schema: "public", table: "candidates" }, () => {
+            .on("postgres_changes", { event: "*", schema: "public", table: "candidates" }, (payload) => {
                 if (!isMounted) return;
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => {
-                    if (isMounted) fetchPage(true, true);
-                }, 500);
+
+                if (payload.eventType === "INSERT") {
+                    clearTimeout(insertTimeoutId);
+                    insertTimeoutId = setTimeout(() => {
+                        if (isMounted) fetchPage(true, true);
+                    }, 500);
+                    return;
+                }
+
+                const id = payload.eventType === "DELETE" ? (payload.old as any)?.id : (payload.new as any)?.id;
+                if (!id) return;
+                if (payload.eventType === "DELETE") {
+                    pendingDeletedIds.add(id);
+                } else {
+                    pendingUpdatedIds.add(id);
+                }
+                clearTimeout(patchTimeoutId);
+                patchTimeoutId = setTimeout(() => {
+                    if (isMounted) flushPatches();
+                }, 400);
             })
             .subscribe();
 
@@ -306,7 +378,8 @@ export default function CandidatesClient() {
 
         return () => {
             isMounted = false;
-            clearTimeout(timeoutId);
+            clearTimeout(insertTimeoutId);
+            clearTimeout(patchTimeoutId);
             supabase.removeChannel(channel);
             document.removeEventListener("visibilitychange", refetchIfVisible);
             window.removeEventListener("focus", refetchIfVisible);

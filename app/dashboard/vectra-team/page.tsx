@@ -214,21 +214,98 @@ export default function VectraTeamPage() {
         fetchPage(true);
 
         const supabase = createClient();
-        let timeoutId: NodeJS.Timeout;
+        let insertTimeoutId: NodeJS.Timeout;
+        let patchTimeoutId: NodeJS.Timeout;
+        const pendingUpdatedIds = new Set<string>();
+        const pendingDeletedIds = new Set<string>();
+
+        // UPDATE/DELETE: a targeted patch instead of re-fetching page 1 — one
+        // person's profile changing (e.g. uploading a photo) shouldn't
+        // re-download the whole page for every other open session. INSERT
+        // stays on the debounced full reset below: new employees are created
+        // one at a time (no bulk-insert path for profiles, unlike Marketing/
+        // Candidates' Excel imports), and — unlike a known-id UPDATE — a
+        // brand-new row's correct position in the alphabetically-sorted,
+        // only-partially-loaded page can't be determined from the row alone.
+        const flushPatches = async () => {
+            if (!isMounted) return;
+            const updatedIds = Array.from(pendingUpdatedIds);
+            const deletedIds = Array.from(pendingDeletedIds);
+            pendingUpdatedIds.clear();
+            pendingDeletedIds.clear();
+            if (updatedIds.length === 0 && deletedIds.length === 0) return;
+
+            let updatedRowsMap = new Map<string, TeamMember>();
+            if (updatedIds.length > 0) {
+                const { data, error: err } = await buildBaseQuery(supabase).in("id", updatedIds);
+                if (!isMounted) return;
+                if (err) {
+                    console.error("Realtime patch fetch failed:", err.message, err);
+                } else {
+                    updatedRowsMap = new Map((data || []).map((row: any) => [row.id, mapRow(row)]));
+                }
+            }
+
+            setMembers((prev) => {
+                let next = prev.filter((m) => !deletedIds.includes(m.uid));
+                next = next
+                    .map((m) => (updatedIds.includes(m.uid) ? (updatedRowsMap.get(m.uid) ?? null) : m))
+                    .filter((m): m is TeamMember => m !== null);
+                // An id that matched the filter but wasn't already loaded —
+                // e.g. a role change just brought it into the active
+                // department filter. No reliable alphabetical slot to insert
+                // it at without knowing the full ordering, so (same choice
+                // lib/leave.ts's listenToQuery already makes) it goes to the
+                // top; a later search/filter change naturally re-sorts it.
+                const existingIds = new Set(next.map((m) => m.uid));
+                const newlyMatching = updatedIds
+                    .filter((id) => updatedRowsMap.has(id) && !existingIds.has(id))
+                    .map((id) => updatedRowsMap.get(id)!);
+                return [...newlyMatching, ...next];
+            });
+
+            // Refresh the total count once per flush — cheap (1 row, exact
+            // count), avoids re-implementing the filter-matching logic in JS
+            // just to decide whether the total went up or down.
+            try {
+                const { count } = await buildBaseQuery(supabase).range(0, 0);
+                if (isMounted && typeof count === "number") setTotalCount(count);
+            } catch (err) {
+                console.error("Realtime count refresh failed:", err);
+            }
+        };
+
         const channel = supabase
             .channel(`vectra_team_live_${Math.random().toString(36).slice(2)}`)
-            .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+            .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
                 if (!isMounted) return;
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => {
-                    if (isMounted) fetchPage(true, true);
-                }, 500);
+
+                if (payload.eventType === "INSERT") {
+                    clearTimeout(insertTimeoutId);
+                    insertTimeoutId = setTimeout(() => {
+                        if (isMounted) fetchPage(true, true);
+                    }, 500);
+                    return;
+                }
+
+                const id = payload.eventType === "DELETE" ? (payload.old as any)?.id : (payload.new as any)?.id;
+                if (!id) return;
+                if (payload.eventType === "DELETE") {
+                    pendingDeletedIds.add(id);
+                } else {
+                    pendingUpdatedIds.add(id);
+                }
+                clearTimeout(patchTimeoutId);
+                patchTimeoutId = setTimeout(() => {
+                    if (isMounted) flushPatches();
+                }, 400);
             })
             .subscribe();
 
         return () => {
             isMounted = false;
-            clearTimeout(timeoutId);
+            clearTimeout(insertTimeoutId);
+            clearTimeout(patchTimeoutId);
             supabase.removeChannel(channel);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

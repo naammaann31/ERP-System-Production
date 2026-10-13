@@ -221,26 +221,111 @@ export default function InterviewScreeningClient() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [debouncedSearch]);
 
-    // ── Realtime: refresh only the section the change actually affects ─────
-    // (Option 2 — a targeted refresh, not a blanket "any change → reload
-    // everything.") Uses a fixed channel name so repeated mounts don't pile
-    // up duplicate subscriptions.
+    // ── Realtime: targeted single-row patch, scoped to the affected
+    // section ────────────────────────────────────────────────────────────
+    // (Option 2, extended — the previous version already scoped a refresh
+    // to just the affected section rather than both, but still re-fetched
+    // that whole section's page 1 on every single event, with no debounce
+    // at all.) UPDATE/DELETE now patch only the affected row; INSERT keeps
+    // a full section reset (now debounced, like the other list pages) since
+    // Excel import can insert many rows across both sections at once, and
+    // collapsing that burst into one refetch per section beats a targeted
+    // query per inserted row. Uses a fixed channel name so repeated mounts
+    // don't pile up duplicate subscriptions.
     useEffect(() => {
         const supabase = createClient();
+        let isMounted = true;
+        let insertTimeoutId: NodeJS.Timeout;
+        let patchTimeoutId: NodeJS.Timeout;
+        const pendingUpdated: Record<Section, Set<string>> = { interview: new Set(), screening: new Set() };
+        const pendingDeleted: Record<Section, Set<string>> = { interview: new Set(), screening: new Set() };
+
+        const flushPatches = async () => {
+            if (!isMounted) return;
+            for (const section of ["interview", "screening"] as Section[]) {
+                const updatedIds = Array.from(pendingUpdated[section]);
+                const deletedIds = Array.from(pendingDeleted[section]);
+                pendingUpdated[section] = new Set();
+                pendingDeleted[section] = new Set();
+                if (updatedIds.length === 0 && deletedIds.length === 0) continue;
+
+                const setData = section === "interview" ? setInterviewData : setScreeningData;
+                const setTotal = section === "interview" ? setInterviewTotalCount : setScreeningTotalCount;
+
+                let updatedRowsMap = new Map<string, any>();
+                if (updatedIds.length > 0) {
+                    const { data: rows, error: err } = await buildQuery(supabase, section).in("id", updatedIds);
+                    if (!isMounted) return;
+                    if (err) {
+                        console.error(`Realtime patch fetch failed for ${section}:`, err.message, err);
+                    } else {
+                        updatedRowsMap = new Map((rows || []).map((r: any) => [r.id, r]));
+                    }
+                }
+
+                setData((prev: any[]) => {
+                    let next = prev.filter((r) => !deletedIds.includes(r.id));
+                    next = next
+                        .map((r) => (updatedIds.includes(r.id) ? (updatedRowsMap.get(r.id) ?? null) : r))
+                        .filter((r) => r !== null);
+                    // An id that now matches the search filter but wasn't
+                    // already loaded — no reliable position to insert it at
+                    // among an unloaded remainder, so it goes to the top —
+                    // same choice lib/leave.ts's listenToQuery already makes.
+                    const existingIds = new Set(next.map((r) => r.id));
+                    const newlyMatching = updatedIds
+                        .filter((id) => updatedRowsMap.has(id) && !existingIds.has(id))
+                        .map((id) => updatedRowsMap.get(id));
+                    return [...newlyMatching, ...next];
+                });
+
+                // Refresh that section's total count once per flush.
+                try {
+                    const { count } = await buildQuery(supabase, section).range(0, 0);
+                    if (isMounted && typeof count === "number") setTotal(count);
+                } catch (err) {
+                    console.error(`Realtime count refresh failed for ${section}:`, err);
+                }
+            }
+        };
+
         const channel = supabase
             .channel("interview_screening_live")
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "interview_screening_entries" },
                 (payload) => {
+                    if (!isMounted) return;
                     const row = (payload.new ?? payload.old) as any;
                     const section: Section = row?.section === "interview" ? "interview" : "screening";
-                    fetchPage(section, 0, false);
+
+                    if (payload.eventType === "INSERT") {
+                        clearTimeout(insertTimeoutId);
+                        insertTimeoutId = setTimeout(() => {
+                            if (isMounted) fetchPage(section, 0, false);
+                        }, 500);
+                        return;
+                    }
+
+                    const id = row?.id;
+                    if (!id) return;
+                    if (payload.eventType === "DELETE") {
+                        pendingDeleted[section].add(id);
+                    } else {
+                        pendingUpdated[section].add(id);
+                    }
+                    clearTimeout(patchTimeoutId);
+                    patchTimeoutId = setTimeout(() => {
+                        if (isMounted) flushPatches();
+                    }, 400);
                 }
             )
             .subscribe();
 
         return () => {
+            isMounted = false;
+            clearTimeout(insertTimeoutId);
+            clearTimeout(patchTimeoutId);
             supabase.removeChannel(channel);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

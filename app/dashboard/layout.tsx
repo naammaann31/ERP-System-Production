@@ -1,6 +1,7 @@
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { SidebarProvider } from "@/components/providers/SidebarProvider";
 import { NotificationProvider } from "@/components/providers/NotificationProvider";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Sidebar from "@/components/layout/Sidebar";
 import Navbar from "@/components/layout/Navbar";
@@ -10,6 +11,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <AuthProvider>
             <ProtectedRoute>
+                <QueryProvider>
                 <NotificationProvider>
                 <SidebarProvider>
                     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -23,6 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </SidebarProvider>
                 </NotificationProvider>
+                </QueryProvider>
             </ProtectedRoute>
         </AuthProvider>
     );
