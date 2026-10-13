@@ -5,19 +5,20 @@ import { CheckCircle2, Clock, LogOut, LogIn, Info, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
-import { 
-  checkIn, 
-  checkOut, 
-  getTodayAttendance,
-  istParts, 
+import {
+  checkIn,
+  checkOut,
+  istParts,
   updateWorkingSeconds,
   computeWorkedSeconds,
   formatISTClock,
   AttendanceRecord
 } from "@/lib/attendance";
+import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
 
 export default function LiveAttendanceCard() {
   const { profile } = useAuth();
+  const { record: sharedRecord, loading: sharedLoading, setRecord: setSharedRecord } = useTodayAttendance();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [workingSeconds, setWorkingSeconds] = useState(0);
@@ -28,29 +29,32 @@ export default function LiveAttendanceCard() {
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const recordRef = useRef<AttendanceRecord | null>(null);
 
+  // Today's attendance record now comes from TodayAttendanceProvider
+  // (shared with TopStats/WeeklyOverview) instead of this component
+  // fetching it independently — see that file for why. This component
+  // still owns the actual check-in/check-out mutations further down; it
+  // pushes its result back into the shared record via setSharedRecord()
+  // so the other two widgets pick up the change immediately too.
   useEffect(() => {
     setCurrentTime(new Date());
 
-    const loadAttendance = async () => {
-      if (profile?.uid) {
-        const record = await getTodayAttendance(profile.uid);
-        if (record) {
-          setAttendanceRecord(record);
-          if (record.status === "Checked In") {
-            setIsCheckedIn(true);
-            setWorkingSeconds(computeWorkedSeconds(record));
-          } else if (record.status === "Present") {
-            // Already checked out for the day
-            setIsCheckedIn(false);
-            setWorkingSeconds(computeWorkedSeconds(record));
-          }
+    if (!sharedLoading) {
+      if (sharedRecord) {
+        setAttendanceRecord(sharedRecord);
+        if (sharedRecord.status === "Checked In") {
+          setIsCheckedIn(true);
+          setWorkingSeconds(computeWorkedSeconds(sharedRecord));
+        } else if (sharedRecord.status === "Present") {
+          // Already checked out for the day
+          setIsCheckedIn(false);
+          setWorkingSeconds(computeWorkedSeconds(sharedRecord));
         }
       }
       setLoading(false);
-    };
+    }
+  }, [sharedRecord, sharedLoading]);
 
-    loadAttendance();
-
+  useEffect(() => {
     // Recompute from the check-in timestamp each tick rather than adding a
     // second. The old version called setWorkingSeconds INSIDE a
     // setIsCheckedIn updater; updater functions must be pure, and React
@@ -68,7 +72,7 @@ export default function LiveAttendanceCard() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [profile]);
+  }, []);
 
   // Mirror of attendanceRecord for the interval above to read.
   useEffect(() => {
@@ -96,6 +100,7 @@ export default function LiveAttendanceCard() {
         const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role, profile.designation);
         setAttendanceRecord(record);
         setIsCheckedIn(true);
+        setSharedRecord(record);
       } catch (error: any) {
         console.error("Error during check in:", error, error.message, error.details);
         toast.error(`Check in failed: ${error.message || JSON.stringify(error)}`);
@@ -109,11 +114,13 @@ export default function LiveAttendanceCard() {
     try {
       if (attendanceRecord?.id) {
         await checkOut(attendanceRecord.id, workingSeconds);
-        setAttendanceRecord({
+        const updatedRecord: AttendanceRecord = {
           ...attendanceRecord,
           status: "Present",
           workingSeconds
-        });
+        };
+        setAttendanceRecord(updatedRecord);
+        setSharedRecord(updatedRecord);
       }
       setIsCheckedIn(false);
     } catch (error) {

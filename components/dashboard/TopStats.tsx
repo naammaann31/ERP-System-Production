@@ -6,12 +6,14 @@ import { CalendarCheck, Clock, Palmtree, Users, Wallet, Activity } from "lucide-
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getTodayAttendance, computeWorkedSeconds, getLocalDateString } from "@/lib/attendance";
+import { computeWorkedSeconds, getLocalDateString } from "@/lib/attendance";
 import { getUserLeaves, calculateAccruedLeaves } from "@/lib/leave";
 import { getEmployeePayrolls } from "@/lib/payroll";
+import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
 
 export default function TopStats() {
   const { profile } = useAuth();
+  const { record: todayAttendance, loading: todayAttendanceLoading } = useTodayAttendance();
   const router = useRouter();
   const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
   const isAdmin = profile?.role === "Admin";
@@ -75,32 +77,40 @@ export default function TopStats() {
     fetchCounts();
   }, [profile, isAdminOrHR]);
 
+  // Today's attendance now comes from TodayAttendanceProvider (shared with
+  // LiveAttendanceCard/WeeklyOverview) instead of its own fetch — see that
+  // file for why. Depending on `todayAttendance` instead of just `profile`
+  // means this also now picks up a check-in/check-out performed via
+  // LiveAttendanceCard immediately, rather than staying stale until reload.
+  useEffect(() => {
+    if (todayAttendanceLoading || !todayAttendance) return;
+
+    const record = todayAttendance;
+    setAttendanceStatus(record.status === "Present" ? "Present" : record.status === "Checked In" ? "Clocked In" : record.status);
+
+    const updateWorkingTime = () => {
+      const secs = computeWorkedSeconds(record);
+      if (secs > 0) {
+        const hrs = Math.floor(secs / 3600);
+        const mins = Math.floor((secs % 3600) / 60);
+        setWorkingHrs(`${hrs}h ${mins}m`);
+      }
+    };
+
+    updateWorkingTime();
+
+    let intervalId: NodeJS.Timeout | undefined;
+    if (record.status === "Checked In") {
+      intervalId = setInterval(updateWorkingTime, 60000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [todayAttendance, todayAttendanceLoading]);
+
   useEffect(() => {
     if (!profile?.uid) return;
-
-    let intervalId: NodeJS.Timeout;
-
-    // Get today's attendance
-    getTodayAttendance(profile.uid).then((record) => {
-      if (record) {
-        setAttendanceStatus(record.status === "Present" ? "Present" : record.status === "Checked In" ? "Clocked In" : record.status);
-        
-        const updateWorkingTime = () => {
-          const secs = computeWorkedSeconds(record);
-          if (secs > 0) {
-            const hrs = Math.floor(secs / 3600);
-            const mins = Math.floor((secs % 3600) / 60);
-            setWorkingHrs(`${hrs}h ${mins}m`);
-          }
-        };
-
-        updateWorkingTime();
-
-        if (record.status === "Checked In") {
-          intervalId = setInterval(updateWorkingTime, 60000);
-        }
-      }
-    });
 
     // Get leave balance
     getUserLeaves(profile.uid).then((leaves) => {
@@ -119,10 +129,6 @@ export default function TopStats() {
         setSalarySubtitle(`${monthNames[latest.month - 1]} ${latest.year}`);
       }
     }).catch(console.error);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
   }, [profile]);
 
   if (isAdmin) {

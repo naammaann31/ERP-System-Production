@@ -10,6 +10,7 @@ import TodaySchedule from "@/components/dashboard/TodaySchedule";
 import TeamStatusWidget from "@/components/dashboard/TeamStatusWidget";
 import QuickActions from "@/components/dashboard/QuickActions";
 import BirthdayTakeover from "@/components/dashboard/BirthdayTakeover";
+import { TodayAttendanceProvider } from "@/components/dashboard/TodayAttendanceProvider";
 import { motion, Variants } from "framer-motion";
 
 const containerVariants: Variants = {
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const isAdmin = profile?.role === "Admin";
 
   return (
+    <TodayAttendanceProvider>
     <motion.div
       className="max-w-[1400px] mx-auto space-y-3 pb-2"
       variants={containerVariants}
@@ -87,5 +89,6 @@ export default function DashboardPage() {
         </div>
       )}
     </motion.div>
+    </TodayAttendanceProvider>
   );
 }

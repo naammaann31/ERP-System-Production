@@ -3,12 +3,14 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, CalendarDays } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { getUserAttendanceForMonth, getTodayAttendance, computeWorkedSeconds } from "@/lib/attendance";
+import { getUserAttendanceForMonth, computeWorkedSeconds } from "@/lib/attendance";
+import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
 
 type Period = "This Week" | "Last Week" | "This Month";
 
 export default function WeeklyOverview() {
   const { profile } = useAuth();
+  const { record: sharedTodayRecord } = useTodayAttendance();
   const [period, setPeriod] = useState<Period>("This Week");
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -39,14 +41,19 @@ export default function WeeklyOverview() {
       
       const combined = [...currentMonthRecords, ...lastMonthRecords];
       const uniqueRecords = Array.from(new Map(combined.map(r => [r.date, r])).values());
-      
+
       setRecords(uniqueRecords);
-      
-      const todayRec = await getTodayAttendance(profile.uid);
-      setTodayRecord(todayRec);
     }
     fetchData();
   }, [profile?.uid]);
+
+  // Today's record now comes from TodayAttendanceProvider (shared with
+  // TopStats/LiveAttendanceCard) instead of its own getTodayAttendance
+  // call — see that file for why. Mirrored into local state so everything
+  // below (unchanged) keeps reading `todayRecord` exactly as before.
+  useEffect(() => {
+    setTodayRecord(sharedTodayRecord);
+  }, [sharedTodayRecord]);
 
   const chartData = useMemo(() => {
     const today = new Date();
