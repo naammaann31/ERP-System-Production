@@ -212,7 +212,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-5 pb-2">
                   <div className="relative group">
                     <Avatar
-                      src={profile?.avatarUrl}
+                      src={profile?.avatarThumbUrl || profile?.avatarUrl}
                       alt={profile?.fullName}
                       fallback={profile?.fullName?.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase() || "U"}
                       size="2xl"

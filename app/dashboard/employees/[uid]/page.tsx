@@ -52,6 +52,7 @@ interface EmployeeData {
   bankDetails?: string;
   ifscCode?: string;
   avatarUrl?: string;
+  avatarThumbUrl?: string;
 }
 
 const containerVariants: Variants = {
@@ -223,6 +224,7 @@ export default function EmployeeProfilePage() {
             dateOfJoining: row.date_of_joining,
           status: row.status,
           avatarUrl: row.avatar_url,
+          avatarThumbUrl: row.avatar_thumb_url,
           aadhar: priv?.aadhar,
           pan: priv?.pan,
           bankAccountName: priv?.bank_account_name,
@@ -377,7 +379,7 @@ export default function EmployeeProfilePage() {
         <Card className="border border-slate-200 shadow-sm overflow-hidden bg-white">
           <div className="px-6 py-8 flex flex-col md:flex-row items-start md:items-center gap-5">
             <Avatar
-              src={employee.avatarUrl}
+              src={employee.avatarThumbUrl || employee.avatarUrl}
               alt={employee.fullName}
               fallback={initials}
               size="2xl"

@@ -47,7 +47,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setDesignation(employee.designation || "Employee");
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
-            setAvatarUrl(employee.avatarUrl || employee.avatar_url || "");
+            setAvatarUrl(employee.avatarThumbUrl || employee.avatar_thumb_url || employee.avatarUrl || employee.avatar_url || "");
             setLinkedinUrl(employee.linkedinUrl || employee.linkedin_url || "");
             setPassword("");
             
@@ -66,8 +66,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
 
         setUploadingPhoto(true);
         try {
-            const newUrl = await uploadAvatar(file, employee.uid);
-            setAvatarUrl(newUrl);
+            const { avatarThumbUrl } = await uploadAvatar(file, employee.uid);
+            setAvatarUrl(avatarThumbUrl);
             toast.success("Photo updated.");
             onSuccess?.();
         } catch (err) {

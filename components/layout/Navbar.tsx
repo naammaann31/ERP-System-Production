@@ -187,7 +187,7 @@ export default function Navbar() {
                         className="inline-flex items-center justify-center p-0 leading-none rounded-full shadow-md ring-2 ring-white border border-slate-100 hover:ring-blue-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     >
                         <Avatar
-                            src={profile?.avatarUrl}
+                            src={profile?.avatarThumbUrl || profile?.avatarUrl}
                             alt={profile?.fullName}
                             fallback={initials}
                             size="lg"
@@ -201,7 +201,7 @@ export default function Navbar() {
                             <div className="absolute top-14 right-0 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 text-left z-50 animate-in fade-in slide-in-from-top-2 cursor-default">
                                 <div className="flex flex-col items-center justify-center border-b border-slate-100 pb-4 mb-4">
                                     <Avatar
-                                        src={profile?.avatarUrl}
+                                        src={profile?.avatarThumbUrl || profile?.avatarUrl}
                                         alt={profile?.fullName}
                                         fallback={initials}
                                         size="2xl"

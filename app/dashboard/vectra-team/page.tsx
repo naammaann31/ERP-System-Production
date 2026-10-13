@@ -22,6 +22,7 @@ interface TeamMember {
     designation: string;
     linkedinUrl: string | null;
     avatarUrl: string | null;
+    avatarThumbUrl: string | null;
 }
 
 const getDepartmentColor = (department: string) => {
@@ -112,7 +113,7 @@ export default function VectraTeamPage() {
         (supabase: ReturnType<typeof createClient>) => {
             let query = supabase
                 .from("profiles")
-                .select("id, full_name, email, employee_id, role, job_role, designation, linkedin_url, avatar_url", { count: "exact" })
+                .select("id, full_name, email, employee_id, role, job_role, designation, linkedin_url, avatar_url, avatar_thumb_url", { count: "exact" })
                 .order("full_name", { ascending: true, nullsFirst: false });
 
             if (debouncedSearch) {
@@ -153,6 +154,7 @@ export default function VectraTeamPage() {
         designation: row.designation || "Employee",
         linkedinUrl: row.linkedin_url,
         avatarUrl: row.avatar_url,
+        avatarThumbUrl: row.avatar_thumb_url,
     });
 
     const fetchPage = useCallback(
@@ -362,7 +364,7 @@ export default function VectraTeamPage() {
                                                         title={member.avatarUrl ? "View photo" : undefined}
                                                     >
                                                         <Avatar
-                                                            src={member.avatarUrl || undefined}
+                                                            src={member.avatarThumbUrl || member.avatarUrl || undefined}
                                                             alt={member.name}
                                                             fallback={(member.name || "U").charAt(0).toUpperCase()}
                                                             size="sm"

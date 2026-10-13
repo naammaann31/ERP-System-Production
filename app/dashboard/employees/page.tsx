@@ -122,6 +122,7 @@ export default function EmployeesPage() {
         dateOfJoining: row.date_of_joining || "",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         avatarUrl: row.avatar_url,
+        avatarThumbUrl: row.avatar_thumb_url,
       }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);
@@ -333,7 +334,7 @@ export default function EmployeesPage() {
                       <td className="px-6 py-4 font-medium text-slate-900 cursor-pointer hover:text-blue-600 transition-colors" onClick={() => router.push(`/dashboard/employees/${employee.uid}`)}>
                         <div className="flex items-center gap-3">
                           <Avatar
-                            src={employee.avatarUrl}
+                            src={employee.avatarThumbUrl || employee.avatarUrl}
                             alt={employee.name}
                             fallback={(employee.name || "U").charAt(0).toUpperCase()}
                             size="sm"

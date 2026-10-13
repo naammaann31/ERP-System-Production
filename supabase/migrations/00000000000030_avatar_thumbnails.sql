@@ -1,0 +1,21 @@
+-- ============================================================================
+-- Avatar thumbnails — egress reduction.
+--
+-- Every <Avatar> on every page (table rows, navbar, widgets) was rendering
+-- the full-resolution uploaded photo scaled down by CSS, meaning a 32px
+-- table avatar downloaded the exact same multi-MB file as a full-screen
+-- view. uploadAvatar() (lib/avatar.ts) now also generates and uploads a
+-- small (max 256px) resized copy at upload time, stored at
+-- profiles.avatar_thumb_url, alongside the original at avatar_url.
+--
+-- Every normal-sized display uses avatar_thumb_url (falling back to
+-- avatar_url for photos uploaded before this migration, which have no
+-- thumb yet). Only the Vectra Team page's click-to-enlarge lightbox uses
+-- the full-resolution avatar_url.
+--
+-- No RLS changes needed — same reasoning as migration 29 (linkedin_url):
+-- a plain, non-privileged profile field automatically inherits the
+-- existing profiles_select/profiles_update policies.
+-- ============================================================================
+
+alter table public.profiles add column if not exists avatar_thumb_url text;

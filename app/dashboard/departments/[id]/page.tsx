@@ -87,6 +87,7 @@ export default function DepartmentPage() {
         jobRole: row.job_role,
         designation: row.designation,
         avatarUrl: row.avatar_url,
+        avatarThumbUrl: row.avatar_thumb_url,
       }));
       setEmployees(emps);
       setLoading(false);
@@ -187,7 +188,7 @@ export default function DepartmentPage() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <Avatar
-                            src={employee.avatarUrl}
+                            src={employee.avatarThumbUrl || employee.avatarUrl}
                             alt={employee.fullName}
                             fallback={(employee.fullName || "U").charAt(0).toUpperCase()}
                             size="default"

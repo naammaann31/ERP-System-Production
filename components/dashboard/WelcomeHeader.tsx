@@ -72,7 +72,7 @@ export default function WelcomeHeader() {
     >
       <div className="flex items-center gap-4 z-10">
         <Avatar
-          src={profile?.avatarUrl}
+          src={profile?.avatarThumbUrl || profile?.avatarUrl}
           alt={profile?.fullName}
           fallback={profile?.fullName?.split(' ').map(n => n[0]).join('').substring(0, 2) || "U"}
           size="2xl"
