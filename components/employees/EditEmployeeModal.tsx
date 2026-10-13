@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, ChevronDown, Camera } from "lucide-react";
+import LinkedInIcon from "@/components/ui/LinkedInIcon";
 import { updateEmployeeAction } from "@/app/actions/employees";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +28,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [showDropdown, setShowDropdown] = useState(false);
     const [phone, setPhone] = useState("");
     const [dateOfJoining, setDateOfJoining] = useState("");
+    const [linkedinUrl, setLinkedinUrl] = useState("");
     const [avatarUrl, setAvatarUrl] = useState("");
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const photoInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +48,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
             setAvatarUrl(employee.avatarUrl || employee.avatar_url || "");
+            setLinkedinUrl(employee.linkedinUrl || employee.linkedin_url || "");
             setPassword("");
             
             const fetchEmail = async () => {
@@ -87,6 +90,13 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             return;
         }
 
+        const trimmedLinkedin = linkedinUrl.trim();
+        if (trimmedLinkedin && !/^https?:\/\/.+/i.test(trimmedLinkedin)) {
+            setError("LinkedIn URL must start with http:// or https://");
+            setLoading(false);
+            return;
+        }
+
         const { error: updateError } = await updateEmployeeAction({
             uid: employee.uid,
             fullName,
@@ -97,7 +107,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             jobRole,
             designation,
             phone,
-            dateOfJoining
+            dateOfJoining,
+            linkedinUrl: trimmedLinkedin,
         });
 
         if (updateError) {
@@ -257,6 +268,21 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                     value={phone}
                                     onChange={(e) => setPhone(e.target.value)}
                                     className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* LinkedIn URL */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">LinkedIn URL</label>
+                            <div className="relative">
+                                <LinkedInIcon className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#0A66C2]" />
+                                <input
+                                    type="url"
+                                    placeholder="https://www.linkedin.com/in/employee-name"
+                                    value={linkedinUrl}
+                                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm"
                                 />
                             </div>
                         </div>

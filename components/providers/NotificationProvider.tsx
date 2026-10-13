@@ -2,32 +2,41 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { listenToUserNotifications, Notification } from "@/lib/notifications";
+import { listenToUnreadNotificationCounts } from "@/lib/notifications";
 
 interface NotificationContextProps {
-  notifications: Notification[];
   unreadCount: number;
+  announcementUnreadCount: number;
 }
 
 const NotificationContext = createContext<NotificationContextProps>({
-  notifications: [],
   unreadCount: 0,
+  announcementUnreadCount: 0,
 });
 
 export const useNotifications = () => useContext(NotificationContext);
 
+/**
+ * Login-time footprint is now two `head: true` counts (zero rows
+ * transferred), not every notification row the user has ever received.
+ * The actual message list is fetched separately and lazily, only while
+ * the Navbar bell dropdown is open — see Navbar.tsx.
+ */
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
   const { profile } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!profile?.uid) {
-      setNotifications([]);
+      setUnreadCount(0);
+      setAnnouncementUnreadCount(0);
       return;
     }
-    
-    const unsubscribe = listenToUserNotifications(profile.uid, (notifs) => {
-      setNotifications(notifs);
+
+    const unsubscribe = listenToUnreadNotificationCounts(profile.uid, (counts) => {
+      setUnreadCount(counts.total);
+      setAnnouncementUnreadCount(counts.announcement);
     });
 
     return () => {
@@ -35,10 +44,8 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     };
   }, [profile?.uid]); // dependency is strictly uid, not the full profile object
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount }}>
+    <NotificationContext.Provider value={{ unreadCount, announcementUnreadCount }}>
       {children}
     </NotificationContext.Provider>
   );

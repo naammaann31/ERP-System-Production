@@ -21,12 +21,14 @@ import {
     Megaphone,
     UserSearch,
     ClipboardList,
+    Contact,
 } from "lucide-react";
 
 const NAV_LINKS = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["Admin", "HR", "Employee"] },
     { name: "Operations", href: "/dashboard/operations", icon: Briefcase, roles: ["Admin", "HR", "Employee"], department: "Sales" },
     { name: "Employees", href: "/dashboard/employees", icon: Users, roles: ["Admin", "HR"] },
+    { name: "Vectra Team", href: "/dashboard/vectra-team", icon: Contact, roles: ["Admin", "HR", "Employee"] },
     { name: "My Team", href: "/dashboard/my-team", icon: Users, roles: [] as string[], isTeamLeadOnly: true },
     { name: "Departments", href: "/dashboard/departments", icon: Building2, roles: ["Admin"] },
     { name: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck, roles: ["Admin", "HR", "Employee"] },
@@ -45,56 +47,49 @@ export default function Sidebar() {
     const pathname = usePathname();
     const { profile } = useAuth();
     const { isOpen } = useSidebar();
-    const { notifications } = useNotifications();
-    
+    const { announcementUnreadCount } = useNotifications();
+
     const [unreadCount, setUnreadCount] = useState(0);
     const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
-    
+
+    // Mirrors the provider's lightweight count (see NotificationProvider),
+    // kept as local state only so the pathname-based optimistic reset
+    // below can zero it out instantly without waiting for a DB roundtrip.
     useEffect(() => {
-        const unreadAnnouncements = notifications.filter(n => n.type === "announcement" && !n.read);
-        setUnreadCount(unreadAnnouncements.length);
-    }, [notifications]);
+        setUnreadCount(announcementUnreadCount);
+    }, [announcementUnreadCount]);
 
     useEffect(() => {
         if (!profile) return;
 
-        let isInitial = true;
-        let lastCount = 0;
         let unsubscribeAnnouncements: (() => void) | undefined;
-        let unsubscribeNotifs: (() => void) | undefined;
         let isMounted = true;
-        
-        import("@/lib/announcements").then(({ listenToAnnouncements }) => {
+
+        // Toast-only — reacts to each new announcement's INSERT payload
+        // directly, no table download. The badge count above comes from
+        // NotificationProvider instead (every announcement already creates
+        // a per-user notification row, so that count is already correct).
+        import("@/lib/announcements").then(({ listenToNewAnnouncements }) => {
             if (!isMounted) return;
-            unsubscribeAnnouncements = listenToAnnouncements((records) => {
-                if (isInitial) {
-                    isInitial = false;
-                    lastCount = records.length;
-                } else {
-                    if (records.length > lastCount) {
-                        const newAnnouncement = records[0];
-                        import("sonner").then(({ toast }) => {
-                            toast.success("New Announcement", {
-                                description: newAnnouncement?.title || "Check the announcements tab.",
-                            });
-                        });
-                        lastCount = records.length;
-                    }
-                }
+            unsubscribeAnnouncements = listenToNewAnnouncements((announcement) => {
+                import("sonner").then(({ toast }) => {
+                    toast.success("New Announcement", {
+                        description: announcement?.title || "Check the announcements tab.",
+                    });
+                });
             });
         });
 
-        // Listen to pending leaves for Admin/HR
+        // Listen to pending leaves for Admin/HR — a head:true count, not
+        // the full leave_requests table (HRLeaveDashboard still loads the
+        // full table itself, unchanged, since it genuinely needs every row).
         const isAdminOrHR = userRole === "Admin" || userRole === "HR";
         let unsubscribeLeaves: (() => void) | undefined;
         if (isAdminOrHR) {
-            import("@/lib/leave").then(({ listenToAllLeaves }) => {
+            import("@/lib/leave").then(({ listenToPendingLeaveCount }) => {
                 if (!isMounted) return;
-                unsubscribeLeaves = listenToAllLeaves((leaves) => {
-                    const pending = leaves.filter(l =>
-                        l.status === "Pending" && l.userId !== profile.uid
-                    ).length;
-                    setPendingLeavesCount(pending);
+                unsubscribeLeaves = listenToPendingLeaveCount(profile.uid, (count) => {
+                    setPendingLeavesCount(count);
                 });
             });
         }

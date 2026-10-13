@@ -81,6 +81,32 @@ export const deleteAnnouncement = async (id: string) => {
   await supabase.from("announcements").delete().eq("id", id);
 };
 
+/**
+ * Toast-only listener for the Sidebar's "New Announcement" popup. Reacts
+ * to INSERT events directly from the realtime payload — no initial fetch
+ * and no full-table refetch-on-change, unlike listenToAnnouncements()
+ * below (which the Announcements page itself still needs, since it
+ * genuinely renders the full list).
+ */
+export const listenToNewAnnouncements = (callback: (announcement: Announcement) => void) => {
+  const supabase = createClient();
+
+  const channel = supabase
+    .channel(`new_announcements_${Math.random().toString(36).slice(2)}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "announcements" },
+      (payload) => {
+        callback(fromRow(payload.new));
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
 export const listenToAnnouncements = (callback: (announcements: Announcement[]) => void) => {
   const supabase = createClient();
 

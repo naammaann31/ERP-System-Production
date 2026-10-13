@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Bell, Lock, User, Globe, Moon, Save, Check, ChevronDown, Camera } from "lucide-react";
+import LinkedInIcon from "@/components/ui/LinkedInIcon";
 import { updateUserProfile, getUserSettings, UserSettings } from "@/lib/settings";
 import { uploadAvatar, AvatarUploadError } from "@/lib/avatar";
 import { toast, Toaster } from "sonner";
@@ -40,6 +41,7 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [timezone, setTimezone] = useState("Indian");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [timezoneOpen, setTimezoneOpen] = useState(false);
 
   // Security form
@@ -63,6 +65,7 @@ export default function SettingsPage() {
       setFullName(settings.fullName || profile.fullName || "");
       setPhone(settings.phone || "");
       setTimezone(settings.timezone || "Indian");
+      setLinkedinUrl(settings.linkedinUrl || "");
       setNotifEmail(settings.notificationsEmail ?? true);
       setNotifLeave(settings.notificationsLeave ?? true);
       setNotifPayroll(settings.notificationsPayroll ?? true);
@@ -79,12 +82,20 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async () => {
     if (!profile?.uid) return;
+
+    const trimmedLinkedin = linkedinUrl.trim();
+    if (trimmedLinkedin && !/^https?:\/\/.+/i.test(trimmedLinkedin)) {
+      toast.error("LinkedIn URL must start with http:// or https://");
+      return;
+    }
+
     setSaving(true);
     try {
       await updateUserProfile(profile.uid, {
         fullName,
         phone,
         timezone,
+        linkedinUrl: trimmedLinkedin,
         notificationsEmail: notifEmail,
         notificationsLeave: notifLeave,
         notificationsPayroll: notifPayroll,
@@ -285,6 +296,21 @@ export default function SettingsPage() {
                         </>
                       )}
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-slate-500">LinkedIn URL</label>
+                    <div className="relative">
+                      <LinkedInIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#0A66C2]" />
+                      <input
+                        type="url"
+                        placeholder="https://www.linkedin.com/in/your-name"
+                        value={linkedinUrl}
+                        onChange={(e) => setLinkedinUrl(e.target.value)}
+                        className="w-full pl-9 p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">Shown to everyone on the Vectra Team directory.</p>
                   </div>
                 </div>
                 <div className="pt-4 flex justify-end">

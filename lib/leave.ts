@@ -197,6 +197,55 @@ export const listenToAllLeaves = (callback: (leaves: LeaveRequest[]) => void) =>
   return listenToQuery((q) => q, callback);
 };
 
+/**
+ * Lightweight badge-count source for the Sidebar's pending-leave nav
+ * badge. Uses a `head: true` count query instead of downloading the
+ * entire leave_requests table — HRLeaveDashboard (which genuinely needs
+ * every row to render its table) keeps using listenToAllLeaves() above,
+ * unchanged. Status transitions can move a row INTO or OUT OF "Pending"
+ * from any other status, so the realtime subscription can't be filtered
+ * to status=eq.Pending (that would miss "Pending -> Approved" events,
+ * which still need to decrement the count) — it has to watch the whole
+ * table and just re-run the lightweight count query on any change.
+ */
+export const listenToPendingLeaveCount = (
+  excludeUserId: string,
+  callback: (count: number) => void
+) => {
+  const supabase = createClient();
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const refresh = () => {
+    supabase
+      .from("leave_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "Pending")
+      .neq("user_id", excludeUserId)
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("pending leave count error:", error);
+          return;
+        }
+        callback(count ?? 0);
+      });
+  };
+
+  refresh();
+
+  const channel = supabase
+    .channel(`pending_leave_count_${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(refresh, 300);
+    })
+    .subscribe();
+
+  return () => {
+    clearTimeout(timeoutId);
+    supabase.removeChannel(channel);
+  };
+};
+
 export const calculateMonthsEmployed = (dateOfJoining: string | undefined): number => {
   // We want to start crediting 2 leaves on the 1st of every month, starting Sept 1st, 2026.
   // Since leaves were reset to 0 in August 2026, our baseline is August 2026.

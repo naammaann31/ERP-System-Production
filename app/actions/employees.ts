@@ -24,6 +24,7 @@ export interface UpdateEmployeeInput {
   phone?: string;
   dateOfJoining?: string;
   password?: string;
+  linkedinUrl?: string;
 }
 
 
@@ -147,6 +148,7 @@ export async function updateEmployeeAction(
       designation: input.designation,
       phone: input.phone || null,
       date_of_joining: input.dateOfJoining || null,
+      linkedin_url: input.linkedinUrl || null,
     })
     .eq("id", input.uid);
 

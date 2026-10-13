@@ -60,6 +60,71 @@ export const markTypeAsRead = async (userId: string, type: Notification["type"])
     .eq("read", false);
 };
 
+/**
+ * Lightweight badge-count source for the bell icon and the Sidebar's
+ * Announcements nav item. Uses `head: true` count queries (zero rows
+ * transferred) instead of downloading every notification row just to
+ * show two numbers — the full list is fetched separately, on demand,
+ * only when the bell dropdown is actually opened (see Navbar).
+ */
+export const getUnreadNotificationCounts = async (
+  userId: string
+): Promise<{ total: number; announcement: number }> => {
+  const supabase = createClient();
+  const [totalRes, announcementRes] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("read", false),
+    supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("read", false)
+      .eq("type", "announcement"),
+  ]);
+  return { total: totalRes.count ?? 0, announcement: announcementRes.count ?? 0 };
+};
+
+export const listenToUnreadNotificationCounts = (
+  userId: string,
+  callback: (counts: { total: number; announcement: number }) => void
+) => {
+  const supabase = createClient();
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const refresh = () => {
+    getUnreadNotificationCounts(userId)
+      .then(callback)
+      .catch((err) => console.error("notification count error:", err));
+  };
+
+  refresh();
+
+  const channel = supabase
+    .channel(`notification_counts_${userId}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+      () => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(refresh, 300);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    clearTimeout(timeoutId);
+    supabase.removeChannel(channel);
+  };
+};
+
+/**
+ * Still fetches the user's full notification history — used only by the
+ * Navbar bell dropdown, and only while it's actually open (see Navbar),
+ * not eagerly on every login.
+ */
 export const listenToUserNotifications = (
   userId: string,
   callback: (notifications: Notification[]) => void

@@ -11,6 +11,7 @@ import {
     Notification,
     markAsRead,
     markAllAsRead,
+    listenToUserNotifications,
 } from "@/lib/notifications";
 import { useNotifications } from "@/components/providers/NotificationProvider";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,8 +37,20 @@ export default function Navbar() {
     const [showProfile, setShowProfile] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
 
-    const { notifications, unreadCount } = useNotifications();
+    const { unreadCount } = useNotifications();
+
+    // The full message list is only fetched (and kept live) while the
+    // dropdown is actually open — closing it unsubscribes, so there's no
+    // background cost while it's closed. The badge count above comes
+    // from NotificationProvider's lightweight count query instead, which
+    // stays live regardless of whether the dropdown has ever been opened.
+    useEffect(() => {
+        if (!showNotifications || !profile?.uid) return;
+        const unsubscribe = listenToUserNotifications(profile.uid, setNotifications);
+        return () => unsubscribe();
+    }, [showNotifications, profile?.uid]);
 
     const executeLogout = async () => {
         await logoutUser();
