@@ -63,6 +63,8 @@ interface Candidate {
 
 const statusColor = (status: string) => {
     switch (status) {
+        case "Placed":
+            return "bg-teal-50 text-teal-700 border-teal-200";
         case "Selected":
             return "bg-emerald-50 text-emerald-700 border-emerald-200";
         case "Rejected":
@@ -118,6 +120,14 @@ export default function CandidatesClient() {
     const [form, setForm] = useState({ ...emptyForm });
 
     const [toDelete, setToDelete] = useState<Candidate | null>(null);
+
+    // Bulk-assign: select several loaded rows, then assign all of them to one
+    // employee in a single update. Candidate rows stay single-assignee (no
+    // schema change) — this only batches what the Edit modal already does
+    // one row at a time.
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkAssignTarget, setBulkAssignTarget] = useState("");
+    const [bulkAssigning, setBulkAssigning] = useState(false);
 
     // Excel import
     const [importing, setImporting] = useState(false);
@@ -406,6 +416,76 @@ export default function CandidatesClient() {
         [candidates]
     );
 
+    // Prune the selection whenever the loaded set changes (reset, "Load
+    // More", a row dropping out via realtime/delete) so a stale id can never
+    // be sent to the bulk-assign update.
+    useEffect(() => {
+        setSelectedIds((prev) => {
+            if (prev.size === 0) return prev;
+            const validIds = new Set(candidates.map((c) => c.id));
+            const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [candidates]);
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const allLoadedSelected = candidates.length > 0 && candidates.every((c) => selectedIds.has(c.id));
+    const toggleSelectAll = () => {
+        setSelectedIds(allLoadedSelected ? new Set() : new Set(candidates.map((c) => c.id)));
+    };
+
+    const handleBulkAssign = async () => {
+        if (selectedIds.size === 0) return;
+        setBulkAssigning(true);
+        try {
+            const supabase = createClient();
+            if (!(await requireSession(supabase))) return;
+
+            const assignee = employees.find((emp) => emp.id === bulkAssignTarget);
+            const ids = Array.from(selectedIds);
+
+            // One batched update for every selected row — same RLS path
+            // (candidates_update) as the single-candidate edit, just applied
+            // to several ids in one request instead of one request each.
+            const { data, error: err } = await supabase
+                .from("candidates")
+                .update({
+                    assigned_to: bulkAssignTarget || null,
+                    assigned_to_name: assignee?.full_name || null,
+                })
+                .in("id", ids)
+                .select();
+
+            if (err) throw err;
+            if (!data || data.length === 0) {
+                toast.error("You do not have permission to reassign these candidates.");
+                return;
+            }
+
+            toast.success(
+                data.length === ids.length
+                    ? `Assigned ${data.length} candidate${data.length > 1 ? "s" : ""} to ${assignee?.full_name || "Unassigned"}.`
+                    : `Assigned ${data.length} of ${ids.length} candidates.`
+            );
+            setSelectedIds(new Set());
+            setBulkAssignTarget("");
+            fetchPage(true);
+        } catch (err: any) {
+            console.error("Bulk assign failed:", err?.message, err);
+            toast.error(err?.message || "Could not assign candidates.");
+        } finally {
+            setBulkAssigning(false);
+        }
+    };
+
     const openAdd = () => {
         setEditing(null);
         setForm({ ...emptyForm });
@@ -690,6 +770,40 @@ export default function CandidatesClient() {
                 </div>
             )}
 
+            {canManage && selectedIds.size > 0 && (
+                <div className="flex flex-wrap items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                    <span className="text-sm font-semibold text-indigo-800 whitespace-nowrap">
+                        {selectedIds.size} candidate{selectedIds.size > 1 ? "s" : ""} selected
+                    </span>
+                    <select
+                        value={bulkAssignTarget}
+                        onChange={(e) => setBulkAssignTarget(e.target.value)}
+                        className="bg-white border border-indigo-200 text-slate-900 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                    >
+                        <option value="">Unassigned</option>
+                        {employees.map((emp) => (
+                            <option key={emp.id} value={emp.id}>
+                                {emp.full_name}
+                                {emp.designation ? ` - ${emp.designation}` : ""}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        onClick={handleBulkAssign}
+                        disabled={bulkAssigning}
+                        className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 whitespace-nowrap"
+                    >
+                        {bulkAssigning ? "Assigning..." : "Assign Selected"}
+                    </button>
+                    <button
+                        onClick={() => setSelectedIds(new Set())}
+                        className="px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors whitespace-nowrap"
+                    >
+                        Clear selection
+                    </button>
+                </div>
+            )}
+
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
                 <Card className="border-0 shadow-sm ring-1 ring-slate-200/60 overflow-hidden bg-white">
                     <div className="px-6 py-5 border-b border-slate-100 bg-blue-50/50">
@@ -712,6 +826,17 @@ export default function CandidatesClient() {
 <table className="w-full text-sm text-left relative">
                             <thead className="text-xs text-slate-500 uppercase bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
+                                    {canManage && (
+                                        <th className="px-4 py-4 font-semibold whitespace-nowrap">
+                                            <input
+                                                type="checkbox"
+                                                checked={allLoadedSelected}
+                                                onChange={toggleSelectAll}
+                                                className="h-4 w-4 rounded border-slate-300 cursor-pointer"
+                                                aria-label="Select all loaded candidates"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Name</th>
                                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Contact Number</th>
                                     <th className="px-6 py-4 font-semibold whitespace-nowrap">Marketing Email</th>
@@ -730,7 +855,7 @@ export default function CandidatesClient() {
                             <tbody className="divide-y divide-slate-100">
                                 {candidates.length === 0 ? (
                                     <tr>
-                                        <td colSpan={canManage ? 11 : 10} className="px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={canManage ? 12 : 10} className="px-6 py-12 text-center text-slate-500">
                                             {searchQuery || startDate || endDate
                                                 ? "No candidates match the current search or date range."
                                                 : canManage
@@ -744,6 +869,17 @@ export default function CandidatesClient() {
                                             key={c.id}
                                             className={`hover:bg-slate-100 transition-colors ${index % 2 === 0 ? "bg-white" : "bg-slate-50"}`}
                                         >
+                                            {canManage && (
+                                                <td className="px-4 py-4 whitespace-nowrap">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedIds.has(c.id)}
+                                                        onChange={() => toggleSelect(c.id)}
+                                                        className="h-4 w-4 rounded border-slate-300 cursor-pointer"
+                                                        aria-label={`Select ${c.full_name}`}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap capitalize">
                                                 {c.full_name}
                                             </td>

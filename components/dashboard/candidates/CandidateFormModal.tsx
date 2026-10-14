@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { X } from "lucide-react";
 
 // Must stay in step with the status check constraint on public.candidates.
-export const STATUSES = ["New", "Contacted", "Interviewing", "Selected", "Rejected", "On Hold"] as const;
+export const STATUSES = ["New", "Contacted", "Interviewing", "Selected", "Placed", "Rejected", "On Hold"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export interface CandidateFormState {
