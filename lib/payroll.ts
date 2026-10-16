@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { getUserLeaves } from "@/lib/leave";
+import { getUserLeaves, calculateAutomaticAccrualForMonth } from "@/lib/leave";
 
 export interface SalaryStructure {
   userId: string;
@@ -253,13 +253,26 @@ export async function calculateEmployeeLopAndLeaves(
   month: number,
   year: number,
   dateOfJoining: string | undefined
-): Promise<{ lopDays: number, leavesTakenThisMonth: number, paidLeavesThisMonth: number }> {
+): Promise<{
+  lopDays: number,
+  leavesTakenThisMonth: number,
+  paidLeavesThisMonth: number,
+  leaveLopDays: number,
+  attendanceLopDays: number,
+}> {
   const leaves = await getUserLeaves(employeeUid);
 
-  // Filter for approved leaves in the selected year
+  // Filter for approved leaves actually TAKEN in the selected year — Manual
+  // Credit/Manual Deduction rows are balance adjustments (added by HR via
+  // the employee profile page), not days taken, so they're excluded here
+  // and folded into the accrued balance below instead. Without this, a
+  // single-day Manual Credit row (e.g. "+6 days", stored as one row dated
+  // today) was being counted as "1 day taken" by the day-by-day expansion
+  // below, silently docking the very balance it was meant to top up.
   const yearLeaves = leaves.filter(l => {
     const start = new Date(l.startDate);
-    return start.getFullYear() === year && l.status === "Approved";
+    return start.getFullYear() === year && l.status === "Approved"
+      && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction";
   });
 
   const leaveMap = new Map<string, number>();
@@ -307,31 +320,71 @@ export async function calculateEmployeeLopAndLeaves(
     }
   });
 
-  const calculateAccrued = () => {
-    if (!dateOfJoining) return 2; // Default 2 for 1st month
-    const joinDate = new Date(dateOfJoining);
-    if (isNaN(joinDate.getTime())) return 2;
+  // Automatic accrual only — shared with the Leave Balance display
+  // (lib/leave.ts's calculateAccruedLeaves) so the two can never silently
+  // disagree again. This used to count straight from the employee's real
+  // join date even for employees who joined before the August 2026
+  // company-wide reset, over-crediting them relative to what HR's manual
+  // Excel tracker actually expects (confirmed against real data for two
+  // employees who joined before the reset).
+  const calculateAccrued = () => calculateAutomaticAccrualForMonth(dateOfJoining, year, month);
 
-    const targetDate = new Date(year, month - 1, 1);
+  // Manual Credit (positive days) / Manual Deduction (negative days) adjust
+  // the bucket itself, effective from the day they were granted — same as
+  // how the automatic 2/month accrual is already available starting the 1st
+  // of its own month, a manual adjustment counts from its own month too
+  // (not just months strictly before it). Counted across every year up to
+  // and including the target month, matching calculateAccrued()'s own
+  // lifetime-since-joining scope rather than being limited to one calendar
+  // year like yearLeaves above.
+  const manualAdjustmentDays = leaves
+    .filter(l => {
+      if (l.status !== "Approved") return false;
+      if (l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction") return false;
+      const start = new Date(l.startDate);
+      return start.getFullYear() < year || (start.getFullYear() === year && start.getMonth() + 1 <= month);
+    })
+    .reduce((sum, l) => sum + l.days, 0);
 
-    // If they are generating payroll for a month BEFORE they joined
-    if (targetDate < joinDate) return 0;
-
-    const yearsDiff = targetDate.getFullYear() - joinDate.getFullYear();
-    const monthsDiff = targetDate.getMonth() - joinDate.getMonth();
-    const totalMonths = (yearsDiff * 12) + monthsDiff;
-    return Math.max(1, totalMonths + 1) * 2;
-  };
-
-  const totalAccruedUpToMonth = calculateAccrued();
+  const totalAccruedUpToMonth = calculateAccrued() + manualAdjustmentDays;
   const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
 
   // If they took more leaves in this month than their available balance, the rest is LOP
   const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
 
+  // Attendance-based LOP: Absent (1 day) / Half Day (0.5 day) rows that were
+  // actually marked in the Attendance table for this month. Only rows that
+  // actually exist count — a day with no attendance record at all is left
+  // alone, not silently treated as Absent (explicit project-owner decision).
+  //
+  // Any date already covered by an approved leave above (leaveMap) is
+  // skipped here so the same calendar day is never deducted twice — once
+  // through the leave-balance calculation and again through attendance.
+  const supabase = createClient();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const { data: attendanceRows, error: attendanceErr } = await supabase
+    .from("attendance")
+    .select("date, status, is_half_day")
+    .eq("user_id", employeeUid)
+    .gte("date", monthStart)
+    .lte("date", monthEnd);
+  if (attendanceErr) throw attendanceErr;
+
+  let attendanceLopDays = 0;
+  (attendanceRows || []).forEach((row: any) => {
+    if (leaveMap.has(row.date)) return;
+    if (row.status === "Absent") attendanceLopDays += 1;
+    else if (row.is_half_day) attendanceLopDays += 0.5;
+  });
+
   return {
-    lopDays: unpaidLeaves,
+    lopDays: unpaidLeaves + attendanceLopDays,
     leavesTakenThisMonth: leavesTakenInMonth,
-    paidLeavesThisMonth: Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth)
+    paidLeavesThisMonth: Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth),
+    leaveLopDays: unpaidLeaves,
+    attendanceLopDays,
   };
 };

@@ -38,7 +38,10 @@ interface GeneratePayrollModalProps {
   setModeOfPayment: (val: string) => void;
   preview: any;
   leavesTakenThisMonth?: number;
-  paidLeavesThisMonth?: number;
+  leaveLopDays: number;
+  setLeaveLopDays: (val: number) => void;
+  attendanceLopDays: number;
+  setAttendanceLopDays: (val: number) => void;
 }
 
 const MONTHS = [
@@ -123,9 +126,13 @@ export default function GeneratePayrollModal({
   providentFund, setProvidentFund,
   paymentDate, setPaymentDate,
   modeOfPayment, setModeOfPayment,
-  preview, leavesTakenThisMonth = 0, paidLeavesThisMonth = 0
+  preview, leavesTakenThisMonth = 0, leaveLopDays, setLeaveLopDays, attendanceLopDays, setAttendanceLopDays
 }: GeneratePayrollModalProps) {
   if (!isOpen) return null;
+
+  // Paid Leaves is fully determined by the other two (taken minus unpaid) —
+  // not a separate editable field, so it can never disagree with them.
+  const paidLeavesThisMonth = Math.max(0, leavesTakenThisMonth - leaveLopDays);
 
   const monthOptions = MONTHS.map((m, i) => ({ label: m, value: String(i + 1) }));
   const divisionOptions = DIVISIONS.map(d => ({ label: d, value: d }));
@@ -172,15 +179,34 @@ export default function GeneratePayrollModal({
               <p className="text-sm font-semibold text-slate-800">
                 {leavesTakenThisMonth} Total Leaves Taken
               </p>
+              <p className="text-[10px] text-slate-400 mt-1">Leave LOP / Attendance LOP are editable — LOP Days below updates automatically</p>
             </div>
             <div className="flex gap-4">
               <div className="text-center px-3 py-1.5 bg-green-100 rounded-lg border border-green-200">
                 <p className="text-[10px] font-bold text-green-700 uppercase">Paid Leaves</p>
-                <p className="text-lg font-black text-green-700">{paidLeavesThisMonth}</p>
+                <p className="text-lg font-black text-green-700" title="Auto-derived: Total Leaves Taken minus Leave LOP">{paidLeavesThisMonth}</p>
               </div>
               <div className="text-center px-3 py-1.5 bg-red-100 rounded-lg border border-red-200">
-                <p className="text-[10px] font-bold text-red-700 uppercase">Unpaid (LOP)</p>
-                <p className="text-lg font-black text-red-700">{Math.max(0, leavesTakenThisMonth - paidLeavesThisMonth)}</p>
+                <p className="text-[10px] font-bold text-red-700 uppercase">Leave LOP</p>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={leaveLopDays}
+                  onChange={(e) => setLeaveLopDays(Number(e.target.value))}
+                  className="w-14 bg-transparent text-lg font-black text-red-700 text-center focus:outline-none focus:ring-2 focus:ring-red-400/40 rounded"
+                  title="Auto-calculated from leave balance — edit to override"
+                />
+              </div>
+              <div className="text-center px-3 py-1.5 bg-amber-100 rounded-lg border border-amber-200">
+                <p className="text-[10px] font-bold text-amber-700 uppercase">Attendance LOP</p>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={attendanceLopDays}
+                  onChange={(e) => setAttendanceLopDays(Number(e.target.value))}
+                  className="w-14 bg-transparent text-lg font-black text-amber-700 text-center focus:outline-none focus:ring-2 focus:ring-amber-400/40 rounded"
+                  title="Auto-calculated from Attendance records — edit to override"
+                />
               </div>
             </div>
           </div>

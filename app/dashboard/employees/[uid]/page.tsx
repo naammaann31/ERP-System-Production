@@ -307,9 +307,15 @@ export default function EmployeeProfilePage() {
       accent: "bg-emerald-500",
     },
     {
+      // The headline number is what's actually left to use right now —
+      // the old "taken / accrued" ratio mixed lifetime leave (including
+      // leave approved for future dates) into one confusing number. The
+      // breakdown is still here, just moved to the subtitle for anyone who
+      // wants it.
       title: "Leave Balance",
-        value: `${totalLeaveDays} / ${totalAccruedLeaves}`,
-        subtitle: `${remainingLeaves} Remaining | ${pendingLeaves} Pending`,
+      value: `${remainingLeaves}`,
+      subtitle: `${pendingLeaves} Pending`,
+      detail: `${totalAccruedLeaves} accrued · ${totalLeaveDays} used all-time`,
       icon: CalendarOff,
       color: "text-amber-600",
       bg: "bg-amber-100/50",
@@ -420,6 +426,9 @@ export default function EmployeeProfilePage() {
             <div>
               <p className="text-2xl font-bold text-slate-900 tracking-tight">{stat.value}</p>
               <p className="text-sm font-medium text-slate-500 mt-0.5">{stat.title}</p>
+              {"detail" in stat && stat.detail && (
+                <p className="text-[11px] text-slate-400 mt-1">{stat.detail}</p>
+              )}
             </div>
           </motion.div>
         ))}

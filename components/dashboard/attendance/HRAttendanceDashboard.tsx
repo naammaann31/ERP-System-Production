@@ -81,6 +81,8 @@ export default function HRAttendanceDashboard() {
       newStatus = "Absent";
     } else if (newStatusOption === "week-off") {
       newStatus = "Week Off";
+    } else if (newStatusOption === "holiday") {
+      newStatus = "Holiday (Paid)";
     }
     
     try {
@@ -392,17 +394,18 @@ export default function HRAttendanceDashboard() {
                           {canEditAttendance ? (
                             <select
                               className="text-xs border-slate-200 rounded-md py-1 px-2"
-                              value={record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
+                              value={record.status === "Holiday (Paid)" ? "holiday" : record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
                               onChange={(e) => handleStatusChange(record, e.target.value)}
                             >
                               <option value="present">Present</option>
                               <option value="half-day">Half Day</option>
                               <option value="absent">Absent</option>
                               <option value="week-off">Week Off</option>
+                              <option value="holiday">Holiday</option>
                             </select>
                           ) : (
                             <span className="text-xs text-slate-400 italic">
-                              {record.status === "Week Off" ? "Week Off" : record.status === "Absent" ? "Absent" : (record.isHalfDay ? "Half Day" : "Present")}
+                              {record.status === "Holiday (Paid)" ? "Holiday" : record.status === "Week Off" ? "Week Off" : record.status === "Absent" ? "Absent" : (record.isHalfDay ? "Half Day" : "Present")}
                             </span>
                           )}
                       </td>

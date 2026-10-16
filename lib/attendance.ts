@@ -492,7 +492,7 @@ export const updateAttendanceStatus = async (
 ) => {
   const supabase = createClient();
   
-  if ((id.startsWith('absent-') || id.startsWith('weekoff-')) && userId && dateStr) {
+  if ((id.startsWith('absent-') || id.startsWith('weekoff-') || id.startsWith('holiday-')) && userId && dateStr) {
     // This record doesn't exist in the DB yet, insert it
     const { error } = await supabase.from("attendance").insert({
       user_id: userId,

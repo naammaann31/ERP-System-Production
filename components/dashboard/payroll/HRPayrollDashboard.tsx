@@ -59,7 +59,15 @@ export default function HRPayrollDashboard() {
   // Generate Form State
   const [lopDays, setLopDays] = useState<number>(0);
   const [leavesTakenThisMonth, setLeavesTakenThisMonth] = useState<number>(0);
-  const [paidLeavesThisMonth, setPaidLeavesThisMonth] = useState<number>(0);
+  // Leave LOP / Attendance LOP are the auto-calculated breakdown, but HR can
+  // override either one by hand (e.g. the Manual Credit policy question, or
+  // a known Excel-vs-system conflict for a specific day) — lopDays below
+  // always recomputes from whatever these two currently hold, so a manual
+  // edit here still flows through to the actual payroll deduction. Editing
+  // "LOP Days" itself directly still works too, same as before; it just
+  // won't reverse-sync back into these two breakdown fields.
+  const [leaveLopDays, setLeaveLopDays] = useState<number>(0);
+  const [attendanceLopDays, setAttendanceLopDays] = useState<number>(0);
   const [daysInMonth, setDaysInMonth] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
   const [daysWorked, setDaysWorked] = useState<number>(0);
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
@@ -161,9 +169,9 @@ export default function HRPayrollDashboard() {
           year, 
           selectedEmployee.dateOfJoining
         );
-        setLopDays(res.lopDays);
         setLeavesTakenThisMonth(res.leavesTakenThisMonth);
-        setPaidLeavesThisMonth(res.paidLeavesThisMonth);
+        setLeaveLopDays(res.leaveLopDays);
+        setAttendanceLopDays(res.attendanceLopDays);
       } catch (err) {
         console.error("Failed to calculate LOP and Leaves:", err);
       }
@@ -171,6 +179,15 @@ export default function HRPayrollDashboard() {
 
     fetchLop();
   }, [selectedEmployee, month, year]);
+
+  // Single source of truth for the actual payroll deduction: whenever
+  // either breakdown number changes (auto-calculated, or hand-edited by
+  // HR), the total LOP Days field recomputes from them. Editing LOP Days
+  // directly still works on its own — it just doesn't feed back into these
+  // two, since at that point HR has already chosen to override the total.
+  useEffect(() => {
+    setLopDays(leaveLopDays + attendanceLopDays);
+  }, [leaveLopDays, attendanceLopDays]);
 
   const openConfigModal = async (emp: Employee) => {
     setSelectedEmployee(emp);
@@ -354,7 +371,10 @@ export default function HRPayrollDashboard() {
         lopDays={lopDays}
         setLopDays={setLopDays}
         leavesTakenThisMonth={leavesTakenThisMonth}
-        paidLeavesThisMonth={paidLeavesThisMonth}
+        leaveLopDays={leaveLopDays}
+        setLeaveLopDays={setLeaveLopDays}
+        attendanceLopDays={attendanceLopDays}
+        setAttendanceLopDays={setAttendanceLopDays}
         daysInMonth={daysInMonth}
         daysWorked={daysWorked}
         setDaysWorked={setDaysWorked}
