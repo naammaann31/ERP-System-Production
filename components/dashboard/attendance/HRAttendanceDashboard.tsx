@@ -142,7 +142,18 @@ export default function HRAttendanceDashboard() {
       let mergedRecords = data;
       
       if (profiles) {
-          const dDate = new Date(selectedDate);
+          // Built from explicit Y/M/D numbers rather than parsing the
+          // "YYYY-MM-DD" string directly — `new Date("2026-10-19")` is
+          // parsed as UTC midnight, and reading it back with .getDay()
+          // reads the VIEWER'S OWN device timezone, so a laptop set to
+          // e.g. EST would see the wrong weekday (and therefore wrongly
+          // fall back to "Week Off"/"Absent" for a real Present day). This
+          // construction form is local-to-local with no UTC round-trip, so
+          // it's correct no matter what timezone the viewing device is set
+          // to — same pattern already used safely in
+          // lib/attendance.ts's getUserAttendanceForMonth.
+          const [selYear, selMonth, selDay] = selectedDate.split("-").map(Number);
+          const dDate = new Date(selYear, selMonth - 1, selDay);
           const usHolidayName = getUsHolidayName(selectedDate);
 
           // Filter out profiles whose joining date is after the selected date
