@@ -118,6 +118,7 @@ export default function EmployeesPage() {
         department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
         jobRole: row.job_role || "N/A",
         designation: row.designation || "Employee",
+        shiftId: row.shift_id || "",
         phone: row.phone || "",
         dateOfJoining: row.date_of_joining || "",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,

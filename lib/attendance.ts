@@ -7,6 +7,7 @@ import {
   determineCheckOutHalfDay,
   type CheckInFlags,
 } from "./attendanceRules";
+import { getShifts, isWeekOffForShift, legacyIsImmigration } from "./shifts";
 
 export { isImmigrationWeekOffDate, determineCheckInFlags, determineCheckOutHalfDay };
 export type { CheckInFlags };
@@ -425,9 +426,12 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
   const supabase = createClient();
   
   // 1. Fetch user profile for dummy records
-  const { data: profile } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation").eq("id", userId).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation, shift_id").eq("id", userId).maybeSingle();
   if (!profile) return [];
   if (profile.role === "Admin") return [];
+
+  const shifts = await getShifts().catch(() => []);
+  const userShift = shifts.find((s) => s.id === profile.shift_id);
 
   // 2. Fetch actual attendance records
   const startDate = `${yearMonth}-01`;
@@ -465,16 +469,17 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
     if (profile.date_of_joining && dateStr < profile.date_of_joining) continue;
     
     if (!existingDates.has(dateStr)) {
-      const dDate = new Date(Number(year), Number(month) - 1, d);
-      
-      let isWeekend = false;
-      const dDay = dDate.getDay();
-      
-      if (profile.role === "IMMIGRATION" || profile.designation === "Immigration HR") {
-        isWeekend = dDay === 0 || (dDay === 6 && d >= 22 && d <= 28);
-      } else {
-        isWeekend = dDay === 0 || dDay === 6;
-      }
+      const isWeekend = userShift
+        ? isWeekOffForShift(userShift, Number(year), Number(month), d)
+        : (() => {
+            // Fallback if a profile somehow has no matching shift row
+            // (should not happen post-migration-35 backfill) — reproduces
+            // the exact pre-shift-table logic so display never regresses.
+            const dDay = new Date(Number(year), Number(month) - 1, d).getDay();
+            return legacyIsImmigration(profile.role, profile.designation)
+              ? dDay === 0 || (dDay === 6 && d >= 22 && d <= 28)
+              : dDay === 0 || dDay === 6;
+          })();
       const usHolidayName = getUsHolidayName(dateStr);
       
       paddedRecords.push({

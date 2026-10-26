@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Plus, Check, ChevronDown, X } from "lucide-react";
 import { createEmployeeAction } from "@/app/actions/employees";
+import { getShifts, type Shift } from "@/lib/shifts";
 import { toast } from "sonner";
 
 interface AddEmployeeModalProps {
@@ -23,12 +24,20 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
     const [designation, setDesignation] = useState("Employee");
     const [phone, setPhone] = useState("");
     const [dateOfJoining, setDateOfJoining] = useState("");
+    const [shifts, setShifts] = useState<Shift[]>([]);
+    const [shiftId, setShiftId] = useState("");
 
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            getShifts().then(setShifts).catch(() => setShifts([]));
+        }
+    }, [isOpen]);
 
     const validateEmail = (email: string) => {
         return /\S+@\S+\.\S+/.test(email);
@@ -38,7 +47,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
         e.preventDefault();
         setError("");
 
-        if (!fullName || !employeeId || !email || !password || !confirmPassword || !role || !jobRole || !designation) {
+        if (!fullName || !employeeId || !email || !password || !confirmPassword || !role || !jobRole || !designation || !shiftId) {
             setError("All fields are required.");
             return;
         }
@@ -68,6 +77,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
             password,
             jobRole,
             designation,
+            shiftId,
             phone,
             dateOfJoining,
         });
@@ -82,7 +92,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
         setLoading(false);
         // Reset form
         setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
-        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee"); setPhone(""); setDateOfJoining("");
+        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee"); setShiftId(""); setPhone(""); setDateOfJoining("");
         onSuccess?.();
         onClose();
     };
@@ -177,6 +187,24 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                     <option value="Immigration HR">Immigration HR</option>
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Shift Timing */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Shift Timing</label>
+                            <select
+                                value={shiftId}
+                                onChange={(e) => setShiftId(e.target.value)}
+                                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm appearance-none"
+                                required
+                            >
+                                <option value="" disabled>Select a shift</option>
+                                {shifts.map((shift) => (
+                                    <option key={shift.id} value={shift.id}>
+                                        {shift.name} ({shift.startTime.slice(0, 5)} - {shift.shiftEndTime.slice(0, 5)})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Corporate Email & Phone Number */}

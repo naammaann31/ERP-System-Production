@@ -83,3 +83,75 @@ export function determineCheckOutHalfDay(
   if (isImmigration && isWeekOff) return false;
   return true;
 }
+
+/**
+ * Fully generic form, parameterized by a shift's own rule fields (mirrors
+ * the `shifts` table, migration 00000000000035) instead of a hardcoded
+ * Immigration/Night-Shift boolean split. This is the independent spec the
+ * generic SQL clock_in()/clock_out() logic is checked against — the two
+ * functions above are deliberately left untouched (still exactly what the
+ * dead checkIn()/checkOut() client functions use) so nothing that already
+ * worked can regress; this is new, additive logic for the 3-shift system.
+ */
+export interface ShiftRuleConfig {
+  lateAfterHour: number;
+  lateAfterMinute: number;
+  hasEarlyAbsentTrigger: boolean;
+  earlyAbsentBeforeHour: number | null;
+  weekOffAffectsRules: boolean;
+  halfDayThresholdSeconds: number;
+}
+
+export function determineCheckInFlagsForShift(
+  hour: number,
+  minute: number,
+  shift: ShiftRuleConfig,
+  isWeekOff: boolean
+): CheckInFlags {
+  if (shift.hasEarlyAbsentTrigger && shift.earlyAbsentBeforeHour !== null && hour < shift.earlyAbsentBeforeHour) {
+    return { isLate: true, isAbsent: true };
+  }
+  if (shift.weekOffAffectsRules && isWeekOff) {
+    return { isLate: false, isAbsent: false };
+  }
+  const isLate = hour > shift.lateAfterHour || (hour === shift.lateAfterHour && minute > shift.lateAfterMinute);
+  return { isLate, isAbsent: false };
+}
+
+export function determineCheckOutHalfDayForShift(
+  workingSeconds: number,
+  shift: Pick<ShiftRuleConfig, "weekOffAffectsRules" | "halfDayThresholdSeconds">,
+  isWeekOff: boolean
+): boolean {
+  if (workingSeconds >= shift.halfDayThresholdSeconds) return false;
+  if (shift.weekOffAffectsRules && isWeekOff) return false;
+  return true;
+}
+
+/**
+ * Generalized form of isImmigrationWeekOffDate() above — parameterized by
+ * a shift's own week-off rule instead of being hardcoded to Immigration.
+ * Built from explicit Y/M/D numbers via Date.UTC + UTC getters (never from
+ * parsing a date STRING with local getters), so the answer is the same
+ * regardless of which timezone the calling machine is set to.
+ */
+export function isWeekOffForRule(
+  rule: "standard_weekend" | "sunday_plus_4th_saturday",
+  year: number,
+  month1Indexed: number,
+  day: number
+): boolean {
+  const d = new Date(Date.UTC(year, month1Indexed - 1, day));
+  const dayOfWeek = d.getUTCDay();
+  const dateNum = d.getUTCDate();
+
+  if (rule === "sunday_plus_4th_saturday") {
+    return dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+  }
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+/** Which shift an employee is on, by role/designation — pre-shift-table legacy inference, used only as a fallback if a profile somehow has no shift_id (should not happen after the migration 35 backfill). */
+export function legacyIsImmigration(role?: string | null, designation?: string | null): boolean {
+  return role === "IMMIGRATION" || designation === "Immigration HR";
+}

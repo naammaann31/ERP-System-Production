@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, ChevronDown, Camera } from "lucide-react";
 import LinkedInIcon from "@/components/ui/LinkedInIcon";
 import { updateEmployeeAction } from "@/app/actions/employees";
+import { getShifts, type Shift } from "@/lib/shifts";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/ui/avatar";
@@ -25,6 +26,8 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [role, setRole] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [designation, setDesignation] = useState("Employee");
+    const [shifts, setShifts] = useState<Shift[]>([]);
+    const [shiftId, setShiftId] = useState("");
     const [showDropdown, setShowDropdown] = useState(false);
     const [phone, setPhone] = useState("");
     const [dateOfJoining, setDateOfJoining] = useState("");
@@ -45,6 +48,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setRole(employee.role || "Employee");
             setJobRole(employee.jobRole || "");
             setDesignation(employee.designation || "Employee");
+            setShiftId(employee.shiftId || "");
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
             setAvatarUrl(employee.avatarThumbUrl || employee.avatar_thumb_url || employee.avatarUrl || employee.avatar_url || "");
@@ -59,6 +63,12 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             fetchEmail().catch(() => setEmail(""));
         }
     }, [employee, isOpen]);
+
+    useEffect(() => {
+        if (isOpen) {
+            getShifts().then(setShifts).catch(() => setShifts([]));
+        }
+    }, [isOpen]);
 
     const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -90,6 +100,12 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             return;
         }
 
+        if (!shiftId) {
+            setError("Please select a shift timing");
+            setLoading(false);
+            return;
+        }
+
         const trimmedLinkedin = linkedinUrl.trim();
         if (trimmedLinkedin && !/^https?:\/\/.+/i.test(trimmedLinkedin)) {
             setError("LinkedIn URL must start with http:// or https://");
@@ -106,6 +122,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             role,
             jobRole,
             designation,
+            shiftId,
             phone,
             dateOfJoining,
             linkedinUrl: trimmedLinkedin,
@@ -246,6 +263,24 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                     <option value="Immigration HR">Immigration HR</option>
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Shift Timing */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Shift Timing</label>
+                            <select
+                                value={shiftId}
+                                onChange={(e) => setShiftId(e.target.value)}
+                                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm appearance-none"
+                                required
+                            >
+                                <option value="" disabled>Select a shift</option>
+                                {shifts.map((shift) => (
+                                    <option key={shift.id} value={shift.id}>
+                                        {shift.name} ({shift.startTime.slice(0, 5)} - {shift.shiftEndTime.slice(0, 5)})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Corporate Email & Phone Number */}

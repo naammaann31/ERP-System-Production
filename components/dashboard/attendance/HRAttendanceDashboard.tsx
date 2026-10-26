@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, XCircle, Clock, Search, Download, Filter, ChevronDown, PenLine } from "lucide-react";
 import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalDateString, formatAttendanceTime, updateAttendanceStatus } from "@/lib/attendance";
+import { getShifts, isWeekOffForShift, legacyIsImmigration } from "@/lib/shifts";
 import { getUsHolidayName } from "@/lib/holidays";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -137,10 +138,11 @@ export default function HRAttendanceDashboard() {
       const data = await getAttendanceByDate(selectedDate);
       
       // Fetch all employees
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation").neq("role", "Admin");
-      
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation, shift_id").neq("role", "Admin");
+      const shifts = await getShifts().catch(() => []);
+
       let mergedRecords = data;
-      
+
       if (profiles) {
           // Built from explicit Y/M/D numbers rather than parsing the
           // "YYYY-MM-DD" string directly — `new Date("2026-10-19")` is
@@ -163,15 +165,18 @@ export default function HRAttendanceDashboard() {
              const existing = data.find(r => r.userId === profile.id);
              if (existing) return existing;
              
-             let isProfileWeekOff = false;
-             const dDay = dDate.getDay();
-             const dDateNum = dDate.getDate();
-             
-             if (profile.role === "IMMIGRATION" || profile.designation === "Immigration HR") {
-               isProfileWeekOff = dDay === 0 || (dDay === 6 && dDateNum >= 22 && dDateNum <= 28);
-             } else {
-               isProfileWeekOff = dDay === 0 || dDay === 6;
-             }
+             const profileShift = shifts.find(s => s.id === (profile as any).shift_id);
+             const isProfileWeekOff = profileShift
+               ? isWeekOffForShift(profileShift, selYear, selMonth, selDay)
+               : (() => {
+                   // Fallback if a profile somehow has no matching shift row
+                   // (should not happen post-migration-35 backfill).
+                   const dDay = dDate.getDay();
+                   const dDateNum = dDate.getDate();
+                   return legacyIsImmigration(profile.role, profile.designation)
+                     ? dDay === 0 || (dDay === 6 && dDateNum >= 22 && dDateNum <= 28)
+                     : dDay === 0 || dDay === 6;
+                 })();
              
              return {
                id: (usHolidayName ? "holiday-" : isProfileWeekOff ? "weekoff-" : "absent-") + profile.id + "-" + selectedDate,

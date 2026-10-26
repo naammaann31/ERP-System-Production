@@ -15,7 +15,36 @@ import {
   determineCheckInFlags,
   determineCheckOutHalfDay,
   isImmigrationWeekOffDate,
+  determineCheckInFlagsForShift,
+  determineCheckOutHalfDayForShift,
+  isWeekOffForRule,
+  type ShiftRuleConfig,
 } from "./lib/attendanceRules.ts";
+
+const NIGHT_SHIFT: ShiftRuleConfig = {
+  lateAfterHour: 19,
+  lateAfterMinute: 45,
+  hasEarlyAbsentTrigger: true,
+  earlyAbsentBeforeHour: 6,
+  weekOffAffectsRules: false,
+  halfDayThresholdSeconds: 18000,
+};
+const IMMIGRATION_SHIFT: ShiftRuleConfig = {
+  lateAfterHour: 10,
+  lateAfterMinute: 15,
+  hasEarlyAbsentTrigger: false,
+  earlyAbsentBeforeHour: null,
+  weekOffAffectsRules: true,
+  halfDayThresholdSeconds: 18000,
+};
+const MID_SHIFT: ShiftRuleConfig = {
+  lateAfterHour: 14,
+  lateAfterMinute: 15,
+  hasEarlyAbsentTrigger: false,
+  earlyAbsentBeforeHour: null,
+  weekOffAffectsRules: false,
+  halfDayThresholdSeconds: 18000,
+};
 
 type Case<T> = { name: string; input: T; expected: any; actual?: any; pass?: boolean };
 
@@ -113,6 +142,125 @@ run(
     { name: "Worked full 9h — never half day regardless of role/week-off", input: { secs: 9 * H, imm: true, wo: true }, expected: false },
   ],
   (i) => determineCheckOutHalfDay(i.secs, i.imm, i.wo)
+);
+
+// ============================================================
+// determineCheckInFlagsForShift — generic form (migration 35 spec).
+// Re-runs the EXACT SAME Night Shift / Immigration cases above through the
+// new generic, shift-config-driven function, to prove it reproduces
+// identical results before trusting it as the spec the new SQL is checked
+// against — then adds Mid Shift's own cases, which have no prior baseline.
+// ============================================================
+console.log("\n=== determineCheckInFlagsForShift: Night Shift (must match determineCheckInFlags exactly) ===");
+run(
+  [
+    { name: "On-time, mid-shift (7:00 PM)", input: { h: 19, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Exactly 7:45 PM — not late", input: { h: 19, m: 45 }, expected: { isLate: false, isAbsent: false } },
+    { name: "7:46 PM — late", input: { h: 19, m: 46 }, expected: { isLate: true, isAbsent: false } },
+    { name: "8:00 PM (hour > 19) — late", input: { h: 20, m: 0 }, expected: { isLate: true, isAbsent: false } },
+    { name: "Exactly 6:00 AM — on time", input: { h: 6, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "5:59 AM — late AND absent", input: { h: 5, m: 59 }, expected: { isLate: true, isAbsent: true } },
+    { name: "Midnight 12:00 AM — late AND absent", input: { h: 0, m: 0 }, expected: { isLate: true, isAbsent: true } },
+    { name: "3:00 AM — late AND absent", input: { h: 3, m: 0 }, expected: { isLate: true, isAbsent: true } },
+    { name: "Noon — not late", input: { h: 12, m: 0 }, expected: { isLate: false, isAbsent: false } },
+  ],
+  (i) => determineCheckInFlagsForShift(i.h, i.m, NIGHT_SHIFT, false)
+);
+
+console.log("\n=== determineCheckInFlagsForShift: Immigration Shift, not a week off (must match determineCheckInFlags exactly) ===");
+run(
+  [
+    { name: "On-time (9:00 AM)", input: { h: 9, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Exactly 10:15 AM — not late", input: { h: 10, m: 15 }, expected: { isLate: false, isAbsent: false } },
+    { name: "10:16 AM — late", input: { h: 10, m: 16 }, expected: { isLate: true, isAbsent: false } },
+    { name: "11:00 AM — late", input: { h: 11, m: 0 }, expected: { isLate: true, isAbsent: false } },
+    { name: "Very early check-in (2:00 AM) — never absent at check-in", input: { h: 2, m: 0 }, expected: { isLate: false, isAbsent: false } },
+  ],
+  (i) => determineCheckInFlagsForShift(i.h, i.m, IMMIGRATION_SHIFT, false)
+);
+
+console.log("\n=== determineCheckInFlagsForShift: Immigration Shift, ON a week off (must match determineCheckInFlags exactly) ===");
+run(
+  [
+    { name: "Would-be-late time (11:00 AM) on a week off — suppressed", input: { h: 11, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "On-time-looking check-in on a week off", input: { h: 9, m: 0 }, expected: { isLate: false, isAbsent: false } },
+  ],
+  (i) => determineCheckInFlagsForShift(i.h, i.m, IMMIGRATION_SHIFT, true)
+);
+
+console.log("\n=== determineCheckInFlagsForShift: Mid Shift (new, 2:00 PM - 11:00 PM, late after 2:15 PM) ===");
+run(
+  [
+    { name: "On-time (2:00 PM)", input: { h: 14, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Exactly 2:15 PM — not late (boundary is > 2:15)", input: { h: 14, m: 15 }, expected: { isLate: false, isAbsent: false } },
+    { name: "2:16 PM — late", input: { h: 14, m: 16 }, expected: { isLate: true, isAbsent: false } },
+    { name: "3:00 PM (hour > 14) — late", input: { h: 15, m: 0 }, expected: { isLate: true, isAbsent: false } },
+    { name: "Very early check-in (3:00 AM) — no early-absent trigger, never absent at check-in", input: { h: 3, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Mid-afternoon (1:00 PM, before start) — not late", input: { h: 13, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Week off flag has no effect — Mid Shift's week-off is display-only, like Night Shift", input: { h: 11, m: 0 }, expected: { isLate: false, isAbsent: false } },
+  ],
+  (i) => determineCheckInFlagsForShift(i.h, i.m, MID_SHIFT, i.h === 11 ? true : false)
+);
+
+// ============================================================
+// determineCheckOutHalfDayForShift — generic form
+// ============================================================
+console.log("\n=== determineCheckOutHalfDayForShift: Night Shift & Immigration (must match determineCheckOutHalfDay exactly) ===");
+run(
+  [
+    { name: "Worked 4h59m59s, Night Shift — half day", input: { secs: 5 * H - 1, shift: NIGHT_SHIFT, wo: false }, expected: true },
+    { name: "Worked exactly 5h, Night Shift — NOT half day", input: { secs: 5 * H, shift: NIGHT_SHIFT, wo: false }, expected: false },
+    { name: "Worked 0s, Night Shift — half day", input: { secs: 0, shift: NIGHT_SHIFT, wo: false }, expected: true },
+    { name: "Worked 2h, Immigration, not a week off — half day", input: { secs: 2 * H, shift: IMMIGRATION_SHIFT, wo: false }, expected: true },
+    { name: "Worked 2h, Immigration, ON a week off — exemption applies", input: { secs: 2 * H, shift: IMMIGRATION_SHIFT, wo: true }, expected: false },
+    { name: "Worked 2h, Night Shift, week-off flag irrelevant", input: { secs: 2 * H, shift: NIGHT_SHIFT, wo: true }, expected: true },
+    { name: "Worked full 9h, Immigration on a week off — never half day", input: { secs: 9 * H, shift: IMMIGRATION_SHIFT, wo: true }, expected: false },
+  ],
+  (i) => determineCheckOutHalfDayForShift(i.secs, i.shift, i.wo)
+);
+
+console.log("\n=== determineCheckOutHalfDayForShift: Mid Shift (new) ===");
+run(
+  [
+    { name: "Worked 4h59m59s — half day", input: { secs: 5 * H - 1 }, expected: true },
+    { name: "Worked exactly 5h — NOT half day", input: { secs: 5 * H }, expected: false },
+    { name: "Clocked in 2:00 PM, logout before 7:00 PM (< 5h) — half day, per the explicit spec example", input: { secs: 4 * H }, expected: true },
+    { name: "Clocked in 2:00 PM, logout at/after 7:00 PM (>= 5h) — not half day", input: { secs: 5 * H }, expected: false },
+    { name: "Worked 0s — half day", input: { secs: 0 }, expected: true },
+    { name: "Week off flag has no effect — Mid Shift has no exemption, same as Night Shift", input: { secs: 2 * H }, expected: true },
+  ],
+  (i) => determineCheckOutHalfDayForShift(i.secs, MID_SHIFT, false)
+);
+
+// ============================================================
+// isWeekOffForShift (lib/shifts.ts) — generic form of
+// isImmigrationWeekOffDate, must match it exactly for the
+// sunday_plus_4th_saturday rule, and correctly implement the plain
+// standard_weekend rule used by Night Shift and Mid Shift.
+// ============================================================
+console.log("\n=== isWeekOffForRule: sunday_plus_4th_saturday (must match isImmigrationWeekOffDate exactly) ===");
+run(
+  [
+    { name: "Sunday (Oct 4, 2026)", input: { y: 2026, m: 10, d: 4 }, expected: true },
+    { name: "2nd Saturday (Oct 10, 2026) — not week off", input: { y: 2026, m: 10, d: 10 }, expected: false },
+    { name: "The 4th Saturday itself (Oct 24, 2026) — week off", input: { y: 2026, m: 10, d: 24 }, expected: true },
+    { name: "5th Saturday (Oct 31, 2026) — not week off", input: { y: 2026, m: 10, d: 31 }, expected: false },
+    { name: "Ordinary weekday (Oct 19, 2026, Monday) — not week off", input: { y: 2026, m: 10, d: 19 }, expected: false },
+  ],
+  (i) => isWeekOffForRule("sunday_plus_4th_saturday", i.y, i.m, i.d)
+);
+
+console.log("\n=== isWeekOffForRule: standard_weekend (Night Shift / Mid Shift) ===");
+run(
+  [
+    { name: "Sunday (Oct 4, 2026) — week off", input: { y: 2026, m: 10, d: 4 }, expected: true },
+    { name: "Saturday (Oct 10, 2026) — week off regardless of date-of-month", input: { y: 2026, m: 10, d: 10 }, expected: true },
+    { name: "The would-be-4th-Saturday (Oct 24, 2026) — still just a normal Saturday, week off", input: { y: 2026, m: 10, d: 24 }, expected: true },
+    { name: "5th Saturday (Oct 31, 2026) — week off, no 4-Saturdays-only restriction", input: { y: 2026, m: 10, d: 31 }, expected: true },
+    { name: "Ordinary weekday (Oct 19, 2026, Monday) — not week off", input: { y: 2026, m: 10, d: 19 }, expected: false },
+    { name: "Friday (Oct 23, 2026) — not week off", input: { y: 2026, m: 10, d: 23 }, expected: false },
+  ],
+  (i) => isWeekOffForRule("standard_weekend", i.y, i.m, i.d)
 );
 
 // ============================================================

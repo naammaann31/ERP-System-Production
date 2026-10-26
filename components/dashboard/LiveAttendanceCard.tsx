@@ -15,11 +15,13 @@ import {
   AttendanceRecord
 } from "@/lib/attendance";
 import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
+import { getShifts, isWeekOffForShift, type Shift } from "@/lib/shifts";
 
 export default function LiveAttendanceCard() {
   const { profile } = useAuth();
   const { record: sharedRecord, loading: sharedLoading, setRecord: setSharedRecord } = useTodayAttendance();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [workingSeconds, setWorkingSeconds] = useState(0);
   const [attendanceRecord, setAttendanceRecord] = useState<AttendanceRecord | null>(null);
@@ -29,6 +31,10 @@ export default function LiveAttendanceCard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const recordRef = useRef<AttendanceRecord | null>(null);
+
+  useEffect(() => {
+    getShifts().then(setShifts).catch(() => setShifts([]));
+  }, []);
 
   // Today's attendance record now comes from TodayAttendanceProvider
   // (shared with TopStats/WeeklyOverview) instead of this component
@@ -179,13 +185,15 @@ export default function LiveAttendanceCard() {
     return hour >= 0 && hour < 6;
   })();
 
+  // Only shown for shifts whose week-off actually changes the rules
+  // (Immigration today) — Night Shift and Mid Shift never showed this
+  // badge before shift_id existed either, so that's preserved exactly by
+  // gating on weekOffAffectsRules rather than hardcoding a role check.
+  const userShift = shifts.find((s) => s.id === (profile as any)?.shift_id);
   const isWeekOff = (() => {
-    if ((profile?.role !== "IMMIGRATION" && profile?.designation !== "Immigration HR") || !currentTime) return false;
+    if (!userShift?.weekOffAffectsRules || !currentTime) return false;
     const p = istParts(currentTime);
-    const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
-    const dayOfWeek = d.getUTCDay();
-    const dateNum = d.getUTCDate();
-    return dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
+    return isWeekOffForShift(userShift, Number(p.year), Number(p.month), Number(p.day));
   })();
 
   return (
@@ -333,7 +341,7 @@ export default function LiveAttendanceCard() {
               </div>
 
               <div className="p-6 max-h-[60vh] overflow-y-auto">
-                {profile?.role === "IMMIGRATION" || profile?.designation === "Immigration HR" ? (
+                {userShift?.name === "Immigration Shift" ? (
                   <div className="space-y-4 text-sm text-slate-600">
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
@@ -343,12 +351,30 @@ export default function LiveAttendanceCard() {
                         <li>Sunday and the 4th Saturday of the month are recognized as <span className="font-semibold text-slate-800">Week Offs</span>.</li>
                       </ul>
                     </div>
-                    
+
                     <div className="pt-2">
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
                         <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
                         <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 6:45 PM (Mon-Fri) or 3:30 PM (Sat)</span> and mark you Absent for the entire day.</li>
+                      </ul>
+                    </div>
+                  </div>
+                ) : userShift?.name === "Mid Shift" ? (
+                  <div className="space-y-4 text-sm text-slate-600">
+                    <div>
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Standard shift starts before <span className="font-semibold text-slate-800">2:15 PM IST</span>.</li>
+                        <li>Clocking in after 2:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-2">
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
+                        <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 11:30 PM</span> and mark you Absent for the entire day.</li>
                       </ul>
                     </div>
                   </div>
@@ -362,7 +388,7 @@ export default function LiveAttendanceCard() {
                         <li>Clock In is <span className="font-semibold text-slate-800">disabled after 11:59 PM</span>. You will automatically be marked Absent.</li>
                       </ul>
                     </div>
-                    
+
                     <div className="pt-2">
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
