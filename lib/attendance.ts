@@ -1,6 +1,15 @@
 import { createClient } from "@/lib/supabase/client";
 import { format, subDays, startOfMonth, endOfMonth, isSameDay } from "date-fns";
 import { getUsHolidayName } from "./holidays";
+import {
+  isImmigrationWeekOffDate,
+  determineCheckInFlags,
+  determineCheckOutHalfDay,
+  type CheckInFlags,
+} from "./attendanceRules";
+
+export { isImmigrationWeekOffDate, determineCheckInFlags, determineCheckOutHalfDay };
+export type { CheckInFlags };
 
 export interface AttendanceRecord {
   id?: string;
@@ -238,36 +247,11 @@ export const checkIn = async (userId: string, fullName: string, role?: string, d
 
   // Shift detection logic based on role
   const isImmigration = role === "IMMIGRATION" || designation === "Immigration HR";
+  const isWeekOff = isImmigration
+    ? isImmigrationWeekOffDate(Number(p.year), Number(p.month), Number(p.day))
+    : false;
 
-  let isLate = false;
-  let isAbsent = false;
-
-  if (isImmigration) {
-    // 4th Saturday and Sunday detection using local IST date
-    const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
-    const dayOfWeek = d.getUTCDay();
-    const dateNum = d.getUTCDate();
-    const isWeekOff = dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
-    
-    if (!isWeekOff) {
-      // Late Comer Logic: Immigration shift starts at 10:00 AM, late if strictly > 10:15 AM
-      if (hour > 10 || (hour === 10 && minute > 15)) {
-        isLate = true;
-      }
-    }
-    // Absent logic is handled strictly by the Cron (auto-clockout) for Immigration.
-  } else {
-    // Existing Night Shift logic
-    // Late Comer Logic: Clock in after 7:45 PM or between 12:00 AM and 6:00 AM
-    if (hour > 19 || (hour === 19 && minute > 45) || hour < 6) {
-      isLate = true;
-    }
-    
-    // Absent Logic: If user clocks in after 11:59 PM (between 12:00 AM and 6:00 AM)
-    if (hour < 6) {
-      isAbsent = true;
-    }
-  }
+  const { isLate, isAbsent } = determineCheckInFlags(hour, minute, isImmigration, isWeekOff);
 
   const insertData: any = {
     user_id: userId,
@@ -300,14 +284,63 @@ export const checkIn = async (userId: string, fullName: string, role?: string, d
   return fromRow(data);
 };
 
+/**
+ * Live working-seconds ticker — calls the update_working_seconds() Postgres
+ * function (supabase/migrations/00000000000034_restrict_attendance_direct_writes.sql)
+ * instead of writing the table directly.
+ *
+ * Same call signature, same fire-and-forget usage at every call site — the
+ * function does exactly what the direct update used to do (set
+ * working_seconds on the caller's own still-open row), it just no longer
+ * depends on the table's own RLS to permit a direct self-write.
+ */
 export const updateWorkingSeconds = async (docId: string, workingSeconds: number) => {
   const supabase = createClient();
-  await supabase.from("attendance").update({ working_seconds: workingSeconds }).eq("id", docId);
+  await supabase.rpc("update_working_seconds", { p_attendance_id: docId, p_seconds: workingSeconds });
+};
+
+/**
+ * Server-authoritative clock-in — calls the clock_in() Postgres function
+ * (supabase/migrations/00000000000033_server_side_clock_in_out.sql)
+ * instead of writing the row directly from the browser.
+ *
+ * No arguments: the employee's identity, the official timestamp, and every
+ * late/absent/half-day decision are all determined server-side from the
+ * authenticated session and Postgres's own clock — none of it is supplied
+ * by (or trusted from) this client.
+ *
+ * checkIn() above is left completely untouched as a fallback — this is a
+ * new, separate function, not a modification of the old path.
+ */
+export const clockInServerSide = async (): Promise<AttendanceRecord> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("clock_in");
+  if (error) throw error;
+  return fromRow(data);
+};
+
+/**
+ * Server-authoritative clock-out — calls the clock_out() Postgres function.
+ *
+ * Only the attendance row id is sent; worked duration is derived
+ * server-side from the stored check-in time and the database's own clock,
+ * not trusted from this client. The function is idempotent — calling it
+ * again on an already-closed record (including one an HR correction just
+ * closed) returns the current row rather than erroring or fighting the
+ * correction.
+ *
+ * checkOut() above is left completely untouched as a fallback.
+ */
+export const clockOutServerSide = async (attendanceId: string): Promise<AttendanceRecord> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("clock_out", { p_attendance_id: attendanceId });
+  if (error) throw error;
+  return fromRow(data);
 };
 
 export const checkOut = async (docId: string, workingSeconds: number) => {
   const supabase = createClient();
-  
+
   // Fetch the attendance record to get role and date for specific logic
   const { data: record } = await supabase
     .from("attendance")
@@ -315,26 +348,16 @@ export const checkOut = async (docId: string, workingSeconds: number) => {
     .eq("id", docId)
     .single();
 
-  let isHalfDay = false;
-  
-  // Early Leaver Penalty: If total hours < 5 (18,000 seconds), mark as half day.
-  if (workingSeconds < 5 * 3600) {
-    isHalfDay = true;
-    
-    // Exception: Do not penalize if it's a Week Off for Immigration
-    const recordDesignation = (record?.profiles as any)?.designation;
-    if ((record?.role === "IMMIGRATION" || recordDesignation === "Immigration HR") && record?.date) {
-      const [y, m, d] = record.date.split('-');
-      const dateObj = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
-      const dayOfWeek = dateObj.getUTCDay();
-      const dateNum = dateObj.getUTCDate();
-      const isWeekOff = dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
-      
-      if (isWeekOff) {
-        isHalfDay = false;
-      }
-    }
-  }
+  const recordDesignation = (record?.profiles as any)?.designation;
+  const isImmigration = record?.role === "IMMIGRATION" || recordDesignation === "Immigration HR";
+  const isWeekOff = isImmigration && record?.date
+    ? (() => {
+        const [y, m, d] = record.date.split('-');
+        return isImmigrationWeekOffDate(Number(y), Number(m), Number(d));
+      })()
+    : false;
+
+  const isHalfDay = determineCheckOutHalfDay(workingSeconds, isImmigration, isWeekOff);
 
   const updatePayload: any = {
     check_out_time: toLocalTimestamp(new Date()),

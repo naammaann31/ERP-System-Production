@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { toast } from "sonner";
 import {
   CalendarDays,
   Clock,
@@ -20,8 +21,8 @@ import {
 import {
   getUserAttendanceForMonth,
   getTodayAttendance,
-  checkIn,
-  checkOut,
+  clockInServerSide,
+  clockOutServerSide,
   updateWorkingSeconds,
   computeWorkedSeconds,
   formatAttendanceTime,
@@ -136,20 +137,39 @@ export default function EmployeeAttendanceDashboard() {
   }, [isClockedIn, todayRecord, liveSeconds]);
 
   const handleClockIn = async () => {
-    if (!profile?.uid) return;
+    if (!profile?.uid || clockLoading) return;
     setClockLoading(true);
-    const rec = await checkIn(profile.uid, profile.fullName, profile.role, profile.designation);
-    setTodayRecord(rec);
-    setLiveSeconds(0);
-    setClockLoading(false);
+    try {
+      // Server-authoritative: identity comes from the session, the
+      // official timestamp and every late/absent decision are computed by
+      // the database, not this client. See clock_in() in
+      // supabase/migrations/00000000000033_server_side_clock_in_out.sql.
+      const rec = await clockInServerSide();
+      setTodayRecord(rec);
+      setLiveSeconds(0);
+    } catch (error: any) {
+      console.error("Error during check in:", error);
+      toast.error(`Check in failed: ${error.message || "Please try again."}`);
+    } finally {
+      setClockLoading(false);
+    }
   };
 
   const handleClockOut = async () => {
-    if (!profile?.uid || !todayRecord?.id) return;
+    if (!profile?.uid || !todayRecord?.id || clockLoading) return;
     setClockLoading(true);
-    await checkOut(todayRecord.id, liveSeconds);
-    setTodayRecord((prev) => prev ? { ...prev, status: "Present", workingSeconds: liveSeconds } : null);
-    setClockLoading(false);
+    try {
+      // Worked duration is derived server-side from the stored check-in
+      // time, not sent from here — see clock_out()'s comments.
+      const rec = await clockOutServerSide(todayRecord.id);
+      setTodayRecord(rec);
+      setLiveSeconds(rec.workingSeconds || 0);
+    } catch (error: any) {
+      console.error("Error during check out:", error);
+      toast.error(`Check out failed: ${error.message || "Please try again."}`);
+    } finally {
+      setClockLoading(false);
+    }
   };
 
   // Fetch month's attendance

@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       secure: true,
       auth: {
         user: 'damini@vectragroup.in',
-        pass: ''
+        pass: process.env.SMTP_PASSWORD || ''
       }
     });
 

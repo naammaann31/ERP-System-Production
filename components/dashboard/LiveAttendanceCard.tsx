@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
 import {
-  checkIn,
-  checkOut,
+  clockInServerSide,
+  clockOutServerSide,
   istParts,
   updateWorkingSeconds,
   computeWorkedSeconds,
@@ -26,6 +26,7 @@ export default function LiveAttendanceCard() {
   const [loading, setLoading] = useState(true);
   const [showClockOutConfirm, setShowClockOutConfirm] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const recordRef = useRef<AttendanceRecord | null>(null);
 
@@ -93,17 +94,24 @@ export default function LiveAttendanceCard() {
   }, [isCheckedIn, attendanceRecord, workingSeconds]);
 
   const handleToggleCheckIn = async () => {
-    if (!profile?.uid) return;
+    if (!profile?.uid || isProcessing) return;
 
     if (!isCheckedIn) {
+      setIsProcessing(true);
       try {
-        const record = await checkIn(profile.uid, profile.fullName || "Unknown User", profile.role, profile.designation);
+        // Server-authoritative: identity comes from the session, the
+        // official timestamp and every late/absent decision are computed
+        // by the database, not this client. See clock_in() in
+        // supabase/migrations/00000000000033_server_side_clock_in_out.sql.
+        const record = await clockInServerSide();
         setAttendanceRecord(record);
-        setIsCheckedIn(true);
+        setIsCheckedIn(record.status === "Checked In");
         setSharedRecord(record);
       } catch (error: any) {
         console.error("Error during check in:", error, error.message, error.details);
         toast.error(`Check in failed: ${error.message || JSON.stringify(error)}`);
+      } finally {
+        setIsProcessing(false);
       }
     } else {
       setShowClockOutConfirm(true);
@@ -111,21 +119,22 @@ export default function LiveAttendanceCard() {
   };
 
   const executeClockOut = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     try {
       if (attendanceRecord?.id) {
-        await checkOut(attendanceRecord.id, workingSeconds);
-        const updatedRecord: AttendanceRecord = {
-          ...attendanceRecord,
-          status: "Present",
-          workingSeconds
-        };
+        // Worked duration is derived server-side from the stored check-in
+        // time, not sent from here — see clock_out()'s comments.
+        const updatedRecord = await clockOutServerSide(attendanceRecord.id);
         setAttendanceRecord(updatedRecord);
         setSharedRecord(updatedRecord);
       }
       setIsCheckedIn(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during check out:", error);
+      toast.error(`Check out failed: ${error.message || JSON.stringify(error)}`);
     } finally {
+      setIsProcessing(false);
       setShowClockOutConfirm(false);
     }
   };
@@ -243,7 +252,7 @@ export default function LiveAttendanceCard() {
       <div className="flex flex-col gap-2 mt-4">
         <button
           onClick={handleToggleCheckIn}
-          disabled={loading || alreadyCheckedOut || isTooLateToClockIn || isWeekOff}
+          disabled={loading || alreadyCheckedOut || isTooLateToClockIn || isWeekOff || isProcessing}
           className={`w-full flex items-center justify-center gap-2 text-white text-[11px] font-bold py-2.5 rounded-lg transition-all shadow-md active:scale-[0.98] ${
             (alreadyCheckedOut || isTooLateToClockIn || isWeekOff) ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
               : isCheckedIn 
@@ -294,8 +303,8 @@ export default function LiveAttendanceCard() {
                   <button type="button" onClick={() => setShowClockOutConfirm(false)} className="rounded-xl border border-slate-200 font-bold hover:bg-slate-50 px-6 py-2.5 text-slate-600 text-sm transition-colors">
                     Cancel
                   </button>
-                  <button type="button" onClick={executeClockOut} className="rounded-xl bg-slate-900 hover:bg-black font-bold px-6 py-2.5 shadow-md shadow-slate-900/20 active:scale-95 transition-all text-white text-sm">
-                    Clock Out
+                  <button type="button" onClick={executeClockOut} disabled={isProcessing} className="rounded-xl bg-slate-900 hover:bg-black font-bold px-6 py-2.5 shadow-md shadow-slate-900/20 active:scale-95 transition-all text-white text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                    {isProcessing ? "Clocking Out..." : "Clock Out"}
                   </button>
                 </div>
               </div>
