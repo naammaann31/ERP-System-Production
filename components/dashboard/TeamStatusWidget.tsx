@@ -71,6 +71,8 @@ export default function TeamStatusWidget() {
   const updateTeam = () => {
     const members: TeamMember[] = [];
     usersDataRef.current.forEach((row: any) => {
+      if (row.status === "Inactive") return;
+
       const isMe = row.id === profile?.uid;
       const attStatus = attendanceDataRef.current[row.id];
 
