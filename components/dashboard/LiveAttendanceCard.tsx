@@ -189,7 +189,16 @@ export default function LiveAttendanceCard() {
   // (Immigration today) — Night Shift and Mid Shift never showed this
   // badge before shift_id existed either, so that's preserved exactly by
   // gating on weekOffAffectsRules rather than hardcoding a role check.
-  const userShift = shifts.find((s) => s.id === (profile as any)?.shift_id);
+  const userShift = shifts.find((s) => s.id === profile?.shiftId);
+
+  // "19:30:00" -> "7:30 PM"
+  const formatShiftTime = (time: string) => {
+    const [hStr, mStr] = time.split(":");
+    let h = Number(hStr);
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${mStr} ${ampm}`;
+  };
   const isWeekOff = (() => {
     if (!userShift?.weekOffAffectsRules || !currentTime) return false;
     const p = istParts(currentTime);
@@ -199,8 +208,15 @@ export default function LiveAttendanceCard() {
   return (
     <>
       <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col h-full relative overflow-hidden">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-bold text-slate-800 text-sm">Today's Attendance</h3>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="font-bold text-slate-800 text-sm">Today's Attendance</h3>
+          {userShift && (
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+              {userShift.name} &middot; {formatShiftTime(userShift.startTime)}&ndash;{formatShiftTime(userShift.shiftEndTime)}
+            </p>
+          )}
+        </div>
         {loading ? (
           <div className="text-xs text-slate-400">Loading...</div>
         ) : isWeekOff ? (

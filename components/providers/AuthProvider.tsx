@@ -10,6 +10,7 @@ export interface UserProfile {
   email: string;
   role: string;
   status?: string;
+  shiftId?: string;
   jobRole?: string;
   employeeId?: string;
   designation?: string;
@@ -41,6 +42,7 @@ function toProfile(row: any): UserProfile {
     email: row.email,
     role: row.role,
     status: row.status,
+    shiftId: row.shift_id,
     jobRole: row.job_role,
     employeeId: row.employee_id,
     designation: row.designation,
