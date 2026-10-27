@@ -11,6 +11,7 @@ interface Employee {
   jobRole: string;
   isConfigured?: boolean;
   dateOfJoining?: string;
+  status: string;
 }
 
 interface EmployeePayrollTableProps {
@@ -75,6 +76,11 @@ export default function EmployeePayrollTable({
                       <td className="px-6 py-4 font-medium text-slate-900">
                         <div className="flex items-center gap-2">
                           <span>{emp.name}</span>
+                          {emp.status === "Inactive" && (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 text-[10px] font-semibold py-0.5">
+                              Inactive
+                            </Badge>
+                          )}
                           {hasPayrollThisMonth ? (
                             <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold py-0.5">
                               Paid ({currentMonthName})
@@ -101,7 +107,15 @@ export default function EmployeePayrollTable({
                           >
                             <Edit className={`w-3.5 h-3.5 ${emp.isConfigured && !hasPayrollThisMonth ? "text-green-600" : "text-slate-500"}`} /> Configure Salary
                           </button>
-                          {hasPayrollThisMonth ? (
+                          {emp.status === "Inactive" ? (
+                            <button
+                              disabled
+                              title="This employee is marked Inactive — payroll can no longer be generated for them."
+                              className="bg-slate-50 text-slate-400 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> {hasPayrollThisMonth ? "Regenerate" : "Generate Payroll"}
+                            </button>
+                          ) : hasPayrollThisMonth ? (
                             <button
                               onClick={() => openGenerateModal(emp)}
                               className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"

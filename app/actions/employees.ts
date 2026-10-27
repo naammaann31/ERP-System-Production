@@ -23,6 +23,7 @@ export interface UpdateEmployeeInput {
   jobRole: string;
   designation: string;
   shiftId: string;
+  status: string;
   phone?: string;
   dateOfJoining?: string;
   password?: string;
@@ -150,6 +151,7 @@ export async function updateEmployeeAction(
       job_role: input.jobRole.trim(),
       designation: input.designation,
       shift_id: input.shiftId,
+      status: input.status,
       phone: input.phone || null,
       date_of_joining: input.dateOfJoining || null,
       linkedin_url: input.linkedinUrl || null,

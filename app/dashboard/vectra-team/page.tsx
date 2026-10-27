@@ -114,6 +114,7 @@ export default function VectraTeamPage() {
             let query = supabase
                 .from("profiles")
                 .select("id, full_name, email, employee_id, role, job_role, designation, linkedin_url, avatar_url, avatar_thumb_url", { count: "exact" })
+                .eq("status", "Active")
                 .order("full_name", { ascending: true, nullsFirst: false });
 
             if (debouncedSearch) {

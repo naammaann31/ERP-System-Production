@@ -74,7 +74,7 @@ export default function DepartmentPage() {
     const supabase = createClient();
 
     const fetchEmployees = async () => {
-      const { data, error } = await supabase.from("profiles").select("*").eq("role", dept.role);
+      const { data, error } = await supabase.from("profiles").select("*").eq("role", dept.role).eq("status", "Active");
       if (error) {
         console.error(error);
         setLoading(false);

@@ -37,6 +37,7 @@ interface Employee {
   jobRole: string;
   isConfigured?: boolean;
   dateOfJoining?: string;
+  status: string;
 }
 
 export default function HRPayrollDashboard() {
@@ -131,6 +132,7 @@ export default function HRPayrollDashboard() {
         jobRole: row.job_role || "N/A",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         isConfigured: false,
+        status: row.status || "Active",
       }));
       emps.sort((a, b) => b.createdAt - a.createdAt);
       setEmployees(emps);

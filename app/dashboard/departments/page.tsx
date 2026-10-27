@@ -67,7 +67,9 @@ function HRDepartmentsDashboard() {
         console.error(error);
         return;
       }
-      const emps = (data || []).map((row: any) => ({ uid: row.id, fullName: row.full_name, role: row.role, designation: row.designation }));
+      const emps = (data || [])
+        .filter((row: any) => row.status !== "Inactive")
+        .map((row: any) => ({ uid: row.id, fullName: row.full_name, role: row.role, designation: row.designation }));
       const newStats: Record<string, { count: number, manager: string }> = {};
 
       emps.forEach((emp: any) => {

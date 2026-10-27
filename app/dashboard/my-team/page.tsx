@@ -95,6 +95,8 @@ export default function MyTeamPage() {
                            (leadRole && memberRole && leadRole === memberRole);
         const isMarketingMember = memberDept === "marketing" || memberRole === "marketing";
 
+        if (row.status === "Inactive") return;
+
         if (isSameDept || (isManager && isMarketingMember)) {
             emps.push({
             uid: row.id,

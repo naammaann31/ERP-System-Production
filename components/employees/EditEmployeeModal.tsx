@@ -28,6 +28,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
     const [designation, setDesignation] = useState("Employee");
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [shiftId, setShiftId] = useState("");
+    const [status, setStatus] = useState("Active");
     const [showDropdown, setShowDropdown] = useState(false);
     const [phone, setPhone] = useState("");
     const [dateOfJoining, setDateOfJoining] = useState("");
@@ -49,6 +50,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             setJobRole(employee.jobRole || "");
             setDesignation(employee.designation || "Employee");
             setShiftId(employee.shiftId || "");
+            setStatus(employee.status || "Active");
             setPhone(employee.phone || "");
             setDateOfJoining(employee.date_of_joining || employee.dateOfJoining || "");
             setAvatarUrl(employee.avatarThumbUrl || employee.avatar_thumb_url || employee.avatarUrl || employee.avatar_url || "");
@@ -123,6 +125,7 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
             jobRole,
             designation,
             shiftId,
+            status,
             phone,
             dateOfJoining,
             linkedinUrl: trimmedLinkedin,
@@ -281,6 +284,28 @@ export default function EditEmployeeModal({ isOpen, onClose, onSuccess, employee
                                     </option>
                                 ))}
                             </select>
+                        </div>
+
+                        {/* Employment Status */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Employment Status</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div
+                                    onClick={() => setStatus("Active")}
+                                    className={`relative h-14 px-3 rounded-xl border cursor-pointer transition-all flex items-center justify-center text-center ${status === "Active" ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm" : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700"}`}
+                                >
+                                    <span className="text-xs font-bold uppercase tracking-wider">Active</span>
+                                </div>
+                                <div
+                                    onClick={() => setStatus("Inactive")}
+                                    className={`relative h-14 px-3 rounded-xl border cursor-pointer transition-all flex items-center justify-center text-center ${status === "Inactive" ? "bg-slate-200 border-slate-400 text-slate-700 shadow-sm" : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700"}`}
+                                >
+                                    <span className="text-xs font-bold uppercase tracking-wider">Inactive (Ex-Employee)</span>
+                                </div>
+                            </div>
+                            {status === "Inactive" && (
+                                <p className="text-[10px] text-amber-600 mt-1.5">This employee will be hidden from assignment dropdowns and pushed to the bottom of employee lists. Their attendance, payroll, and other historical records remain fully intact.</p>
+                            )}
                         </div>
 
                         {/* Corporate Email & Phone Number */}

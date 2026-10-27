@@ -119,13 +119,21 @@ export default function EmployeesPage() {
         jobRole: row.job_role || "N/A",
         designation: row.designation || "Employee",
         shiftId: row.shift_id || "",
+        status: row.status || "Active",
+        linkedinUrl: row.linkedin_url || "",
         phone: row.phone || "",
         dateOfJoining: row.date_of_joining || "",
         createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         avatarUrl: row.avatar_url,
         avatarThumbUrl: row.avatar_thumb_url,
       }));
-      emps.sort((a, b) => b.createdAt - a.createdAt);
+      // Active first, Inactive pushed to the bottom; newest-first within each group.
+      emps.sort((a, b) => {
+        const aInactive = a.status === "Inactive" ? 1 : 0;
+        const bInactive = b.status === "Inactive" ? 1 : 0;
+        if (aInactive !== bInactive) return aInactive - bInactive;
+        return b.createdAt - a.createdAt;
+      });
       setEmployees(emps);
       setLoading(false);
     };
@@ -342,6 +350,11 @@ export default function EmployeesPage() {
                             fallbackClassName="bg-slate-100 text-slate-500 font-bold text-xs"
                           />
                           {employee.name}
+                          {employee.status === "Inactive" && (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 font-medium px-2 py-0.5 text-[10px]">
+                              Inactive
+                            </Badge>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-slate-500 font-mono text-xs">

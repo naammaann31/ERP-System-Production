@@ -258,6 +258,7 @@ export default function CandidatesClient() {
             .from("profiles")
             .select("id, full_name, designation")
             .eq("role", "MARKETING")
+            .eq("status", "Active")
             .order("full_name");
 
         if (err) {
