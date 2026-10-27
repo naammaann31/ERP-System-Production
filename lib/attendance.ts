@@ -476,8 +476,9 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
             // (should not happen post-migration-35 backfill) — reproduces
             // the exact pre-shift-table logic so display never regresses.
             const dDay = new Date(Number(year), Number(month) - 1, d).getDay();
+            const isLastSaturday = dDay === 6 && new Date(Number(year), Number(month) - 1, d + 7).getMonth() !== Number(month) - 1;
             return legacyIsImmigration(profile.role, profile.designation)
-              ? dDay === 0 || (dDay === 6 && d >= 22 && d <= 28)
+              ? dDay === 0 || isLastSaturday
               : dDay === 0 || dDay === 6;
           })();
       const usHolidayName = getUsHolidayName(dateStr);

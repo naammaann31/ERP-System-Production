@@ -134,21 +134,32 @@ export function determineCheckOutHalfDayForShift(
  * Built from explicit Y/M/D numbers via Date.UTC + UTC getters (never from
  * parsing a date STRING with local getters), so the answer is the same
  * regardless of which timezone the calling machine is set to.
+ *
+ * "sunday_plus_last_saturday" is the true last Saturday of the month, NOT
+ * the 4th Saturday by date-range — those are only the same thing in months
+ * with exactly 4 Saturdays. A month whose 1st Saturday falls on the 1st,
+ * 2nd, or 3rd has a 5th Saturday, which a date-range-22-28 check would
+ * never recognize (e.g. October 2026: Saturdays fall on 3, 10, 17, 24, 31
+ * — the 31st is the real last Saturday, not the 24th).
  */
 export function isWeekOffForRule(
-  rule: "standard_weekend" | "sunday_plus_4th_saturday",
+  rule: "standard_weekend" | "sunday_plus_last_saturday",
   year: number,
   month1Indexed: number,
   day: number
 ): boolean {
   const d = new Date(Date.UTC(year, month1Indexed - 1, day));
   const dayOfWeek = d.getUTCDay();
-  const dateNum = d.getUTCDate();
 
-  if (rule === "sunday_plus_4th_saturday") {
-    return dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
-  }
-  return dayOfWeek === 0 || dayOfWeek === 6;
+  if (dayOfWeek === 0) return true;
+  if (dayOfWeek !== 6) return false;
+  if (rule === "standard_weekend") return true;
+
+  // sunday_plus_last_saturday: true only if adding 7 days rolls into the
+  // next calendar month (works across year boundaries too, since only the
+  // month index is compared).
+  const nextWeek = new Date(Date.UTC(year, month1Indexed - 1, day + 7));
+  return nextWeek.getUTCMonth() !== (month1Indexed - 1);
 }
 
 /** Which shift an employee is on, by role/designation — pre-shift-table legacy inference, used only as a fallback if a profile somehow has no shift_id (should not happen after the migration 35 backfill). */

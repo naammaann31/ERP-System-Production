@@ -364,7 +364,7 @@ export default function LiveAttendanceCard() {
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">10:15 AM IST</span>.</li>
                         <li>Clocking in after 10:15 AM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
-                        <li>Sunday and the 4th Saturday of the month are recognized as <span className="font-semibold text-slate-800">Week Offs</span>.</li>
+                        <li>Sunday and the last Saturday of the month are recognized as <span className="font-semibold text-slate-800">Week Offs</span>.</li>
                       </ul>
                     </div>
 

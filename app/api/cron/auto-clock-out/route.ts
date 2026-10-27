@@ -14,7 +14,7 @@ interface ShiftRow {
   auto_clockout_cutoff_time: string; // "HH:MM:SS"
   cutoff_is_next_day: boolean;
   saturday_clockout_cutoff_time: string | null;
-  week_off_rule: "standard_weekend" | "sunday_plus_4th_saturday";
+  week_off_rule: "standard_weekend" | "sunday_plus_last_saturday";
   week_off_affects_rules: boolean;
 }
 
@@ -23,11 +23,20 @@ function parseHourMinute(time: string): { hour: number; minute: number } {
   return { hour: Number(h), minute: Number(m) };
 }
 
-function isWeekOffDate(rule: "standard_weekend" | "sunday_plus_4th_saturday", dayOfWeek: number, dateNum: number): boolean {
-  if (rule === "sunday_plus_4th_saturday") {
-    return dayOfWeek === 0 || (dayOfWeek === 6 && dateNum >= 22 && dateNum <= 28);
-  }
-  return dayOfWeek === 0 || dayOfWeek === 6;
+// "sunday_plus_last_saturday" needs the real date, not just a day-of-month
+// number — the old date-range check (22-28) was actually always the 4th
+// Saturday, which is not the same thing as the LAST Saturday in months
+// that have 5 (e.g. October 2026: 3rd, 10th, 17th, 24th, 31st — the 31st
+// is the true last Saturday, not the 24th). "Last Saturday" is computed by
+// checking whether adding 7 days rolls into the next calendar month.
+function isWeekOffDate(rule: "standard_weekend" | "sunday_plus_last_saturday", date: Date): boolean {
+  const dayOfWeek = date.getUTCDay();
+  if (dayOfWeek === 0) return true;
+  if (dayOfWeek !== 6) return false;
+  if (rule === "standard_weekend") return true;
+  const nextWeek = new Date(date);
+  nextWeek.setUTCDate(nextWeek.getUTCDate() + 7);
+  return nextWeek.getUTCMonth() !== date.getUTCMonth();
 }
 
 export async function GET(request: Request) {
@@ -86,12 +95,11 @@ export async function GET(request: Request) {
       const shiftDate = new Date(Date.UTC(Number(yStr), Number(mStr) - 1, Number(dStr)));
 
       const dayOfWeek = shiftDate.getUTCDay();
-      const dateNum = shiftDate.getUTCDate();
 
       // Week-off skip — only for shifts whose week-off actually affects
       // their rules (Immigration today), exactly as before: Night Shift
       // and Mid Shift never skip here, even on a real Saturday/Sunday.
-      if (shift.week_off_affects_rules && isWeekOffDate(shift.week_off_rule, dayOfWeek, dateNum)) {
+      if (shift.week_off_affects_rules && isWeekOffDate(shift.week_off_rule, shiftDate)) {
         continue;
       }
 

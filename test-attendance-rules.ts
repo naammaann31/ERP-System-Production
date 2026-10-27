@@ -233,21 +233,49 @@ run(
 );
 
 // ============================================================
-// isWeekOffForShift (lib/shifts.ts) — generic form of
-// isImmigrationWeekOffDate, must match it exactly for the
-// sunday_plus_4th_saturday rule, and correctly implement the plain
-// standard_weekend rule used by Night Shift and Mid Shift.
+// isWeekOffForShift (lib/shifts.ts) — generic form, now computing the true
+// LAST Saturday of the month rather than the 4th-by-date-range. These two
+// are only the same thing in a month with exactly 4 Saturdays — a month
+// with 5 (like October 2026) diverges, which is exactly the bug being
+// fixed here. isImmigrationWeekOffDate() (the old, legacy, 4th-Saturday
+// function above) is deliberately left untouched — it only ever feeds the
+// already-dead checkIn()/checkOut() functions — so this is a fresh set of
+// expectations, not a "must match the old baseline" cross-check.
 // ============================================================
-console.log("\n=== isWeekOffForRule: sunday_plus_4th_saturday (must match isImmigrationWeekOffDate exactly) ===");
+console.log("\n=== isWeekOffForRule: sunday_plus_last_saturday — October 2026 (5 Saturdays: 3, 10, 17, 24, 31) ===");
 run(
   [
     { name: "Sunday (Oct 4, 2026)", input: { y: 2026, m: 10, d: 4 }, expected: true },
+    { name: "1st Saturday (Oct 3, 2026) — not week off", input: { y: 2026, m: 10, d: 3 }, expected: false },
     { name: "2nd Saturday (Oct 10, 2026) — not week off", input: { y: 2026, m: 10, d: 10 }, expected: false },
-    { name: "The 4th Saturday itself (Oct 24, 2026) — week off", input: { y: 2026, m: 10, d: 24 }, expected: true },
-    { name: "5th Saturday (Oct 31, 2026) — not week off", input: { y: 2026, m: 10, d: 31 }, expected: false },
+    { name: "3rd Saturday (Oct 17, 2026) — not week off", input: { y: 2026, m: 10, d: 17 }, expected: false },
+    { name: "4th Saturday (Oct 24, 2026) — NOT the last one this month, so NOT week off (this is the bug being fixed)", input: { y: 2026, m: 10, d: 24 }, expected: false },
+    { name: "5th Saturday (Oct 31, 2026) — the TRUE last Saturday, IS week off", input: { y: 2026, m: 10, d: 31 }, expected: true },
     { name: "Ordinary weekday (Oct 19, 2026, Monday) — not week off", input: { y: 2026, m: 10, d: 19 }, expected: false },
   ],
-  (i) => isWeekOffForRule("sunday_plus_4th_saturday", i.y, i.m, i.d)
+  (i) => isWeekOffForRule("sunday_plus_last_saturday", i.y, i.m, i.d)
+);
+
+console.log("\n=== isWeekOffForRule: sunday_plus_last_saturday — November 2026 (only 4 Saturdays: 7, 14, 21, 28 — 4th = last, proves the common case still works) ===");
+run(
+  [
+    { name: "3rd Saturday (Nov 21, 2026) — not week off", input: { y: 2026, m: 11, d: 21 }, expected: false },
+    { name: "4th Saturday (Nov 28, 2026) — also the last Saturday this month, IS week off", input: { y: 2026, m: 11, d: 28 }, expected: true },
+  ],
+  (i) => isWeekOffForRule("sunday_plus_last_saturday", i.y, i.m, i.d)
+);
+
+console.log("\n=== isWeekOffForRule: sunday_plus_last_saturday — December 2026 -> January boundary (year rollover) ===");
+run(
+  [
+    // Dec 1, 2026 is a Tuesday (Oct 1 Thu -> Nov 1 Sun -> Dec 1 Tue), so
+    // December's Saturdays are 5, 12, 19, 26 — exactly 4, last is the 26th,
+    // and adding 7 days to it rolls into January of the NEXT year, which
+    // must still be detected correctly as "different month".
+    { name: "3rd Saturday (Dec 19, 2026) — not week off", input: { y: 2026, m: 12, d: 19 }, expected: false },
+    { name: "4th/last Saturday (Dec 26, 2026), rolls into January NEXT YEAR — IS week off", input: { y: 2026, m: 12, d: 26 }, expected: true },
+  ],
+  (i) => isWeekOffForRule("sunday_plus_last_saturday", i.y, i.m, i.d)
 );
 
 console.log("\n=== isWeekOffForRule: standard_weekend (Night Shift / Mid Shift) ===");

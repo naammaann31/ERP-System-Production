@@ -20,7 +20,7 @@ export interface Shift {
   halfDayThresholdSeconds: number;
   hasEarlyAbsentTrigger: boolean;
   earlyAbsentBeforeHour: number | null;
-  weekOffRule: "standard_weekend" | "sunday_plus_4th_saturday";
+  weekOffRule: "standard_weekend" | "sunday_plus_last_saturday";
   weekOffAffectsRules: boolean;
   sortOrder: number;
 }

@@ -172,9 +172,9 @@ export default function HRAttendanceDashboard() {
                    // Fallback if a profile somehow has no matching shift row
                    // (should not happen post-migration-35 backfill).
                    const dDay = dDate.getDay();
-                   const dDateNum = dDate.getDate();
+                   const isLastSaturday = dDay === 6 && new Date(selYear, selMonth - 1, selDay + 7).getMonth() !== selMonth - 1;
                    return legacyIsImmigration(profile.role, profile.designation)
-                     ? dDay === 0 || (dDay === 6 && dDateNum >= 22 && dDateNum <= 28)
+                     ? dDay === 0 || isLastSaturday
                      : dDay === 0 || dDay === 6;
                  })();
              
