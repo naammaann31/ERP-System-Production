@@ -116,6 +116,7 @@ export default function HRAttendanceDashboard() {
     if (dept === "OPS_HR") return "Ops HR";
     if (dept === "HR") return "HR";
     if (dept === "IT") return "IT";
+    if (dept === "SOCIAL_MEDIA") return "Social Media";
     return dept.charAt(0).toUpperCase() + dept.slice(1).toLowerCase();
   };
 

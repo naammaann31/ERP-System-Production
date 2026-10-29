@@ -6,14 +6,15 @@ import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
-import { 
-  Building2, 
-  Megaphone, 
-  LineChart, 
-  Users, 
+import {
+  Building2,
+  Megaphone,
+  LineChart,
+  Users,
   Monitor,
   ChevronLeft,
-  MoreVertical
+  MoreVertical,
+  Share2
 } from "lucide-react";
 
 const DEPARTMENTS: Record<string, any> = {
@@ -35,9 +36,19 @@ const DEPARTMENTS: Record<string, any> = {
     gradient: "from-indigo-600 to-purple-600",
     lightBg: "bg-indigo-50",
     textColor: "text-indigo-600",
-    manager: "Mohammed Hamzah Saiyed" 
+    manager: "Mohammed Hamzah Saiyed"
   },
-  sales: { 
+  "social-media": {
+    name: "Social Media",
+    description: "Manages social presence, content, and online engagement.",
+    icon: Share2,
+    role: "SOCIAL_MEDIA",
+    gradient: "from-purple-600 to-fuchsia-600",
+    lightBg: "bg-purple-50",
+    textColor: "text-purple-600",
+    manager: "Pending Assignment"
+  },
+  sales: {
     name: "Sales", 
     description: "Focuses on client acquisition, revenue generation, and partnerships.",
     icon: LineChart, 
@@ -74,7 +85,13 @@ export default function DepartmentPage() {
     const supabase = createClient();
 
     const fetchEmployees = async () => {
-      const { data, error } = await supabase.from("profiles").select("*").eq("role", dept.role).eq("status", "Active");
+      // "HR" covers both the plain "HR" role and "OPS_HR" — same folding
+      // used elsewhere in the app — so this department specifically needs
+      // an .in() match, or anyone whose role is literally "HR" (not
+      // "OPS_HR") silently never shows up here.
+      let query = supabase.from("profiles").select("*").eq("status", "Active");
+      query = dept.role === "OPS_HR" ? query.in("role", ["HR", "OPS_HR"]) : query.eq("role", dept.role);
+      const { data, error } = await query;
       if (error) {
         console.error(error);
         setLoading(false);

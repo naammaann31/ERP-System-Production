@@ -23,6 +23,7 @@ const getDepartmentColor = (department: string) => {
     case "SALES": return "success";
     case "HR": return "warning";
     case "IT": return "default";
+    case "SOCIAL_MEDIA": return "purple";
     case "Recruitment": return "secondary";
     case "Admin": return "destructive";
     default: return "default";

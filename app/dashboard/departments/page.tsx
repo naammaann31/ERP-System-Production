@@ -6,17 +6,18 @@ import { Card } from "@/components/ui/card";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
-import { 
-  Building2, 
-  Megaphone, 
-  LineChart, 
-  Users, 
-  Monitor, 
+import {
+  Building2,
+  Megaphone,
+  LineChart,
+  Users,
+  Monitor,
   UserPlus,
   Briefcase,
   MoreVertical,
   Mail,
-  Phone
+  Phone,
+  Share2
 } from "lucide-react";
 
 // --- HR View Data ---
@@ -36,6 +37,14 @@ const baseDepartments = [
     description: "Handles infrastructure, software development, and technical support.",
     icon: Monitor,
     color: "bg-indigo-50 text-indigo-600 border border-indigo-100",
+  },
+  {
+    id: "social-media",
+    dbRole: "SOCIAL_MEDIA",
+    name: "Social Media",
+    description: "Manages social presence, content, and online engagement.",
+    icon: Share2,
+    color: "bg-purple-50 text-purple-600 border border-purple-100",
   },
   {
     id: "sales",
@@ -103,7 +112,21 @@ function HRDepartmentsDashboard() {
   }, []);
 
   const departments = baseDepartments.map(dept => {
-    const deptStats = stats[dept.dbRole] || { count: 0, manager: "Pending Assignment" };
+    // "HR" in the UI covers both the plain "HR" role and "OPS_HR" — same
+    // folding already used elsewhere (e.g. Vectra Team's department
+    // filter) — so the headcount card has to combine both buckets rather
+    // than reading only stats["OPS_HR"], which silently missed anyone
+    // whose role is literally "HR" (e.g. Damini Mallick).
+    let deptStats = stats[dept.dbRole] || { count: 0, manager: "Pending Assignment" };
+    if (dept.dbRole === "OPS_HR") {
+      const hrStats = stats["HR"];
+      if (hrStats) {
+        deptStats = {
+          count: deptStats.count + hrStats.count,
+          manager: deptStats.manager !== "Pending Assignment" ? deptStats.manager : hrStats.manager,
+        };
+      }
+    }
     return {
       ...dept,
       employeeCount: deptStats.count,
