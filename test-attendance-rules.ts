@@ -45,6 +45,14 @@ const MID_SHIFT: ShiftRuleConfig = {
   weekOffAffectsRules: false,
   halfDayThresholdSeconds: 18000,
 };
+const EVENING_SHIFT: ShiftRuleConfig = {
+  lateAfterHour: 16,
+  lateAfterMinute: 15,
+  hasEarlyAbsentTrigger: false,
+  earlyAbsentBeforeHour: null,
+  weekOffAffectsRules: false,
+  halfDayThresholdSeconds: 18000,
+};
 
 type Case<T> = { name: string; input: T; expected: any; actual?: any; pass?: boolean };
 
@@ -202,6 +210,20 @@ run(
   (i) => determineCheckInFlagsForShift(i.h, i.m, MID_SHIFT, i.h === 11 ? true : false)
 );
 
+console.log("\n=== determineCheckInFlagsForShift: Evening Shift (new, 4:00 PM - 1:00 AM, late after 4:15 PM) ===");
+run(
+  [
+    { name: "On-time (4:00 PM)", input: { h: 16, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Exactly 4:15 PM — not late (boundary is > 4:15)", input: { h: 16, m: 15 }, expected: { isLate: false, isAbsent: false } },
+    { name: "4:16 PM — late", input: { h: 16, m: 16 }, expected: { isLate: true, isAbsent: false } },
+    { name: "5:00 PM (hour > 16) — late", input: { h: 17, m: 0 }, expected: { isLate: true, isAbsent: false } },
+    { name: "Very early check-in (3:00 AM) — no early-absent trigger, never absent at check-in", input: { h: 3, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Afternoon (3:00 PM, before start) — not late", input: { h: 15, m: 0 }, expected: { isLate: false, isAbsent: false } },
+    { name: "Week off flag has no effect — Evening Shift's week-off is display-only, like Night Shift", input: { h: 11, m: 0 }, expected: { isLate: false, isAbsent: false } },
+  ],
+  (i) => determineCheckInFlagsForShift(i.h, i.m, EVENING_SHIFT, i.h === 11 ? true : false)
+);
+
 // ============================================================
 // determineCheckOutHalfDayForShift — generic form
 // ============================================================
@@ -230,6 +252,19 @@ run(
     { name: "Week off flag has no effect — Mid Shift has no exemption, same as Night Shift", input: { secs: 2 * H }, expected: true },
   ],
   (i) => determineCheckOutHalfDayForShift(i.secs, MID_SHIFT, false)
+);
+
+console.log("\n=== determineCheckOutHalfDayForShift: Evening Shift (new) ===");
+run(
+  [
+    { name: "Worked 4h59m59s — half day", input: { secs: 5 * H - 1 }, expected: true },
+    { name: "Worked exactly 5h — NOT half day", input: { secs: 5 * H }, expected: false },
+    { name: "Clocked in 4:00 PM, logout before 9:00 PM (< 5h) — half day", input: { secs: 4 * H }, expected: true },
+    { name: "Clocked in 4:00 PM, logout at/after 9:00 PM (>= 5h) — not half day", input: { secs: 5 * H }, expected: false },
+    { name: "Worked 0s — half day", input: { secs: 0 }, expected: true },
+    { name: "Week off flag has no effect — Evening Shift has no exemption, same as Night Shift", input: { secs: 2 * H }, expected: true },
+  ],
+  (i) => determineCheckOutHalfDayForShift(i.secs, EVENING_SHIFT, false)
 );
 
 // ============================================================

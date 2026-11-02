@@ -394,6 +394,24 @@ export default function LiveAttendanceCard() {
                       </ul>
                     </div>
                   </div>
+                ) : userShift?.name === "Evening Shift" ? (
+                  <div className="space-y-4 text-sm text-slate-600">
+                    <div>
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Standard shift starts before <span className="font-semibold text-slate-800">4:15 PM IST</span>.</li>
+                        <li>Clocking in after 4:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-2">
+                      <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Clock Out Policy</h3>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>You must complete a minimum of <span className="font-semibold text-slate-800">5 hours</span> to avoid the Early Leaver Penalty (Half Day).</li>
+                        <li>If you forget to clock out, the system will <span className="font-semibold text-red-500">auto-clock you out at 1:30 AM</span> and mark you Absent for the entire day.</li>
+                      </ul>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-4 text-sm text-slate-600">
                     <div>

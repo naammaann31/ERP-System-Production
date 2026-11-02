@@ -97,8 +97,8 @@ export async function GET(request: Request) {
       const dayOfWeek = shiftDate.getUTCDay();
 
       // Week-off skip — only for shifts whose week-off actually affects
-      // their rules (Immigration today), exactly as before: Night Shift
-      // and Mid Shift never skip here, even on a real Saturday/Sunday.
+      // their rules (Immigration today): Night Shift, Mid Shift, and
+      // Evening Shift never skip here, even on a real Saturday/Sunday.
       if (shift.week_off_affects_rules && isWeekOffDate(shift.week_off_rule, shiftDate)) {
         continue;
       }
