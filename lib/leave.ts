@@ -288,10 +288,23 @@ function monthsOfAutomaticAccrual(dateOfJoining: string | undefined, targetYear:
   return Math.max(0, totalMonths);
 }
 
-export const calculateMonthsEmployed = (dateOfJoining: string | undefined): number => {
+// `inactiveSince` (profiles.inactive_since, stamped automatically by the
+// stamp_inactive_since_trigger when status flips to 'Inactive' - migration
+// 38) caps accrual at the moment the employee actually left, instead of
+// always accruing up through "now" for someone no longer working. Reactivation
+// clears inactive_since, so this only ever shortens the "now" used below.
+export const calculateMonthsEmployed = (dateOfJoining: string | undefined, inactiveSince?: string | null): number => {
   // Force the date to IST (Indian Standard Time) so it resets universally for everyone at exactly 12:00 AM IST
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  return monthsOfAutomaticAccrual(dateOfJoining, now.getFullYear(), now.getMonth() + 1);
+  let effective = now;
+  if (inactiveSince) {
+    const inactiveRaw = new Date(inactiveSince);
+    if (!isNaN(inactiveRaw.getTime())) {
+      const inactiveIST = new Date(inactiveRaw.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      if (inactiveIST < effective) effective = inactiveIST;
+    }
+  }
+  return monthsOfAutomaticAccrual(dateOfJoining, effective.getFullYear(), effective.getMonth() + 1);
 };
 
 /**
@@ -304,8 +317,8 @@ export const calculateAutomaticAccrualForMonth = (dateOfJoining: string | undefi
   return monthsOfAutomaticAccrual(dateOfJoining, year, month1Indexed) * 2;
 };
 
-export const calculateAccruedLeaves = (dateOfJoining: string | undefined, leaves: LeaveRequest[] = []): number => {
-  const months = calculateMonthsEmployed(dateOfJoining);
+export const calculateAccruedLeaves = (dateOfJoining: string | undefined, leaves: LeaveRequest[] = [], inactiveSince?: string | null): number => {
+  const months = calculateMonthsEmployed(dateOfJoining, inactiveSince);
   const automaticLeaves = months * 2;
   const manualLeaves = leaves.filter(l => (l.leaveType === "Manual Credit" || l.leaveType === "Manual Deduction") && l.status === "Approved").reduce((s, l) => s + l.days, 0);
   return automaticLeaves + manualLeaves;

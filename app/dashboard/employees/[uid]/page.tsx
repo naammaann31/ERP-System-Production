@@ -46,6 +46,7 @@ interface EmployeeData {
   phone?: string;
   dateOfJoining?: string;
   status?: string;
+  inactiveSince?: string | null;
   aadhar?: string;
   pan?: string;
   bankAccountName?: string;
@@ -223,6 +224,7 @@ export default function EmployeeProfilePage() {
           phone: row.phone,
             dateOfJoining: row.date_of_joining,
           status: row.status,
+          inactiveSince: row.inactive_since,
           avatarUrl: row.avatar_url,
           avatarThumbUrl: row.avatar_thumb_url,
           aadhar: priv?.aadhar,
@@ -292,7 +294,7 @@ export default function EmployeeProfilePage() {
   const approvedLeaves = leaves.filter((l) => l.status === "Approved").length;
   const pendingLeaves = leaves.filter((l) => l.status === "Pending" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").length;
   const totalLeaveDays = leaves.filter((l) => l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").reduce((sum, l) => sum + l.days, 0);
-    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining, leaves);
+    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining, leaves, employee.inactiveSince);
     const remainingLeaves = Math.max(0, totalAccruedLeaves - totalLeaveDays);
   const latestPayroll = payrolls.length > 0 ? payrolls[0] : null;
 

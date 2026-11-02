@@ -139,7 +139,7 @@ export default function HRAttendanceDashboard() {
       const data = await getAttendanceByDate(selectedDate);
       
       // Fetch all employees
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation, shift_id").neq("role", "Admin");
+      const { data: profiles } = await supabase.from("profiles").select("id, full_name, role, date_of_joining, designation, shift_id").neq("role", "Admin").eq("status", "Active");
       const shifts = await getShifts().catch(() => []);
 
       let mergedRecords = data;

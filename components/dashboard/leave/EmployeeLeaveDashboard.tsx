@@ -49,7 +49,7 @@ export default function EmployeeLeaveDashboard() {
 
       const updatedBalances = initialLeaveBalances.map(bal => ({ ...bal, used: 0, pending: 0 }));
       
-      const totalAccrued = calculateAccruedLeaves(profile?.dateOfJoining, fetched);
+      const totalAccrued = calculateAccruedLeaves(profile?.dateOfJoining, fetched, profile?.inactiveSince);
       updatedBalances[0].total = totalAccrued;
       
       let totalUsed = 0, totalPending = 0;

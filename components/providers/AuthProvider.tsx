@@ -17,6 +17,7 @@ export interface UserProfile {
   department?: string;
   dateOfJoining?: string;
   dateOfBirth?: string;
+  inactiveSince?: string | null;
   avatarUrl?: string;
   avatarThumbUrl?: string;
 }
@@ -49,6 +50,7 @@ function toProfile(row: any): UserProfile {
     department: row.department,
     dateOfJoining: row.date_of_joining,
     dateOfBirth: row.date_of_birth,
+    inactiveSince: row.inactive_since,
     avatarUrl: row.avatar_url,
     avatarThumbUrl: row.avatar_thumb_url,
   };

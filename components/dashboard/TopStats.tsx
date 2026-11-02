@@ -126,7 +126,7 @@ export default function TopStats() {
     // Get leave balance
     getUserLeaves(profile.uid).then((leaves) => {
       const totalUsed = leaves.filter((l) => l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").reduce((s, l) => s + l.days, 0);
-      const totalAccrued = calculateAccruedLeaves(profile.dateOfJoining, leaves);
+      const totalAccrued = calculateAccruedLeaves(profile.dateOfJoining, leaves, profile.inactiveSince);
       const totalAvailable = totalAccrued - totalUsed;
       setLeaveBalance(totalAvailable.toString());
     });
