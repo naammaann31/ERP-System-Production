@@ -20,15 +20,23 @@ export function hasMarketingTeamLeadOverride(uid: string | null | undefined): bo
 }
 
 /**
- * True for an actual Marketing-department Team-Lead, or for someone granted
- * the override above.
+ * True for an actual Marketing-department Team-Lead or Manager (a
+ * department head carries the "Manager" designation, not "Team-Lead" —
+ * mirrors the equivalent check in ProtectedRoute.tsx and the matching
+ * is_marketing_team_lead() SQL function, migration 43), or for someone
+ * granted the override above.
  */
 export function isMarketingTeamLead(
     profile: { uid?: string | null; role?: string | null; designation?: string | null; jobRole?: string | null } | null | undefined
 ): boolean {
     if (!profile) return false;
     const role = (profile.role || "").toUpperCase();
-    if (role === "MARKETING" && (profile.designation === "Team-Lead" || profile.jobRole === "Team-Lead")) {
+    const isTeamLeadOrManager =
+        profile.designation === "Team-Lead" ||
+        profile.designation === "Manager" ||
+        profile.jobRole === "Team-Lead" ||
+        profile.jobRole === "Manager";
+    if (role === "MARKETING" && isTeamLeadOrManager) {
         return true;
     }
     return hasMarketingTeamLeadOverride(profile.uid);
