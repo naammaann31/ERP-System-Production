@@ -6,10 +6,16 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
 import { toast } from "sonner";
 
-const checkUnauthorized = (pathname: string, role: string = "Employee", designation: string = "", uid?: string): boolean => {
+const checkUnauthorized = (pathname: string, role: string = "Employee", designation: string = "", uid?: string, jobRole: string = ""): boolean => {
     const isAdmin = role === "Admin";
     const isAdminOrHR = isAdmin || role === "HR" || role === "OPS_HR";
-    const isTeamLead = designation === "Team-Lead" || hasMarketingTeamLeadOverride(uid);
+    // Matches the Team-Lead-equivalent check used everywhere else in the
+    // app (Sidebar's isTeamLeadOnly, isMarketingTeamLead()) — this file was
+    // the one spot still only recognizing designation === "Team-Lead",
+    // which incorrectly blocked a department Manager (e.g. Asrar Patni,
+    // designation "Marketing Manager") from viewing their own team's
+    // employee profiles.
+    const isTeamLead = designation === "Team-Lead" || designation === "Manager" || jobRole === "Team-Lead" || jobRole === "Manager" || hasMarketingTeamLeadOverride(uid);
 
     // The full company-wide directory stays Admin/HR-only.
     if (pathname === "/dashboard/employees" && !isAdminOrHR) {
@@ -54,7 +60,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
-    const unauthorized = !loading && !!profile && checkUnauthorized(pathname, profile.role, profile.designation, profile.uid);
+    const unauthorized = !loading && !!profile && checkUnauthorized(pathname, profile.role, profile.designation, profile.uid, profile.jobRole);
 
     useEffect(() => {
         if (!loading && (!user || !profile)) {

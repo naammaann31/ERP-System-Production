@@ -161,12 +161,18 @@ export default function EmployeeProfilePage() {
   const uid = params.uid as string;
 
   const isAdminOrHR = profile?.role === "Admin" || profile?.role === "HR" || profile?.role === "OPS_HR";
-  // A Team-Lead viewing a teammate's profile (not Admin/HR, and not their
-  // own profile) only gets the leads section - no personal/attendance/
-  // leave/payroll data, which is Admin/HR-only.
+  // A Team-Lead or Manager (a department head carries the "Manager"
+  // designation, not "Team-Lead" — same check as ProtectedRoute.tsx and
+  // isMarketingTeamLead()) viewing a teammate's profile (not Admin/HR, and
+  // not their own profile) only gets the leads section - no personal/
+  // attendance/leave/payroll data, which is Admin/HR-only.
   const isTeamLeadViewingOther =
     !isAdminOrHR &&
-    (profile?.designation === "Team-Lead" || hasMarketingTeamLeadOverride(profile?.uid)) &&
+    (profile?.designation === "Team-Lead" ||
+      profile?.designation === "Manager" ||
+      profile?.jobRole === "Team-Lead" ||
+      profile?.jobRole === "Manager" ||
+      hasMarketingTeamLeadOverride(profile?.uid)) &&
     profile?.uid !== uid;
 
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
