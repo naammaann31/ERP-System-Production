@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSidebar } from "@/components/providers/SidebarProvider";
 import { useNotifications } from "@/components/providers/NotificationProvider";
+import { hasMarketingTeamLeadOverride } from "@/lib/marketingTeamLeadAccess";
 import {
     LayoutDashboard,
     Users,
@@ -26,14 +27,14 @@ import {
 
 const NAV_LINKS = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["Admin", "HR", "Employee"] },
-    { name: "Operations", href: "/dashboard/operations", icon: Briefcase, roles: ["Admin", "HR", "Employee"], department: "Sales" },
+    { name: "Sales", href: "/dashboard/sales", icon: Briefcase, roles: ["Admin", "HR", "Employee"], department: "Sales" },
     { name: "Employees", href: "/dashboard/employees", icon: Users, roles: ["Admin", "HR"] },
     { name: "Vectra Team", href: "/dashboard/vectra-team", icon: Contact, roles: ["Admin", "HR", "Employee"] },
     { name: "My Team", href: "/dashboard/my-team", icon: Users, roles: [] as string[], isTeamLeadOnly: true },
     { name: "Departments", href: "/dashboard/departments", icon: Building2, roles: ["Admin"] },
     { name: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck, roles: ["Admin", "HR", "Employee"] },
     { name: "Leave", href: "/dashboard/leave", icon: CalendarOff, roles: ["Admin", "HR", "Employee"] },
-    { name: "Daily Report", href: "/dashboard/daily-reports", icon: ClipboardList, roles: ["Admin", "HR"] },
+    { name: "Daily Report", href: "/dashboard/daily-reports", icon: ClipboardList, roles: ["Admin", "HR"], extraAccess: "salesTeamLead" },
     { name: "Payroll", href: "/dashboard/payroll", icon: CircleDollarSign, roles: ["Admin", "HR", "Employee"] },
     { name: "Announcements", href: "/dashboard/announcements", icon: Megaphone, roles: ["Admin", "HR", "Employee"] },
     { name: "Documents", href: "/dashboard/documents", icon: FileText, roles: ["Admin", "HR", "Employee"] },
@@ -142,15 +143,34 @@ export default function Sidebar() {
                         if (link.isTeamLeadOnly) {
                             return profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || isManager;
                         }
+                        // "Daily Report" is normally Admin/HR-only, but the
+                        // Sales Team-Lead/Manager also needs it to review
+                        // their own team's EOD reports (RLS already scopes
+                        // what they can actually read once there).
+                        if (link.extraAccess === "salesTeamLead") {
+                            const isSalesRole = profile?.role === "SALES" || profile?.department?.toLowerCase() === "sales";
+                            const isTeamLeadOrManager = profile?.designation === "Team-Lead" || profile?.jobRole === "Team-Lead" || isManager;
+                            if (isSalesRole && isTeamLeadOrManager) return true;
+                        }
                         if (link.department) {
-                            // Managers and Admin can see all department-specific
-                            // tabs; HR stays subject to the department check below
-                            // (e.g. HR should not see Interview & Screening).
-                            if (isManager || userRole === "Admin") return link.roles.includes(userRole);
+                            // Admin sees every department tab. A Manager/
+                            // Team-Lead only sees a department tab that
+                            // actually matches their own role/department —
+                            // being "a Manager" alone must never bypass the
+                            // department check (that previously let a
+                            // Marketing Manager see the Sales tab, and vice
+                            // versa). The one exception is the named
+                            // Marketing Team-Lead override (migration 15),
+                            // which deliberately grants Marketing-equivalent
+                            // access without changing the person's actual
+                            // department.
+                            if (userRole === "Admin") return link.roles.includes(userRole);
                             const userDept = profile?.department?.toLowerCase() || "";
                             const userRoleStr = profile?.role?.toLowerCase() || "";
                             const targetDept = link.department.toLowerCase();
-                            if (userDept !== targetDept && !userRoleStr.includes(targetDept)) return false;
+                            const ownDeptMatches = userDept === targetDept || userRoleStr.includes(targetDept);
+                            const hasOverride = targetDept === "marketing" && hasMarketingTeamLeadOverride(profile?.uid);
+                            if (!ownDeptMatches && !hasOverride) return false;
                         }
                         return link.roles.includes(userRole);
                     }).map((link) => {

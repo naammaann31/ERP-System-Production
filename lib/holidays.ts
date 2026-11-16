@@ -33,7 +33,7 @@ export const HOLIDAYS = [
   { month: 2, date: 7, name: "Piyush Soni's Birthday", type: "birthday" },
   { month: 10, date: 21, name: "Munish Kumar's Birthday", type: "birthday" },
   { month: 9, date: 18, name: "Himanshu Gaur's Birthday", type: "birthday" },
-  { month: 9, date: 1, name: "Anisha Parveen's Birthday", type: "birthday" },
+  { month: 11, date: 7, name: "Anisha Parveen's Birthday", type: "birthday" },
   { month: 8, date: 24, name: "Medha Raina's Birthday", type: "birthday" },
   { month: 0, date: 25, name: "Ishita Sanya's Birthday", type: "birthday" },
   { month: 8, date: 15, name: "Muskan bagban's Birthday", type: "birthday" },
