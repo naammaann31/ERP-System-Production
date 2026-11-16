@@ -120,6 +120,7 @@ export default function EmployeesPage() {
         jobRole: row.job_role || "N/A",
         designation: row.designation || "Employee",
         shiftId: row.shift_id || "",
+        branch: row.branch || "Ahmedabad Branch",
         status: row.status || "Active",
         linkedinUrl: row.linkedin_url || "",
         phone: row.phone || "",
@@ -128,12 +129,12 @@ export default function EmployeesPage() {
         avatarUrl: row.avatar_url,
         avatarThumbUrl: row.avatar_thumb_url,
       }));
-      // Active first, Inactive pushed to the bottom; newest-first within each group.
+      // Active first, Inactive pushed to the bottom; A-Z by name within each group.
       emps.sort((a, b) => {
         const aInactive = a.status === "Inactive" ? 1 : 0;
         const bInactive = b.status === "Inactive" ? 1 : 0;
         if (aInactive !== bInactive) return aInactive - bInactive;
-        return b.createdAt - a.createdAt;
+        return a.name.localeCompare(b.name);
       });
       setEmployees(emps);
       setLoading(false);

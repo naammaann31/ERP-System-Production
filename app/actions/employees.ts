@@ -11,6 +11,7 @@ interface CreateEmployeeInput {
   jobRole: string;
   designation: string;
   shiftId: string;
+  branch: string;
   phone?: string;
   dateOfJoining?: string;
 }
@@ -23,6 +24,7 @@ export interface UpdateEmployeeInput {
   jobRole: string;
   designation: string;
   shiftId: string;
+  branch: string;
   status: string;
   phone?: string;
   dateOfJoining?: string;
@@ -88,6 +90,7 @@ export async function createEmployeeAction(
       job_role: input.jobRole.trim(),
       designation: input.designation,
       shift_id: input.shiftId,
+      branch: input.branch,
       phone: input.phone || null,
       date_of_joining: input.dateOfJoining || null,
     })
@@ -151,6 +154,7 @@ export async function updateEmployeeAction(
       job_role: input.jobRole.trim(),
       designation: input.designation,
       shift_id: input.shiftId,
+      branch: input.branch,
       status: input.status,
       phone: input.phone || null,
       date_of_joining: input.dateOfJoining || null,

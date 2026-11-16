@@ -26,6 +26,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
     const [dateOfJoining, setDateOfJoining] = useState("");
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [shiftId, setShiftId] = useState("");
+    const [branch, setBranch] = useState("Ahmedabad Branch");
 
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -78,6 +79,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
             jobRole,
             designation,
             shiftId,
+            branch,
             phone,
             dateOfJoining,
         });
@@ -92,7 +94,7 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
         setLoading(false);
         // Reset form
         setFullName(""); setEmployeeId(""); setEmail(""); setRole("");
-        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee"); setShiftId(""); setPhone(""); setDateOfJoining("");
+        setPassword(""); setConfirmPassword(""); setJobRole(""); setDesignation("Employee"); setShiftId(""); setBranch("Ahmedabad Branch"); setPhone(""); setDateOfJoining("");
         onSuccess?.();
         onClose();
     };
@@ -204,6 +206,20 @@ export default function AddEmployeeModal({ isOpen, onClose, onSuccess }: AddEmpl
                                         {shift.name} ({shift.startTime.slice(0, 5)} - {shift.shiftEndTime.slice(0, 5)})
                                     </option>
                                 ))}
+                            </select>
+                        </div>
+
+                        {/* Branch */}
+                        <div>
+                            <label className="block mb-1.5 text-[10px] font-bold text-slate-600 tracking-[0.2em] uppercase">Branch</label>
+                            <select
+                                value={branch}
+                                onChange={(e) => setBranch(e.target.value)}
+                                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm shadow-sm appearance-none"
+                                required
+                            >
+                                <option value="Ahmedabad Branch">Ahmedabad Branch</option>
+                                <option value="Vadodara Branch">Vadodara Branch</option>
                             </select>
                         </div>
 

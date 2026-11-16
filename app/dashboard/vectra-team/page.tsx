@@ -20,6 +20,7 @@ interface TeamMember {
     department: string;
     jobRole: string;
     designation: string;
+    branch: string;
     linkedinUrl: string | null;
     avatarUrl: string | null;
     avatarThumbUrl: string | null;
@@ -114,7 +115,7 @@ export default function VectraTeamPage() {
         (supabase: ReturnType<typeof createClient>) => {
             let query = supabase
                 .from("profiles")
-                .select("id, full_name, email, employee_id, role, job_role, designation, linkedin_url, avatar_url, avatar_thumb_url", { count: "exact" })
+                .select("id, full_name, email, employee_id, role, job_role, designation, branch, linkedin_url, avatar_url, avatar_thumb_url", { count: "exact" })
                 .eq("status", "Active")
                 .order("full_name", { ascending: true, nullsFirst: false });
 
@@ -154,6 +155,7 @@ export default function VectraTeamPage() {
         department: row.role === "OPS_HR" ? "HR" : (row.role || "Employee"),
         jobRole: row.job_role || "N/A",
         designation: row.designation || "Employee",
+        branch: row.branch || "Ahmedabad Branch",
         linkedinUrl: row.linkedin_url,
         avatarUrl: row.avatar_url,
         avatarThumbUrl: row.avatar_thumb_url,
@@ -398,6 +400,7 @@ export default function VectraTeamPage() {
                                     <th className="px-6 py-4 font-medium">Email</th>
                                     <th className="px-6 py-4 font-medium">Employee ID</th>
                                     <th className="px-6 py-4 font-medium">Department</th>
+                                    <th className="px-6 py-4 font-medium">Branch</th>
                                     <th className="px-6 py-4 font-medium">Job Role</th>
                                     <th className="px-6 py-4 font-medium">Designation</th>
                                     <th className="px-6 py-4 font-medium text-center">LinkedIn</th>
@@ -406,7 +409,7 @@ export default function VectraTeamPage() {
                             <tbody className="divide-y divide-slate-100">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                                             <div className="flex flex-col items-center justify-center gap-3">
                                                 <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -418,11 +421,11 @@ export default function VectraTeamPage() {
                                     </tr>
                                 ) : error ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-red-500">{error}</td>
+                                        <td colSpan={8} className="px-6 py-12 text-center text-red-500">{error}</td>
                                     </tr>
                                 ) : members.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">No employees found.</td>
+                                        <td colSpan={8} className="px-6 py-12 text-center text-slate-500">No employees found.</td>
                                     </tr>
                                 ) : (
                                     members.map((member, index) => (
@@ -470,6 +473,7 @@ export default function VectraTeamPage() {
                                                     {member.department}
                                                 </Badge>
                                             </td>
+                                            <td className="px-6 py-4 text-slate-600">{member.branch}</td>
                                             <td className="px-6 py-4 text-slate-600">{member.jobRole}</td>
                                             <td className="px-6 py-4 text-slate-600">{member.designation}</td>
                                             <td className="px-6 py-4 text-center">
