@@ -12,6 +12,7 @@ import {
   normalizeEmailForCompare,
   SALES_LEAD_STATUSES,
 } from "@/lib/salesLeadsImport";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const PAGE_SIZE = 100;
 
@@ -200,6 +201,9 @@ export default function SalesMasterTable() {
   // ── Bulk selection + bulk assign ─────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const anchorIndexRef = useRef<number | null>(null);
   const cursorIndexRef = useRef<number | null>(null);
 
@@ -272,6 +276,48 @@ export default function SalesMasterTable() {
       fetchPage(true);
     } finally {
       setBulkAssigning(false);
+    }
+  };
+
+  const handleDeleteRow = async (id: string) => {
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_leads").delete().eq("id", id);
+      if (error) throw error;
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setTotalCount((c) => Math.max(0, c - 1));
+      toast.success("Lead deleted");
+      loadStats();
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_leads").delete().in("id", ids);
+      if (error) throw error;
+      setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setTotalCount((c) => Math.max(0, c - ids.length));
+      toast.success(`Deleted ${ids.length} lead(s)`);
+      setSelectedIds(new Set());
+      anchorIndexRef.current = null;
+      cursorIndexRef.current = null;
+      loadStats();
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmBulkDelete(false);
     }
   };
 
@@ -630,6 +676,12 @@ export default function SalesMasterTable() {
             ))}
           </select>
           <button
+            onClick={() => setConfirmBulkDelete(true)}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Trash2 className="h-4 w-4" /> Delete Selected
+          </button>
+          <button
             onClick={() => { setSelectedIds(new Set()); anchorIndexRef.current = null; cursorIndexRef.current = null; }}
             className="text-sm font-medium text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
           >
@@ -663,6 +715,7 @@ export default function SalesMasterTable() {
                 <th key={c.id} className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">{c.column_label}</th>
               ))}
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Assigned To</th>
+              <th className="px-2 py-3.5 w-10" />
             </tr>
           </thead>
           <tbody>
@@ -729,6 +782,7 @@ export default function SalesMasterTable() {
                         )}
                       </div>
                     </td>
+                    <td />
                   </tr>
                 ))}
                 <tr className="bg-blue-50/30 border-b border-blue-100">
@@ -789,17 +843,47 @@ export default function SalesMasterTable() {
                   <td className="px-5 py-3 whitespace-nowrap">
                     <div className="flex items-center gap-2.5">
                       <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarColor(row.name)}`}>{initials(row.name)}</div>
-                      <span className="font-medium text-slate-800">{row.name}</span>
+                      <input
+                        defaultValue={row.name}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v && v !== row.name) updateRowField(row.id, "name", v);
+                          else e.target.value = row.name;
+                        }}
+                        className="font-medium text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-300 focus:bg-white rounded-lg px-1.5 py-1 min-w-[120px] focus:outline-none focus:ring-1 focus:ring-blue-300 transition-colors"
+                      />
                     </div>
                   </td>
-                  <td className="px-5 py-3 whitespace-nowrap text-slate-600">{row.mobile || "—"}</td>
-                  <td className="px-5 py-3 whitespace-nowrap text-slate-600">{row.email || "—"}</td>
-                  <td className="px-5 py-3 max-w-[220px] truncate">
-                    {row.linkedin_url ? (
-                      <a href={row.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-                        <ExternalLink className="h-3 w-3 shrink-0" /> <span className="truncate">{row.linkedin_url.replace(/^https?:\/\/(www\.)?/, "")}</span>
-                      </a>
-                    ) : "—"}
+                  <td className="px-4 py-2">
+                    <input
+                      defaultValue={row.mobile || ""}
+                      placeholder="—"
+                      onBlur={(e) => e.target.value !== (row.mobile || "") && updateRowField(row.id, "mobile", e.target.value || null)}
+                      className="w-full min-w-[130px] bg-slate-50/70 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white rounded-lg px-2 py-1.5 hover:border-slate-300 transition-colors"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      defaultValue={row.email || ""}
+                      placeholder="—"
+                      onBlur={(e) => e.target.value !== (row.email || "") && updateRowField(row.id, "email", e.target.value || null)}
+                      className="w-full min-w-[180px] bg-slate-50/70 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white rounded-lg px-2 py-1.5 hover:border-slate-300 transition-colors"
+                    />
+                  </td>
+                  <td className="px-4 py-2 max-w-[220px]">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        defaultValue={row.linkedin_url || ""}
+                        placeholder="Add URL"
+                        onBlur={(e) => e.target.value !== (row.linkedin_url || "") && updateRowField(row.id, "linkedin_url", e.target.value || null)}
+                        className="w-full min-w-[120px] bg-slate-50/70 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white rounded-lg px-2 py-1.5 hover:border-slate-300 transition-colors"
+                      />
+                      {row.linkedin_url && (
+                        <a href={row.linkedin_url} target="_blank" rel="noreferrer" title="Open LinkedIn profile" className="text-blue-600 hover:text-blue-700 shrink-0">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2">
                     <select
@@ -827,6 +911,15 @@ export default function SalesMasterTable() {
                       ))}
                     </select>
                   </td>
+                  <td className="px-2 py-2">
+                    <button
+                      onClick={() => setConfirmDeleteId(row.id)}
+                      title="Delete lead"
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -843,6 +936,27 @@ export default function SalesMasterTable() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) handleDeleteRow(confirmDeleteId); }}
+        title="Delete this lead?"
+        description="This permanently removes the lead and its full status history. This cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+        isLoading={deleting}
+      />
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selectedIds.size} lead(s)?`}
+        description="This permanently removes all selected leads and their status history. This cannot be undone."
+        confirmText="Delete All"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }

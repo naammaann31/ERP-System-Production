@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
-import { Search, X, FileSpreadsheet, Plus, Loader2, Inbox, ExternalLink, Phone, CalendarCheck, TrendingUp, ArrowUpDown, FilePlus2, Save } from "lucide-react";
+import { Search, X, FileSpreadsheet, Plus, Loader2, Inbox, ExternalLink, Phone, CalendarCheck, TrendingUp, ArrowUpDown, FilePlus2, Save, Trash2 } from "lucide-react";
 import { SALES_LEAD_STATUSES, SALES_VISA_OPTIONS, normalizePhoneForCompare, normalizeEmailForCompare } from "@/lib/salesLeadsImport";
 import GenerateSalesReportModal from "./GenerateSalesReportModal";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const PAGE_SIZE = 100;
 
@@ -67,6 +68,14 @@ export default function SalesDataTable() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newRow, setNewRow] = useState({ name: "", mobile: "", email: "", linkedin_url: "" });
   const [savingNewRow, setSavingNewRow] = useState(false);
+
+  // ── Selection + delete (Team-Lead/Manager/Admin/HR only — RLS already
+  // restricts sales_leads delete to is_sales_team_lead_or_manager() or
+  // is_admin_or_hr(), this just surfaces it in the UI for that same group) ──
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 400);
@@ -177,6 +186,62 @@ export default function SalesDataTable() {
     const supabase = createClient();
     const { error } = await supabase.from("sales_leads").update({ custom_fields: merged }).eq("id", id);
     if (error) toast.error("Failed to save: " + error.message);
+  };
+
+  const toggleRowSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllOnPage = () => {
+    setSelectedIds((prev) => {
+      const allSelected = rows.length > 0 && rows.every((r) => prev.has(r.id));
+      if (allSelected) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  };
+
+  const handleDeleteRow = async (id: string) => {
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_leads").delete().eq("id", id);
+      if (error) throw error;
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setTotalCount((c) => Math.max(0, c - 1));
+      toast.success("Lead deleted");
+      loadStats();
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_leads").delete().in("id", ids);
+      if (error) throw error;
+      setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setTotalCount((c) => Math.max(0, c - ids.length));
+      toast.success(`Deleted ${ids.length} lead(s)`);
+      setSelectedIds(new Set());
+      loadStats();
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmBulkDelete(false);
+    }
   };
 
   // Informational duplicate check only (never blocking, matching Master
@@ -413,11 +478,41 @@ export default function SalesDataTable() {
         </div>
       </div>
 
+      {isPrivileged && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 bg-slate-900 text-white rounded-xl px-4 py-3 shadow-lg sticky top-2 z-20">
+          <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setConfirmBulkDelete(true)}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Trash2 className="h-4 w-4" /> Delete Selected
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm font-medium text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50/80 sticky top-0 z-10">
             <tr className="text-left text-slate-500">
+              {isPrivileged && (
+                <th className="px-4 py-3.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={rows.length > 0 && rows.every((r) => selectedIds.has(r.id))}
+                    onChange={toggleSelectAllOnPage}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                    title="Select all on this page"
+                  />
+                </th>
+              )}
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Assigned On</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Entry Date</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Last Status Date</th>
@@ -533,9 +628,30 @@ export default function SalesDataTable() {
                 const isCustomVisa = !!row.visa && !VISA_KNOWN_LIST.includes(row.visa);
                 const showVisaTextInput = othersEditingIds.has(row.id) || isCustomVisa;
                 return (
-                  <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                  <tr key={row.id} className={`border-b border-slate-50 hover:bg-slate-50/60 ${selectedIds.has(row.id) ? "bg-blue-50/50" : ""}`}>
+                    {isPrivileged && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(row.id)}
+                          onChange={() => toggleRowSelected(row.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-5 py-3 whitespace-nowrap text-slate-500">{formatDateTime(row.assigned_at)}</td>
-                    <td className="px-5 py-3 whitespace-nowrap text-slate-500">{formatDate(row.entry_date)}</td>
+                    <td className="px-5 py-3 whitespace-nowrap text-slate-500">
+                      {isPrivileged ? (
+                        <input
+                          type="date"
+                          defaultValue={row.entry_date || ""}
+                          onBlur={(e) => e.target.value !== (row.entry_date || "") && updateRowField(row.id, "entry_date", e.target.value || null)}
+                          className="bg-slate-50/70 border border-slate-200 text-slate-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white hover:border-slate-300 transition-colors"
+                        />
+                      ) : (
+                        formatDate(row.entry_date)
+                      )}
+                    </td>
                     <td className="px-5 py-3 whitespace-nowrap text-slate-400">{formatDate(row.status_updated_work_date)}</td>
                     {isPrivileged && (
                       <td className="px-5 py-3 whitespace-nowrap">
@@ -549,7 +665,19 @@ export default function SalesDataTable() {
                     <td className="px-5 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2.5">
                         <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarColor(row.name)}`}>{initials(row.name)}</div>
-                        <span className="font-medium text-slate-800">{row.name}</span>
+                        {isPrivileged ? (
+                          <input
+                            defaultValue={row.name}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v && v !== row.name) updateRowField(row.id, "name", v);
+                              else e.target.value = row.name;
+                            }}
+                            className="font-medium text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-300 focus:bg-white rounded-lg px-1.5 py-1 min-w-[120px] focus:outline-none focus:ring-1 focus:ring-blue-300 transition-colors"
+                          />
+                        ) : (
+                          <span className="font-medium text-slate-800">{row.name}</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-2">
@@ -597,12 +725,20 @@ export default function SalesDataTable() {
                         </select>
                       )}
                     </td>
-                    <td className="px-4 py-2 max-w-[200px] truncate">
-                      {row.linkedin_url ? (
-                        <a href={row.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate block">{row.linkedin_url}</a>
-                      ) : (
-                        <input defaultValue={""} placeholder="Add URL" onBlur={(e) => e.target.value && updateRowField(row.id, "linkedin_url", e.target.value)} className="w-full bg-slate-50/70 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white rounded-lg px-2 py-1.5 hover:border-slate-300 transition-colors" />
-                      )}
+                    <td className="px-4 py-2 max-w-[200px]">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          defaultValue={row.linkedin_url || ""}
+                          placeholder="Add URL"
+                          onBlur={(e) => e.target.value !== (row.linkedin_url || "") && updateRowField(row.id, "linkedin_url", e.target.value || null)}
+                          className="w-full min-w-[120px] bg-slate-50/70 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:bg-white rounded-lg px-2 py-1.5 hover:border-slate-300 transition-colors"
+                        />
+                        {row.linkedin_url && (
+                          <a href={row.linkedin_url} target="_blank" rel="noreferrer" title="Open LinkedIn profile" className="text-blue-600 hover:text-blue-700 shrink-0">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2">
                       <select
@@ -636,7 +772,17 @@ export default function SalesDataTable() {
                         )}
                       </td>
                     ))}
-                    <td />
+                    <td className="px-2 py-2">
+                      {isPrivileged && (
+                        <button
+                          onClick={() => setConfirmDeleteId(row.id)}
+                          title="Delete lead"
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })
@@ -656,6 +802,27 @@ export default function SalesDataTable() {
       </div>
 
       <GenerateSalesReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} />
+
+      <ConfirmModal
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) handleDeleteRow(confirmDeleteId); }}
+        title="Delete this lead?"
+        description="This permanently removes the lead and its full status history. This cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+        isLoading={deleting}
+      />
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selectedIds.size} lead(s)?`}
+        description="This permanently removes all selected leads and their status history. This cannot be undone."
+        confirmText="Delete All"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }

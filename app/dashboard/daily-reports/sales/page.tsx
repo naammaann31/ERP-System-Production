@@ -4,9 +4,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Calendar, ChevronDown, Search, Filter, TrendingUp } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, Search, Filter, TrendingUp, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 interface SalesDailyReportRow {
   id: string;
@@ -35,6 +37,14 @@ export default function SalesDailyReportsPage() {
   const [filterDate, setFilterDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [filterEmployee, setFilterEmployee] = useState<string>("All");
   const [loading, setLoading] = useState(true);
+
+  // Edit/delete here mirrors the RLS already in place (migration 40/47):
+  // sales_daily_reports_update/delete both already allow Team-Lead/Manager/
+  // Admin/HR to correct or remove a report - this just surfaces that in the UI.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     // Same access rule as the Marketing sibling page: Admin/HR, or any
@@ -65,6 +75,65 @@ export default function SalesDailyReportsPage() {
   });
 
   const displayReports = filterEmployee === "All" ? reports : reports.filter((r) => r.user_id === filterEmployee);
+
+  const updateReportField = async (id: string, field: string, value: number | string) => {
+    setReports((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+    const supabase = createClient();
+    const { error } = await supabase.from("sales_daily_reports").update({ [field]: value }).eq("id", id);
+    if (error) toast.error("Failed to save: " + error.message);
+  };
+
+  const toggleRowSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const allSelected = displayReports.length > 0 && displayReports.every((r) => prev.has(r.id));
+      if (allSelected) return new Set();
+      return new Set(displayReports.map((r) => r.id));
+    });
+  };
+
+  const handleDeleteRow = async (id: string) => {
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_daily_reports").delete().eq("id", id);
+      if (error) throw error;
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      toast.success("Report deleted");
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("sales_daily_reports").delete().in("id", ids);
+      if (error) throw error;
+      setReports((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      toast.success(`Deleted ${ids.length} report(s)`);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast.error("Failed to delete: " + (err?.message || "unknown error"));
+    } finally {
+      setDeleting(false);
+      setConfirmBulkDelete(false);
+    }
+  };
 
   const formatTime = (ts: string | null) => {
     if (!ts) return "—";
@@ -133,10 +202,38 @@ export default function SalesDailyReportsPage() {
           </div>
         </div>
 
+        {selectedIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 bg-slate-900 text-white px-5 py-3">
+            <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+            <div className="flex-1" />
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              <Trash2 className="h-4 w-4" /> Delete Selected
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm font-medium text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-[10px] text-slate-500 font-bold uppercase tracking-wider bg-slate-50/80 border-b border-slate-200">
               <tr>
+                <th className="px-4 py-5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={displayReports.length > 0 && displayReports.every((r) => selectedIds.has(r.id))}
+                    onChange={toggleSelectAllVisible}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                    title="Select all visible"
+                  />
+                </th>
                 <th className="px-5 py-5">Date</th>
                 <th className="px-5 py-5">Name</th>
                 <th className="px-5 py-5">Shift Window</th>
@@ -150,19 +247,50 @@ export default function SalesDailyReportsPage() {
                 <th className="px-5 py-5 text-center">Closed</th>
                 <th className="px-5 py-5 text-center">Dead Lead</th>
                 <th className="px-5 py-5 text-center">LinkedIn Reqs</th>
+                <th className="px-2 py-5 w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={13} className="px-6 py-10 text-center text-slate-500 font-medium">Loading reports...</td>
+                  <td colSpan={14} className="px-6 py-10 text-center text-slate-500 font-medium">Loading reports...</td>
                 </tr>
-              ) : displayReports.map((report) => (
-                <tr key={report.id} className="hover:bg-blue-50/30 transition-colors bg-white">
+              ) : displayReports.map((report) => {
+                type NumericField =
+                  | "total_calls" | "new_calls" | "churned_calls" | "follow_up_requested"
+                  | "interested" | "not_interested" | "meeting_scheduled" | "closed"
+                  | "dead_lead" | "linkedin_requests_sent";
+                const numberCell = (field: NumericField, badgeClass?: string) => (
+                  <td className="px-5 py-4 whitespace-nowrap text-center">
+                    <input
+                      type="number"
+                      defaultValue={report[field]}
+                      onBlur={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v) && v !== report[field]) updateReportField(report.id, field, v);
+                        else e.target.value = String(report[field]);
+                      }}
+                      className={`w-16 text-center rounded-full text-xs font-black border focus:outline-none focus:ring-1 focus:ring-blue-300 py-1 ${badgeClass || "bg-slate-50 text-slate-700 border-slate-200"}`}
+                    />
+                  </td>
+                );
+                return (
+                <tr key={report.id} className={`hover:bg-blue-50/30 transition-colors bg-white ${selectedIds.has(report.id) ? "bg-blue-50/40" : ""}`}>
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(report.id)}
+                      onChange={() => toggleRowSelected(report.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-5 py-4 whitespace-nowrap text-slate-600 font-medium">
-                    <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
-                      {report.report_date}
-                    </div>
+                    <input
+                      type="date"
+                      defaultValue={report.report_date}
+                      onBlur={(e) => e.target.value !== report.report_date && updateReportField(report.id, "report_date", e.target.value)}
+                      className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold border border-transparent hover:border-slate-200 focus:border-blue-300 focus:bg-white focus:outline-none"
+                    />
                   </td>
                   <td className="px-5 py-4 whitespace-nowrap text-slate-900 font-bold">
                     <div className="flex items-center gap-3">
@@ -175,34 +303,32 @@ export default function SalesDailyReportsPage() {
                   <td className="px-5 py-4 whitespace-nowrap text-slate-500 text-xs font-medium">
                     {formatTime(report.window_start)} – {formatTime(report.window_end)}
                   </td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center text-slate-700 font-bold">{report.total_calls}</td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center">
-                    <span className="inline-flex px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-black text-xs border border-blue-100">{report.new_calls}</span>
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center text-slate-600 font-semibold">{report.churned_calls}</td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center text-slate-600 font-semibold">{report.follow_up_requested}</td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center">
-                    <span className="inline-flex px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-black text-xs border border-emerald-100">{report.interested}</span>
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center text-slate-500 font-semibold">{report.not_interested}</td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center">
-                    <span className="inline-flex px-3 py-1 rounded-full bg-purple-50 text-purple-700 font-black text-xs border border-purple-100">{report.meeting_scheduled}</span>
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center">
-                    <span className="inline-flex px-3 py-1 rounded-full bg-orange-50 text-orange-700 font-black text-xs border border-orange-100">{report.closed}</span>
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center text-slate-400 font-semibold">{report.dead_lead}</td>
-                  <td className="px-5 py-4 whitespace-nowrap text-center">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-50 text-sky-700 font-black text-xs border border-sky-100">
-                      {report.linkedin_requests_sent}
-                    </span>
+                  {numberCell("total_calls")}
+                  {numberCell("new_calls", "bg-blue-50 text-blue-700 border-blue-100")}
+                  {numberCell("churned_calls")}
+                  {numberCell("follow_up_requested")}
+                  {numberCell("interested", "bg-emerald-50 text-emerald-700 border-emerald-100")}
+                  {numberCell("not_interested")}
+                  {numberCell("meeting_scheduled", "bg-purple-50 text-purple-700 border-purple-100")}
+                  {numberCell("closed", "bg-orange-50 text-orange-700 border-orange-100")}
+                  {numberCell("dead_lead")}
+                  {numberCell("linkedin_requests_sent", "bg-sky-50 text-sky-700 border-sky-100")}
+                  <td className="px-2 py-4">
+                    <button
+                      onClick={() => setConfirmDeleteId(report.id)}
+                      title="Delete report"
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
 
               {!loading && displayReports.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="px-6 py-16">
+                  <td colSpan={14} className="px-6 py-16">
                     <div className="flex flex-col items-center justify-center text-slate-500">
                       <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                         <Search className="w-8 h-8 text-slate-400" />
@@ -217,6 +343,27 @@ export default function SalesDailyReportsPage() {
           </table>
         </div>
       </Card>
+
+      <ConfirmModal
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) handleDeleteRow(confirmDeleteId); }}
+        title="Delete this report?"
+        description="This permanently removes this EOD report. This cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+        isLoading={deleting}
+      />
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selectedIds.size} report(s)?`}
+        description="This permanently removes all selected EOD reports. This cannot be undone."
+        confirmText="Delete All"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
