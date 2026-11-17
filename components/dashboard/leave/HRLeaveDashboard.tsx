@@ -7,15 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Plus, Calendar, AlertCircle, Users, Search, LayoutGrid, List, Check, X } from "lucide-react";
-import { applyLeave, updateLeaveStatus, listenToAllLeaves, LeaveRequest } from "@/lib/leave";
+import { applyLeave, updateLeaveStatus, listenToAllLeaves, LeaveRequest, formatDateOnly } from "@/lib/leave";
 import LeaveCalendar from "./LeaveCalendar";
 import ApplyLeaveModal from "./ApplyLeaveModal";
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "-";
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
+const formatDate = formatDateOnly;
 
 const formatTimestamp = (ts: any) => {
   if (!ts) return "-";

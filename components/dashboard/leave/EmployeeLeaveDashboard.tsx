@@ -7,15 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Plus, Calendar, Clock, CheckCircle2, LayoutGrid, List } from "lucide-react";
-import { applyLeave, listenToUserLeaves, LeaveRequest, calculateAccruedLeaves } from "@/lib/leave";
+import { applyLeave, listenToUserLeaves, LeaveRequest, calculateAccruedLeaves, formatDateOnly, dateOnlyToLocalDate } from "@/lib/leave";
 import LeaveCalendar from "./LeaveCalendar";
 import ApplyLeaveModal from "./ApplyLeaveModal";
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "-";
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
+const formatDate = formatDateOnly;
 
 const formatTimestamp = (ts: any) => {
   if (!ts) return "-";
@@ -61,8 +57,8 @@ export default function EmployeeLeaveDashboard() {
       fetched.forEach(l => {
         if (l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction") {
             totalUsed += l.days;
-            const start = new Date(l.startDate);
-            if (start.getMonth() === currentMonth && start.getFullYear() === currentYear) {
+            const start = dateOnlyToLocalDate(l.startDate);
+            if (start && start.getMonth() === currentMonth && start.getFullYear() === currentYear) {
                 usedThisMonth += l.days;
             }
         }

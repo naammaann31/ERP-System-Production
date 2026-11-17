@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { LeaveRequest } from "@/lib/leave";
+import { LeaveRequest, dateOnlyToLocalDate } from "@/lib/leave";
 
 export default function LeaveCalendar({ leaves, isHR }: { leaves: LeaveRequest[]; isHR: boolean }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -21,8 +21,9 @@ export default function LeaveCalendar({ leaves, isHR }: { leaves: LeaveRequest[]
   const dayLeaveMap = useMemo(() => {
     const map: Record<number, { name: string; status: string; type: string }[]> = {};
     leaves.forEach((l) => {
-      const start = new Date(l.startDate);
-      const end = new Date(l.endDate);
+      const start = dateOnlyToLocalDate(l.startDate);
+      const end = dateOnlyToLocalDate(l.endDate);
+      if (!start || !end) return;
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         if (d.getFullYear() === year && d.getMonth() === month) {
           const day = d.getDate();

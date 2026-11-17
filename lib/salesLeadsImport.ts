@@ -264,15 +264,29 @@ function parseSheetRows(sheet: any, todayIso: string): ParseSalesWorkbookResult 
       continue;
     }
 
+    // sales_leads.status has a database check constraint limiting it to the
+    // 9 canonical values above - a sheet's Status cell holding other real
+    // work (e.g. "Call back") can't be stored there as-is without either
+    // expanding that fixed list (a bigger, separate decision) or losing it
+    // silently. Folding it into Remarks instead means that work survives
+    // the import rather than vanishing the moment it doesn't match a known
+    // status word.
+    const rawStatusText = fields.status !== undefined && fields.status !== null ? String(fields.status).trim() : "";
+    const recognizedStatus = toStatus(fields.status);
+    let remarksText = fields.remarks ? String(fields.remarks).trim() : "";
+    if (rawStatusText && !recognizedStatus) {
+      remarksText = remarksText ? `${remarksText} | Status: ${rawStatusText}` : `Status: ${rawStatusText}`;
+    }
+
     rows.push({
       name,
       mobile: String(fields.mobile ?? "").trim(),
       email: String(fields.email ?? "").trim(),
       linkedin_url: String(fields.linkedin_url ?? "").trim(),
       visa: fields.visa ? String(fields.visa).trim() : null,
-      status: toStatus(fields.status),
+      status: recognizedStatus,
       country: fields.country ? String(fields.country).trim() : null,
-      remarks: fields.remarks ? String(fields.remarks).trim() : null,
+      remarks: remarksText || null,
       entry_date: toIsoDate(fields.entry_date) || todayIso,
       assigned_to_name: fields.assigned_to_name ? String(fields.assigned_to_name).trim() : null,
       custom_fields: customFields,

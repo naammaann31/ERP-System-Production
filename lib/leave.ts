@@ -1,5 +1,36 @@
 import { createClient } from "@/lib/supabase/client";
 
+// `leave_requests.start_date`/`end_date` are plain Postgres `date` columns
+// ("YYYY-MM-DD", no time, no timezone). Handing a bare date-only string
+// straight to `new Date(str)` is a real trap: the JS spec parses that as
+// UTC MIDNIGHT, so any later local-timezone read of it (toLocaleDateString,
+// getMonth/getDate without a pinned timeZone) renders a day EARLIER on any
+// viewer whose device timezone isn't at or ahead of UTC - confirmed root
+// cause of a real incident (an employee's own leave date displaying one
+// day before what HR's dashboard - and the database - actually show for
+// the exact same row). Every date-only value in this module must go
+// through one of the two helpers below instead of `new Date(dateOnlyStr)`
+// directly, so the calendar day shown is invariant to the viewer's device.
+function parseDateOnly(dateStr: string | null | undefined): { year: number; month: number; day: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr || "");
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+}
+
+/** A local-timezone Date for a "YYYY-MM-DD" string's exact calendar day - safe for getMonth()/getDate()/getFullYear() comparisons, never shifted by UTC parsing. */
+export function dateOnlyToLocalDate(dateStr: string | null | undefined): Date | null {
+  const parsed = parseDateOnly(dateStr);
+  if (!parsed) return null;
+  return new Date(parsed.year, parsed.month - 1, parsed.day);
+}
+
+/** Formats a "YYYY-MM-DD" string as "Mon D, YYYY" - same calendar day on every device, regardless of viewer timezone. */
+export function formatDateOnly(dateStr: string | null | undefined): string {
+  const d = dateOnlyToLocalDate(dateStr);
+  if (!d) return dateStr || "-";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export interface LeaveRequest {
   id?: string;
   userId: string;
@@ -95,12 +126,7 @@ export const updateLeaveStatus = async (leaveId: string, status: "Approved" | "R
   
   if (leave) {
     try {
-      const formatDate = (dateStr: string) => {
-          if (!dateStr) return "-";
-          const d = new Date(dateStr);
-          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      };
-      const duration = `${formatDate(leave.start_date)} - ${formatDate(leave.end_date)}`;
+      const duration = `${formatDateOnly(leave.start_date)} - ${formatDateOnly(leave.end_date)}`;
       
       await fetch("/api/send-leave-email", {
         method: "POST",

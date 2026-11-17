@@ -151,7 +151,7 @@ export default function GenerateSalesReportModal({ isOpen, onClose }: GenerateSa
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Stat label="Total Calls" value={stats.totalCalls} />
-              <Stat label="New Calls (Attempt 1)" value={stats.newCalls} />
+              <Stat label="Unanswered calls (Attempt 1)" value={stats.newCalls} />
               <Stat label="Churned Calls (Attempt 2/3)" value={stats.churnedCalls} />
               <Stat label="Follow Up Requested" value={stats.followUpRequested} />
               <Stat label="Interested" value={stats.interested} />
