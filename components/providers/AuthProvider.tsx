@@ -18,6 +18,8 @@ export interface UserProfile {
   dateOfJoining?: string;
   dateOfBirth?: string;
   inactiveSince?: string | null;
+  elOpeningBalance?: number | null;
+  clOpeningBalance?: number | null;
   avatarUrl?: string;
   avatarThumbUrl?: string;
 }
@@ -51,6 +53,8 @@ function toProfile(row: any): UserProfile {
     dateOfJoining: row.date_of_joining,
     dateOfBirth: row.date_of_birth,
     inactiveSince: row.inactive_since,
+    elOpeningBalance: row.el_opening_balance,
+    clOpeningBalance: row.cl_opening_balance,
     avatarUrl: row.avatar_url,
     avatarThumbUrl: row.avatar_thumb_url,
   };

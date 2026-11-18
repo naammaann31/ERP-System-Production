@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
-import { getUserLeaves, calculateAutomaticAccrualForMonth } from "@/lib/leave";
+import { getUserLeaves, getElClWindow, computeCategoryMonthUsage, dateOnlyToLocalDate } from "@/lib/leave";
+import { getShifts, legacyIsImmigration } from "@/lib/shifts";
+import { isWeekOffForRule, isImmigrationWeekOffDate } from "@/lib/attendanceRules";
+import { getUsHolidayName } from "@/lib/holidays";
 
 export interface SalaryStructure {
   userId: string;
@@ -248,6 +251,56 @@ export const deletePayroll = async (payrollId: string): Promise<void> => {
   if (error) throw error;
 }
 
+// The day-by-day leave-map + Sandwich Rule + balance-exhaustion math used
+// to live here as a private copy. It's now computeCategoryMonthUsage() in
+// lib/leave.ts - shared with the new Attendance EL/CL badges, so the two
+// screens can never disagree about which days are Paid vs LOP. See that
+// file for the full explanation.
+
+/**
+ * For a day with NO attendance row at all, decides whether it would be
+ * displayed as "Absent" in the Attendance screen's own placeholder logic
+ * (HRAttendanceDashboard.tsx's mergedRecords builder) - Holiday and Week
+ * Off placeholders are never Absent, everything else is. Reusing the exact
+ * same two checks (getUsHolidayName, then the shift's own week-off rule,
+ * falling back to the plain Sun/Sat or Immigration Sun+last-Saturday rule
+ * when a profile has no matching shift row) so payroll's "was this day
+ * really an unrecorded absence" answer can never disagree with what HR
+ * already sees on the Attendance tab for that same day.
+ */
+function isUnrecordedDayAnAbsence(
+  dateStr: string,
+  year: number,
+  month1Indexed: number,
+  day: number,
+  shift: { weekOffRule: "standard_weekend" | "sunday_plus_last_saturday" } | undefined,
+  isImmigration: boolean
+): boolean {
+  if (getUsHolidayName(dateStr)) return false;
+
+  const isWeekOff = shift
+    ? isWeekOffForRule(shift.weekOffRule, year, month1Indexed, day)
+    : isImmigration
+    ? isImmigrationWeekOffDate(year, month1Indexed, day)
+    : (() => {
+        const d = new Date(Date.UTC(year, month1Indexed - 1, day));
+        const dow = d.getUTCDay();
+        return dow === 0 || dow === 6;
+      })();
+  if (isWeekOff) return false;
+
+  return true;
+}
+
+// Category-aware LOP: Earned Leave and Casual Leave are each tracked and
+// exhausted independently (a shortfall in one category is real LOP even if
+// the other still has balance — the category an employee picks when
+// applying for leave has real payroll consequences, by design), then
+// summed. Uses lib/leave.ts's getElClWindow() so this can never silently
+// disagree with the Leave Balance display about accrual months or window
+// boundaries, and reads the same one-time opening-balance columns
+// (profiles.el_opening_balance/cl_opening_balance) the Leave Balance
+// display reads — never a Manual Credit/Deduction row.
 export async function calculateEmployeeLopAndLeaves(
   employeeUid: string,
   month: number,
@@ -260,107 +313,45 @@ export async function calculateEmployeeLopAndLeaves(
   leaveLopDays: number,
   attendanceLopDays: number,
 }> {
-  const leaves = await getUserLeaves(employeeUid);
-
-  // Filter for approved leaves actually TAKEN in the selected year — Manual
-  // Credit/Manual Deduction rows are balance adjustments (added by HR via
-  // the employee profile page), not days taken, so they're excluded here
-  // and folded into the accrued balance below instead. Without this, a
-  // single-day Manual Credit row (e.g. "+6 days", stored as one row dated
-  // today) was being counted as "1 day taken" by the day-by-day expansion
-  // below, silently docking the very balance it was meant to top up.
-  const yearLeaves = leaves.filter(l => {
-    const start = new Date(l.startDate);
-    return start.getFullYear() === year && l.status === "Approved"
-      && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction";
-  });
-
-  const leaveMap = new Map<string, number>();
-  yearLeaves.forEach(l => {
-    const start = new Date(l.startDate);
-    const end = new Date(l.endDate);
-    let curr = new Date(start);
-    while (curr <= end) {
-      const dateStr = curr.toISOString().split('T')[0];
-      const currentVal = leaveMap.get(dateStr) || 0;
-      const dayVal = (l.days === 0.5 && start.getTime() === end.getTime()) ? 0.5 : 1;
-      leaveMap.set(dateStr, Math.min(1, currentVal + dayVal));
-      curr.setDate(curr.getDate() + 1);
-    }
-  });
-
-  // Apply Sandwich Rule
-  const dates = Array.from(leaveMap.keys()).sort();
-  dates.forEach(dateStr => {
-    const d = new Date(dateStr);
-    if (d.getDay() === 5) { // Friday
-      const nextMonday = new Date(d);
-      nextMonday.setDate(d.getDate() + 3);
-      const mondayStr = nextMonday.toISOString().split('T')[0];
-
-      if (leaveMap.has(mondayStr)) {
-        // Sandwich! Add Saturday and Sunday
-        const sat = new Date(d); sat.setDate(d.getDate() + 1);
-        const sun = new Date(d); sun.setDate(d.getDate() + 2);
-        leaveMap.set(sat.toISOString().split('T')[0], 1);
-        leaveMap.set(sun.toISOString().split('T')[0], 1);
-      }
-    }
-  });
-
-  let totalLeavesTakenBeforeMonth = 0;
-  let leavesTakenInMonth = 0;
-
-  leaveMap.forEach((val, dateStr) => {
-    const d = new Date(dateStr);
-    if (d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() + 1 < month)) {
-      totalLeavesTakenBeforeMonth += val;
-    } else if (d.getFullYear() === year && d.getMonth() + 1 === month) {
-      leavesTakenInMonth += val;
-    }
-  });
-
-  // Automatic accrual only — shared with the Leave Balance display
-  // (lib/leave.ts's calculateAccruedLeaves) so the two can never silently
-  // disagree again. This used to count straight from the employee's real
-  // join date even for employees who joined before the August 2026
-  // company-wide reset, over-crediting them relative to what HR's manual
-  // Excel tracker actually expects (confirmed against real data for two
-  // employees who joined before the reset).
-  const calculateAccrued = () => calculateAutomaticAccrualForMonth(dateOfJoining, year, month);
-
-  // Manual Credit (positive days) / Manual Deduction (negative days) adjust
-  // the bucket itself, effective from the day they were granted — same as
-  // how the automatic 2/month accrual is already available starting the 1st
-  // of its own month, a manual adjustment counts from its own month too
-  // (not just months strictly before it). Counted across every year up to
-  // and including the target month, matching calculateAccrued()'s own
-  // lifetime-since-joining scope rather than being limited to one calendar
-  // year like yearLeaves above.
-  const manualAdjustmentDays = leaves
-    .filter(l => {
-      if (l.status !== "Approved") return false;
-      if (l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction") return false;
-      const start = new Date(l.startDate);
-      return start.getFullYear() < year || (start.getFullYear() === year && start.getMonth() + 1 <= month);
-    })
-    .reduce((sum, l) => sum + l.days, 0);
-
-  const totalAccruedUpToMonth = calculateAccrued() + manualAdjustmentDays;
-  const availableBalanceAtStartOfMonth = Math.max(0, totalAccruedUpToMonth - totalLeavesTakenBeforeMonth);
-
-  // If they took more leaves in this month than their available balance, the rest is LOP
-  const unpaidLeaves = Math.max(0, leavesTakenInMonth - availableBalanceAtStartOfMonth);
-
-  // Attendance-based LOP: Absent (1 day) / Half Day (0.5 day) rows that were
-  // actually marked in the Attendance table for this month. Only rows that
-  // actually exist count — a day with no attendance record at all is left
-  // alone, not silently treated as Absent (explicit project-owner decision).
-  //
-  // Any date already covered by an approved leave above (leaveMap) is
-  // skipped here so the same calendar day is never deducted twice — once
-  // through the leave-balance calculation and again through attendance.
   const supabase = createClient();
+  const [leaves, profileRes] = await Promise.all([
+    getUserLeaves(employeeUid),
+    supabase.from("profiles").select("el_opening_balance, cl_opening_balance, shift_id, role, designation, inactive_since").eq("id", employeeUid).single(),
+  ]);
+  const elOpeningBalance = profileRes.data?.el_opening_balance || 0;
+  const clOpeningBalance = profileRes.data?.cl_opening_balance || 0;
+
+  const { elMonths, clMonths, elWindowStart, clWindowStart, clOpeningBalanceApplies } = getElClWindow(dateOfJoining, year, month);
+
+  // Both categories' Paid/LOP math now comes from the single shared
+  // implementation in lib/leave.ts (computeCategoryMonthUsage) - identical
+  // inputs, identical output shape, byte-for-byte the same formula this
+  // file used to compute privately.
+  const el = computeCategoryMonthUsage(leaves, "Earned Leave", elOpeningBalance, elMonths, elWindowStart, false, month, year);
+  const cl = computeCategoryMonthUsage(leaves, "Casual Leave", clOpeningBalanceApplies ? clOpeningBalance : 0, clMonths, clWindowStart, true, month, year);
+
+  const leavesTakenInMonth = el.takenInMonth + cl.takenInMonth;
+  const paidLeavesThisMonth =
+    Math.min(el.takenInMonth, el.availableBalanceAtStartOfMonth) +
+    Math.min(cl.takenInMonth, cl.availableBalanceAtStartOfMonth);
+  const unpaidLeaves = el.unpaidLeaves + cl.unpaidLeaves;
+
+  // Attendance-based LOP, two sources, never overlapping:
+  //
+  //   A. Absent (1 day) / Half Day (0.5 day) rows actually marked in the
+  //      Attendance table for this month - unchanged from before.
+  //
+  //   B. Days with NO attendance row at all, that would show up as
+  //      "Absent" on the Attendance screen's own placeholder logic
+  //      (isUnrecordedDayAnAbsence above) - i.e. no clock-in, no HR edit,
+  //      no approved leave, and it isn't a Week Off or Holiday. Previously
+  //      these were silently skipped entirely (explicit project-owner
+  //      decision at the time); now they count as a full LOP day each,
+  //      matching what HR already visually sees as "Absent" for that day.
+  //
+  // In both cases, any date already covered by an approved leave in
+  // EITHER category's map is skipped, so the same calendar day is never
+  // deducted twice.
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
@@ -374,16 +365,77 @@ export async function calculateEmployeeLopAndLeaves(
   if (attendanceErr) throw attendanceErr;
 
   let attendanceLopDays = 0;
+  const recordedDates = new Set<string>();
   (attendanceRows || []).forEach((row: any) => {
-    if (leaveMap.has(row.date)) return;
+    recordedDates.add(row.date);
+    if (el.leaveMap.has(row.date) || cl.leaveMap.has(row.date)) return;
     if (row.status === "Absent") attendanceLopDays += 1;
     else if (row.is_half_day) attendanceLopDays += 0.5;
   });
 
+  // A day already excluded from el.leaveMap/cl.leaveMap is NOT necessarily
+  // a day with no leave application - those maps deliberately exclude
+  // Pending rows and rows already folded into the opening-balance snapshot
+  // (countedInOpeningBalance), purely to keep the BALANCE math from
+  // double-counting. For "did this employee have ANY leave application
+  // covering this day" - the actual question here - every Approved or
+  // Pending row counts, regardless of category or that flag. Built from
+  // the full, un-filtered `leaves` list so a day already explained by a
+  // real application (even a pre-split one already settled into the
+  // opening balance, or one still awaiting a decision) is never wrongly
+  // flagged as an unexcused absence.
+  const anyLeaveCoversDate = new Set<string>();
+  leaves.forEach((l) => {
+    if (l.status !== "Approved" && l.status !== "Pending") return;
+    if (l.leaveType === "Manual Credit" || l.leaveType === "Manual Deduction") return;
+    const s = dateOnlyToLocalDate(l.startDate);
+    const e = dateOnlyToLocalDate(l.endDate);
+    if (!s || !e) return;
+    const c = new Date(s);
+    while (c <= e) {
+      anyLeaveCoversDate.add(`${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, "0")}-${String(c.getDate()).padStart(2, "0")}`);
+      c.setDate(c.getDate() + 1);
+    }
+  });
+
+  // Evaluation window for "unrecorded day" checks: never before the
+  // employee joined, never past today (a day that hasn't finished yet
+  // can't be judged an absence), never past the employee going Inactive.
+  const joinDate = dateOnlyToLocalDate(dateOfJoining);
+  let startDay = 1;
+  if (joinDate) {
+    if (joinDate.getFullYear() === year && joinDate.getMonth() + 1 === month) startDay = joinDate.getDate();
+    else if (joinDate.getFullYear() > year || (joinDate.getFullYear() === year && joinDate.getMonth() + 1 > month)) startDay = daysInMonth + 1; // joins after this month entirely
+  }
+
+  let endDay = daysInMonth;
+  const todayIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  if (todayIST.getFullYear() === year && todayIST.getMonth() + 1 === month) endDay = Math.min(endDay, todayIST.getDate() - 1);
+  else if (todayIST.getFullYear() < year || (todayIST.getFullYear() === year && todayIST.getMonth() + 1 < month)) endDay = 0;
+
+  const inactiveSince = profileRes.data?.inactive_since ? new Date(profileRes.data.inactive_since) : null;
+  if (inactiveSince && !isNaN(inactiveSince.getTime())) {
+    if (inactiveSince.getFullYear() === year && inactiveSince.getMonth() + 1 === month) endDay = Math.min(endDay, inactiveSince.getDate() - 1);
+    else if (inactiveSince.getFullYear() < year || (inactiveSince.getFullYear() === year && inactiveSince.getMonth() + 1 < month)) endDay = 0;
+  }
+
+  const shifts = await getShifts().catch(() => []);
+  const shift = shifts.find((s) => s.id === profileRes.data?.shift_id);
+  const isImmigration = legacyIsImmigration(profileRes.data?.role, profileRes.data?.designation);
+
+  for (let day = startDay; day <= endDay; day++) {
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (recordedDates.has(dateStr)) continue;
+    if (anyLeaveCoversDate.has(dateStr)) continue;
+    if (isUnrecordedDayAnAbsence(dateStr, year, month, day, shift, isImmigration)) {
+      attendanceLopDays += 1;
+    }
+  }
+
   return {
     lopDays: unpaidLeaves + attendanceLopDays,
     leavesTakenThisMonth: leavesTakenInMonth,
-    paidLeavesThisMonth: Math.min(leavesTakenInMonth, availableBalanceAtStartOfMonth),
+    paidLeavesThisMonth,
     leaveLopDays: unpaidLeaves,
     attendanceLopDays,
   };

@@ -14,6 +14,7 @@ import {
   Calendar,
   Filter
 } from "lucide-react";
+import LeaveDayBadge from "./LeaveDayBadge";
 import {
   getUserAttendanceForMonth,
   formatAttendanceTime,
@@ -303,7 +304,11 @@ export default function EmployeeDetailsModal({
                               <div className="font-bold text-slate-800">{formatDuration(computeWorkedSeconds(record))}</div>
                             </td>
                             <td className="px-5 py-3 whitespace-nowrap">
-                              {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
+                              {record.status === "Earned Leave" || record.status === "Casual Leave" ? (
+                                <LeaveDayBadge userId={record.userId} date={record.date} category={record.status as "Earned Leave" | "Casual Leave"} isEdited={record.isEdited} />
+                              ) : (
+                                getStatusBadge(record.status, record.isHalfDay, record.isLate)
+                              )}
                             </td>
                           </tr>
                         ))

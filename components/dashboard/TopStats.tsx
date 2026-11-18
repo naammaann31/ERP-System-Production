@@ -7,7 +7,7 @@ import { CalendarCheck, Clock, Palmtree, Users, Wallet, Activity } from "lucide-
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
 import { computeWorkedSeconds, getLocalDateString } from "@/lib/attendance";
-import { getUserLeaves, calculateAccruedLeaves } from "@/lib/leave";
+import { getUserLeaves, calculateElClBalances } from "@/lib/leave";
 import { getEmployeePayrolls } from "@/lib/payroll";
 import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
 import { fetchAllProfilesForDashboard, fetchTodayAttendanceForDashboard } from "@/lib/dashboardQueries";
@@ -123,12 +123,11 @@ export default function TopStats() {
   useEffect(() => {
     if (!profile?.uid) return;
 
-    // Get leave balance
+    // Get leave balance - Earned/Casual shown compactly as "EL / CL" so the
+    // existing 4-tile layout doesn't need to grow a 5th card for this.
     getUserLeaves(profile.uid).then((leaves) => {
-      const totalUsed = leaves.filter((l) => l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").reduce((s, l) => s + l.days, 0);
-      const totalAccrued = calculateAccruedLeaves(profile.dateOfJoining, leaves, profile.inactiveSince);
-      const totalAvailable = totalAccrued - totalUsed;
-      setLeaveBalance(totalAvailable.toString());
+      const { earned, casual } = calculateElClBalances(profile.dateOfJoining, leaves, profile.inactiveSince, profile.elOpeningBalance, profile.clOpeningBalance);
+      setLeaveBalance(`${earned.available} EL / ${casual.available} CL`);
     });
 
     // Get payroll status

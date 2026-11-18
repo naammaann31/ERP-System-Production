@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Plus, Calendar, AlertCircle, Users, Search, LayoutGrid, List, Check, X } from "lucide-react";
-import { applyLeave, updateLeaveStatus, listenToAllLeaves, LeaveRequest, formatDateOnly } from "@/lib/leave";
+import { applyLeave, updateLeaveStatus, listenToAllLeaves, LeaveRequest, formatDateOnly, calculateElClBalances, LeaveCategory } from "@/lib/leave";
 import LeaveCalendar from "./LeaveCalendar";
 import ApplyLeaveModal from "./ApplyLeaveModal";
 
@@ -30,6 +30,8 @@ export default function HRLeaveDashboard() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [elBalance, setElBalance] = useState({ accrued: 0, used: 0, pending: 0, available: 0 });
+  const [clBalance, setClBalance] = useState({ accrued: 0, used: 0, pending: 0, available: 0 });
 
   useEffect(() => {
     setLoading(true);
@@ -44,12 +46,22 @@ export default function HRLeaveDashboard() {
       });
       setAllRequests(filtered);
       setLoading(false);
+
+      // HR/Admin can also apply for their own leave below - their own
+      // category balances need the same computation EmployeeLeaveDashboard
+      // uses, scoped to just their own rows out of this same feed.
+      if (profile?.uid) {
+        const own = fetched.filter((r) => r.userId === profile.uid);
+        const { earned, casual } = calculateElClBalances(profile?.dateOfJoining, own, profile?.inactiveSince, profile?.elOpeningBalance, profile?.clOpeningBalance);
+        setElBalance(earned);
+        setClBalance(casual);
+      }
     });
 
     return () => unsubscribe();
   }, [profile]);
 
-  const handleApplySubmit = async (data: { leaveType: string; startDate: string; endDate: string; days: number; reason: string }) => {
+  const handleApplySubmit = async (data: { leaveType: string; leaveCategory: LeaveCategory; startDate: string; endDate: string; days: number; reason: string }) => {
     if (!profile?.uid) return;
     setIsSubmitting(true);
 
@@ -58,6 +70,7 @@ export default function HRLeaveDashboard() {
       profile.fullName,
       profile.department || "General",
       data.leaveType,
+      data.leaveCategory,
       data.startDate,
       data.endDate,
       data.days,
@@ -153,6 +166,7 @@ export default function HRLeaveDashboard() {
                   <tr>
                     <th className="px-5 py-3 font-bold tracking-wider">Employee</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Leave Type</th>
+                    <th className="px-5 py-3 font-bold tracking-wider">Category</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Duration</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Days</th>
                     <th className="px-5 py-3 font-bold tracking-wider">Applied On</th>
@@ -162,9 +176,9 @@ export default function HRLeaveDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {loading ? (
-                    <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500 font-medium">Loading leave requests...</td></tr>
+                    <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-500 font-medium">Loading leave requests...</td></tr>
                   ) : allRequests.length === 0 ? (
-                    <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-500 font-medium">No leave requests found.</td></tr>
+                    <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-500 font-medium">No leave requests found.</td></tr>
                   ) : allRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-5 py-3">
@@ -173,6 +187,11 @@ export default function HRLeaveDashboard() {
                       </td>
                       <td className="px-5 py-3 font-semibold text-slate-600">
                         <Badge variant="outline" className="font-medium text-[10px] text-slate-600 bg-slate-50">{req.leaveType}</Badge>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Badge variant="outline" className={`font-medium text-[10px] ${req.leaveCategory === "Earned Leave" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                          {req.leaveCategory}
+                        </Badge>
                       </td>
                       <td className="px-5 py-3 font-semibold text-slate-600">
                         {formatDate(req.startDate)} - {formatDate(req.endDate)}
@@ -228,7 +247,14 @@ export default function HRLeaveDashboard() {
         </Card>
       )}
 
-      <ApplyLeaveModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleApplySubmit} isSubmitting={isSubmitting} />
+      <ApplyLeaveModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleApplySubmit}
+        isSubmitting={isSubmitting}
+        elAvailable={elBalance.available}
+        clAvailable={clBalance.available}
+      />
     </div>
   );
 }

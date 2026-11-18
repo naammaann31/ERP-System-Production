@@ -28,7 +28,7 @@ import {
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { getUserAttendanceForMonth, formatAttendanceTime, AttendanceRecord, updateAttendanceStatus } from "@/lib/attendance";
-import { getUserLeaves, LeaveRequest, calculateAccruedLeaves } from "@/lib/leave";
+import { getUserLeaves, LeaveRequest, calculateElClBalances, LeaveCategory } from "@/lib/leave";
 import { getEmployeePayrolls, PayrollRecord } from "@/lib/payroll";
 import MarketingClient from "@/components/dashboard/MarketingClient";
 import SalesDataSection from "@/components/dashboard/departments/SalesDataSection";
@@ -47,6 +47,8 @@ interface EmployeeData {
   dateOfJoining?: string;
   status?: string;
   inactiveSince?: string | null;
+  elOpeningBalance?: number | null;
+  clOpeningBalance?: number | null;
   aadhar?: string;
   pan?: string;
   bankAccountName?: string;
@@ -76,6 +78,7 @@ const formatTime = formatAttendanceTime;
 
 function ManualLeaveCredit({ employeeUid, employeeName, employeeDepartment }: { employeeUid: string; employeeName: string; employeeDepartment: string }) {
   const [days, setDays] = useState<number | "">("");
+  const [category, setCategory] = useState<LeaveCategory>("Earned Leave");
   const [saving, setSaving] = useState(false);
 
   const handleLeaveAction = async (action: "add" | "reduce") => {
@@ -93,6 +96,7 @@ function ManualLeaveCredit({ employeeUid, employeeName, employeeDepartment }: { 
         full_name: employeeName,
         department: employeeDepartment,
         leave_type: leaveType,
+        leave_category: category,
         start_date: new Date().toISOString().split("T")[0],
         end_date: new Date().toISOString().split("T")[0],
         days: actualDays,
@@ -123,6 +127,14 @@ function ManualLeaveCredit({ employeeUid, employeeName, employeeDepartment }: { 
           <p className="text-slate-500 text-sm">Add or reduce leaves from {employeeName}&apos;s bucket.</p>
         </div>
         <div className="flex gap-3 items-center">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as LeaveCategory)}
+            className="px-3 py-2.5 rounded-xl border border-slate-200 font-semibold text-slate-700 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
+          >
+            <option value="Earned Leave">Earned Leave</option>
+            <option value="Casual Leave">Casual Leave</option>
+          </select>
           <input
             type="number"
             value={days}
@@ -231,6 +243,8 @@ export default function EmployeeProfilePage() {
             dateOfJoining: row.date_of_joining,
           status: row.status,
           inactiveSince: row.inactive_since,
+          elOpeningBalance: row.el_opening_balance,
+          clOpeningBalance: row.cl_opening_balance,
           avatarUrl: row.avatar_url,
           avatarThumbUrl: row.avatar_thumb_url,
           aadhar: priv?.aadhar,
@@ -300,8 +314,8 @@ export default function EmployeeProfilePage() {
   const approvedLeaves = leaves.filter((l) => l.status === "Approved").length;
   const pendingLeaves = leaves.filter((l) => l.status === "Pending" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").length;
   const totalLeaveDays = leaves.filter((l) => l.status === "Approved" && l.leaveType !== "Manual Credit" && l.leaveType !== "Manual Deduction").reduce((sum, l) => sum + l.days, 0);
-    const totalAccruedLeaves = calculateAccruedLeaves(employee.dateOfJoining, leaves, employee.inactiveSince);
-    const remainingLeaves = Math.max(0, totalAccruedLeaves - totalLeaveDays);
+  const { earned: elBalance, casual: clBalance } = calculateElClBalances(employee.dateOfJoining, leaves, employee.inactiveSince, employee.elOpeningBalance, employee.clOpeningBalance);
+  const remainingLeaves = elBalance.available + clBalance.available;
   const latestPayroll = payrolls.length > 0 ? payrolls[0] : null;
 
   const summaryCards = [
@@ -323,7 +337,7 @@ export default function EmployeeProfilePage() {
       title: "Leave Balance",
       value: `${remainingLeaves}`,
       subtitle: `${pendingLeaves} Pending`,
-      detail: `${totalAccruedLeaves} accrued · ${totalLeaveDays} used all-time`,
+      detail: `${elBalance.available} Earned · ${clBalance.available} Casual`,
       icon: CalendarOff,
       color: "text-amber-600",
       bg: "bg-amber-100/50",
@@ -621,6 +635,7 @@ export default function EmployeeProfilePage() {
                         <thead className="text-[11px] text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 sticky top-0">
                           <tr>
                             <th className="px-5 py-3 font-bold tracking-wider">Type</th>
+                            <th className="px-5 py-3 font-bold tracking-wider">Category</th>
                             <th className="px-5 py-3 font-bold tracking-wider">Duration</th>
                             <th className="px-5 py-3 font-bold tracking-wider">Days</th>
                             <th className="px-5 py-3 font-bold tracking-wider">Status</th>
@@ -629,12 +644,17 @@ export default function EmployeeProfilePage() {
                         <tbody className="divide-y divide-slate-100 bg-white">
                           {leaves.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No leave records.</td>
+                              <td colSpan={5} className="px-5 py-6 text-center text-slate-400 font-medium text-sm">No leave records.</td>
                             </tr>
                           ) : (
                             leaves.slice(0, 10).map((l) => (
                               <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-5 py-2.5 font-semibold text-slate-800 text-xs">{l.leaveType}</td>
+                                <td className="px-5 py-2.5">
+                                  <Badge variant="outline" className={`font-medium text-[10px] ${l.leaveCategory === "Earned Leave" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                    {l.leaveCategory}
+                                  </Badge>
+                                </td>
                                 <td className="px-5 py-2.5 text-slate-600 text-xs">{formatDate(l.startDate)} – {formatDate(l.endDate)}</td>
                                 <td className="px-5 py-2.5 font-bold text-slate-800 text-xs">{l.days}</td>
                                 <td className="px-5 py-2.5">

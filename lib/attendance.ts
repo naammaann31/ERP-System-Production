@@ -20,11 +20,14 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   checkInTime: string | null; // ISO timestamp
   checkOutTime: string | null; // ISO timestamp
-  status: "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off" | "Holiday (Paid)" | string;
+  status: "Present" | "Checked In" | "Absent" | "On Leave" | "Week Off" | "Holiday (Paid)" | "Earned Leave" | "Casual Leave" | string;
   workingSeconds: number;
   isLate?: boolean;
   isHalfDay?: boolean;
   isEdited?: boolean;
+  // Links an "Earned Leave"/"Casual Leave" day to the leave_requests row
+  // that explains it (migration 52). Null for every ordinary day.
+  leaveRequestId?: string | null;
 }
 
 function fromRow(row: any): AttendanceRecord {
@@ -41,6 +44,7 @@ function fromRow(row: any): AttendanceRecord {
     isLate: row.is_late,
     isHalfDay: row.is_half_day,
     isEdited: row.is_edited,
+    leaveRequestId: row.leave_request_id ?? null,
   };
 }
 
@@ -511,16 +515,20 @@ export const getUserAttendanceForMonth = async (userId: string, yearMonth: strin
 };
 
 export const updateAttendanceStatus = async (
-  id: string, 
-  status: string, 
+  id: string,
+  status: string,
   isHalfDay: boolean,
   userId?: string,
   dateStr?: string,
   fullName?: string,
-  role?: string
+  role?: string,
+  // Pass a leave_requests id to link this day to it (EL/CL), explicit
+  // `null` to clear an existing link (moving away from EL/CL), or omit to
+  // leave whatever link already exists untouched.
+  leaveRequestId?: string | null
 ) => {
   const supabase = createClient();
-  
+
   if ((id.startsWith('absent-') || id.startsWith('weekoff-') || id.startsWith('holiday-')) && userId && dateStr) {
     // This record doesn't exist in the DB yet, insert it
     const { error } = await supabase.from("attendance").insert({
@@ -532,27 +540,31 @@ export const updateAttendanceStatus = async (
       is_half_day: isHalfDay,
       is_late: false,
       is_edited: true,
-      working_seconds: 0
+      working_seconds: 0,
+      leave_request_id: leaveRequestId ?? null,
     });
     if (error) throw error;
   } else {
     // Update existing record
-    const payload: any = { 
-      status, 
+    const payload: any = {
+      status,
       is_half_day: isHalfDay,
       is_late: false, // Manually clear late penalty
       is_edited: true, // Mark as edited by HR
     };
-    
+
     if (status === 'Absent') {
       payload.working_seconds = 0;
+    }
+    if (leaveRequestId !== undefined) {
+      payload.leave_request_id = leaveRequestId;
     }
 
     const { error } = await supabase
       .from("attendance")
       .update(payload)
       .eq("id", id);
-      
+
     if (error) throw error;
   }
 };

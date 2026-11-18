@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { X, ChevronDown, Calendar } from "lucide-react";
+import { X, Calendar, AlertCircle } from "lucide-react";
+import type { LeaveCategory } from "@/lib/leave";
 
 export const calcDays = (start: string, end: string) => {
   if (!start || !end) return 0;
@@ -16,29 +17,47 @@ export const calcDays = (start: string, end: string) => {
 interface ApplyLeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { leaveType: string; startDate: string; endDate: string; days: number; reason: string }) => void;
+  onSubmit: (data: { leaveType: string; leaveCategory: LeaveCategory; startDate: string; endDate: string; days: number; reason: string }) => void;
   isSubmitting: boolean;
+  // Current available balance per category, so the form can block a
+  // request before it ever reaches the server - EL and CL never borrow
+  // from each other, by design (see lib/leave.ts).
+  elAvailable: number;
+  clAvailable: number;
 }
 
-export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting }: ApplyLeaveModalProps) {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [leaveType, setLeaveType] = useState("Leave");
+export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmitting, elAvailable, clAvailable }: ApplyLeaveModalProps) {
+  const [leaveType] = useState("Leave");
+  const [leaveCategory, setLeaveCategory] = useState<LeaveCategory | "">("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
   const [isHalfDay, setIsHalfDay] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
-  const leaveOptions = ["Leave"];
   const days = isHalfDay ? 0.5 : calcDays(startDate, endDate);
+  const availableForSelected = leaveCategory === "Earned Leave" ? elAvailable : leaveCategory === "Casual Leave" ? clAvailable : null;
+  const insufficientBalance = availableForSelected !== null && days > availableForSelected;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (days <= 0) return;
-    onSubmit({ leaveType, startDate, endDate: isHalfDay ? startDate : endDate, days, reason });
+    if (!leaveCategory) {
+      setCategoryError("Please select a leave category.");
+      return;
+    }
+    // Insufficient balance no longer blocks submission - the request still
+    // goes through, and whatever portion exceeds the available balance is
+    // automatically classified as unpaid (Leave LOP) once approved, instead
+    // of being refused here. The red warning banner below already makes
+    // this clear before submitting.
+    setCategoryError(null);
+    onSubmit({ leaveType, leaveCategory, startDate, endDate: isHalfDay ? startDate : endDate, days, reason });
     setStartDate("");
     setEndDate("");
     setReason("");
     setIsHalfDay(false);
+    setLeaveCategory("");
   };
 
   if (!isOpen) return null;
@@ -62,6 +81,29 @@ export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmittin
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
 
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Leave Category</label>
+            <div className="grid grid-cols-2 gap-3">
+              {(["Earned Leave", "Casual Leave"] as LeaveCategory[]).map((cat) => {
+                const available = cat === "Earned Leave" ? elAvailable : clAvailable;
+                const selected = leaveCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => { setLeaveCategory(cat); setCategoryError(null); }}
+                    className={`text-left rounded-xl border-2 px-4 py-3 transition-all ${selected ? "border-blue-500 bg-blue-50/60" : "border-slate-200 bg-slate-50 hover:border-slate-300"}`}
+                  >
+                    <p className={`text-sm font-bold ${selected ? "text-blue-700" : "text-slate-700"}`}>{cat}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{available} available</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Earned Leave carries forward every year. Casual Leave resets every financial year (1 April) and doesn&apos;t carry forward.
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -110,10 +152,23 @@ export default function ApplyLeaveModal({ isOpen, onClose, onSubmit, isSubmittin
           </div>
 
           {days > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-bold text-blue-700">{days} day{days > 1 ? "s" : ""}</span>
-              <span className="text-xs text-blue-500 font-medium">will be deducted</span>
+            <div className={`border rounded-xl px-4 py-2.5 flex items-center gap-2 ${insufficientBalance ? "bg-red-50 border-red-100" : "bg-blue-50 border-blue-100"}`}>
+              <Calendar className={`h-4 w-4 ${insufficientBalance ? "text-red-500" : "text-blue-500"}`} />
+              <span className={`text-sm font-bold ${insufficientBalance ? "text-red-700" : "text-blue-700"}`}>{days} day{days > 1 ? "s" : ""}</span>
+              <span className={`text-xs font-medium ${insufficientBalance ? "text-red-500" : "text-blue-500"}`}>
+                {leaveCategory
+                  ? insufficientBalance
+                    ? `exceeds your ${leaveCategory} balance — ${(days - (availableForSelected || 0)).toFixed(1)} day(s) will be unpaid (Leave LOP) if approved`
+                    : "will be deducted"
+                  : "will be deducted"}
+              </span>
+            </div>
+          )}
+
+          {categoryError && (
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+              <span className="text-xs font-semibold text-red-700">{categoryError}</span>
             </div>
           )}
 

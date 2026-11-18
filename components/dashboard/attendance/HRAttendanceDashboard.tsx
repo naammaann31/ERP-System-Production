@@ -6,6 +6,7 @@ import { getAttendanceByDate, getAllTodayAttendance, AttendanceRecord, getLocalD
 import { getShifts, isWeekOffForShift, legacyIsImmigration } from "@/lib/shifts";
 import { getUsHolidayName } from "@/lib/holidays";
 import { createClient } from "@/lib/supabase/client";
+import { createAttendanceLinkedLeave, type LeaveCategory } from "@/lib/leave";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import * as xlsx from "xlsx";
 import EmployeeDetailsModal from "./EmployeeDetailsModal";
+import LeaveDayBadge from "./LeaveDayBadge";
 
 const formatTime = formatAttendanceTime;
 
@@ -67,10 +69,110 @@ export default function HRAttendanceDashboard() {
   const canEditAttendance = profile?.role === "Admin" || profile?.role === "HR";
 
   const handleStatusChange = async (record: AttendanceRecord, newStatusOption: string) => {
+    const isLeaveOption = newStatusOption === "earned-leave" || newStatusOption === "casual-leave";
+    const supabase = createClient();
+
+    // Moving AWAY from an EL/CL day that's linked to a backing leave
+    // request: only auto-reject that request if ALL of the following hold -
+    // a reason-string guess is not strict enough on its own:
+    //   1. created_via_attendance is TRUE - a real, dedicated flag set only
+    //      by createAttendanceLinkedLeave(), never by a real employee
+    //      application (migration 52).
+    //   2. its status is still "Approved" - if it's already Rejected
+    //      there's nothing to undo; if it somehow isn't Approved, don't
+    //      touch it.
+    //   3. no payroll record exists yet for that leave's month/year for
+    //      this employee - once a payslip has actually been generated
+    //      using this day, silently reverting it here would desync the
+    //      employee's live balance from a payroll record that's supposed
+    //      to stay frozen. In that case HR is told to handle it manually
+    //      instead of this screen quietly rewriting history.
+    // If any of these fail, refuse the change and point HR to the Leave
+    // tab - the Attendance dropdown must never silently alter a real
+    // application, or a leave that already fed a finalized payslip.
+    if (!isLeaveOption && record.leaveRequestId && (record.status === "Earned Leave" || record.status === "Casual Leave")) {
+      const { data: linkedLeave } = await supabase
+        .from("leave_requests")
+        .select("id, start_date, status, created_via_attendance")
+        .eq("id", record.leaveRequestId)
+        .maybeSingle();
+
+      if (!linkedLeave || !linkedLeave.created_via_attendance || linkedLeave.status !== "Approved") {
+        toast.error("This day is covered by a leave application — manage it from the Leave tab instead.");
+        return;
+      }
+
+      const leaveDate = new Date(linkedLeave.start_date);
+      const { count: payrollCount } = await supabase
+        .from("payrolls")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", record.userId)
+        .eq("month", leaveDate.getMonth() + 1)
+        .eq("year", leaveDate.getFullYear());
+
+      if ((payrollCount || 0) > 0) {
+        toast.error("Payroll has already been generated for this month — adjust it there instead of reverting this day.");
+        return;
+      }
+
+      try {
+        await supabase.from("leave_requests").update({ status: "Rejected" }).eq("id", record.leaveRequestId);
+      } catch (e) {
+        console.error("Failed to reject HR-authored attendance leave entry", e);
+      }
+    }
+
+    if (isLeaveOption) {
+      const category: LeaveCategory = newStatusOption === "earned-leave" ? "Earned Leave" : "Casual Leave";
+
+      // Already linked to a DIFFERENT category than the one just picked
+      // (e.g. this day shows Earned Leave and HR picks Casual Leave):
+      // never silently relabel the attendance row while leave_request_id
+      // still points at the old category's leave - that would desync the
+      // two. Require reverting to a plain status first, then re-assigning.
+      if (record.leaveRequestId && record.status !== category) {
+        toast.error(`This day is already linked to ${record.status} — revert it to a plain status first, then re-assign.`);
+        return;
+      }
+
+      try {
+        let leaveRequestId = record.leaveRequestId || null;
+        // Only create a backing leave row the first time - once
+        // leave_request_id is set, every later edit just reflects it, so a
+        // given day is never deducted twice. createAttendanceLinkedLeave
+        // itself handles the rare case where another HR user's click wins
+        // the race (a DB-level unique index, migration 52) by returning
+        // the winning row instead of throwing.
+        if (!leaveRequestId) {
+          const newLeave = await createAttendanceLinkedLeave(record.userId, record.fullName, category, record.date, false, record.role);
+          leaveRequestId = newLeave.id || null;
+          if (newLeave.leaveCategory !== category) {
+            toast(`Already recorded as ${newLeave.leaveCategory} for this day by another update.`);
+          }
+          await updateAttendanceStatus(record.id as string, newLeave.leaveCategory, false, record.userId, record.date, record.fullName, record.role, leaveRequestId);
+          toast.success("Attendance status updated");
+          setRecords(prev => prev.map(emp =>
+            emp.id === record.id ? { ...emp, status: newLeave.leaveCategory, isHalfDay: false, isLate: false, isEdited: true, leaveRequestId } : emp
+          ));
+          return;
+        }
+
+        await updateAttendanceStatus(record.id as string, category, false, record.userId, record.date, record.fullName, record.role, leaveRequestId);
+        toast.success("Attendance status updated");
+        setRecords(prev => prev.map(emp =>
+          emp.id === record.id ? { ...emp, status: category, isHalfDay: false, isLate: false, isEdited: true, leaveRequestId } : emp
+        ));
+      } catch (e) {
+        toast.error("Failed to update status");
+        console.error(e);
+      }
+      return;
+    }
+
     let newStatus: AttendanceRecord["status"] = "Present";
     let isHalfDay = false;
     const isActiveShift = Boolean(record.checkInTime && !record.checkOutTime);
-    
+
     // Safety check: Prevent forcing an active shift to complete if HR is just removing a penalty
     if (newStatusOption === "present") {
       newStatus = isActiveShift ? "Checked In" : "Present";
@@ -85,13 +187,17 @@ export default function HRAttendanceDashboard() {
     } else if (newStatusOption === "holiday") {
       newStatus = "Holiday (Paid)";
     }
-    
+
     try {
-      await updateAttendanceStatus(record.id as string, newStatus, isHalfDay, record.userId, record.date, record.fullName, record.role);
+      // Leaving an EL/CL status clears the link (null) - every other
+      // transition leaves whatever link already exists (there never
+      // should be one) alone.
+      const clearLink = record.status === "Earned Leave" || record.status === "Casual Leave" ? null : undefined;
+      await updateAttendanceStatus(record.id as string, newStatus, isHalfDay, record.userId, record.date, record.fullName, record.role, clearLink);
       toast.success("Attendance status updated");
       // update local state
-      setRecords(prev => prev.map(emp => 
-        emp.id === record.id ? { ...emp, status: newStatus, isHalfDay, isLate: false, isEdited: true } : emp
+      setRecords(prev => prev.map(emp =>
+        emp.id === record.id ? { ...emp, status: newStatus, isHalfDay, isLate: false, isEdited: true, leaveRequestId: clearLink === null ? null : emp.leaveRequestId } : emp
       ));
     } catch (e) {
       toast.error("Failed to update status");
@@ -405,13 +511,21 @@ export default function HRAttendanceDashboard() {
                         {formatTime(record.checkOutTime)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
-                        {getStatusBadge(record.status, record.isHalfDay, record.isLate, record.isEdited)}
+                        {record.status === "Earned Leave" || record.status === "Casual Leave" ? (
+                          <LeaveDayBadge userId={record.userId} date={record.date} category={record.status as LeaveCategory} isEdited={record.isEdited} />
+                        ) : (
+                          getStatusBadge(record.status, record.isHalfDay, record.isLate, record.isEdited)
+                        )}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap">
                           {canEditAttendance ? (
                             <select
                               className="text-xs border-slate-200 rounded-md py-1 px-2"
-                              value={record.status === "Holiday (Paid)" ? "holiday" : record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")}
+                              value={
+                                record.status === "Earned Leave" ? "earned-leave" :
+                                record.status === "Casual Leave" ? "casual-leave" :
+                                record.status === "Holiday (Paid)" ? "holiday" : record.status === "Week Off" ? "week-off" : record.status === "Absent" ? "absent" : (record.isHalfDay ? "half-day" : "present")
+                              }
                               onChange={(e) => handleStatusChange(record, e.target.value)}
                             >
                               <option value="present">Present</option>
@@ -419,10 +533,12 @@ export default function HRAttendanceDashboard() {
                               <option value="absent">Absent</option>
                               <option value="week-off">Week Off</option>
                               <option value="holiday">Holiday</option>
+                              <option value="earned-leave">Earned Leave (EL)</option>
+                              <option value="casual-leave">Casual Leave (CL)</option>
                             </select>
                           ) : (
                             <span className="text-xs text-slate-400 italic">
-                              {record.status === "Holiday (Paid)" ? "Holiday" : record.status === "Week Off" ? "Week Off" : record.status === "Absent" ? "Absent" : (record.isHalfDay ? "Half Day" : "Present")}
+                              {record.status === "Earned Leave" ? "Earned Leave" : record.status === "Casual Leave" ? "Casual Leave" : record.status === "Holiday (Paid)" ? "Holiday" : record.status === "Week Off" ? "Week Off" : record.status === "Absent" ? "Absent" : (record.isHalfDay ? "Half Day" : "Present")}
                             </span>
                           )}
                       </td>

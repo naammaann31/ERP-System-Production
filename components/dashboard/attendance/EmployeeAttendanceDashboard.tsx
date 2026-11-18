@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { toast } from "sonner";
+import LeaveDayBadge from "./LeaveDayBadge";
 import {
   CalendarDays,
   Clock,
@@ -456,7 +457,11 @@ export default function EmployeeAttendanceDashboard() {
                           </div>
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap">
-                          {getStatusBadge(record.status, record.isHalfDay, record.isLate)}
+                          {record.status === "Earned Leave" || record.status === "Casual Leave" ? (
+                            <LeaveDayBadge userId={record.userId} date={record.date} category={record.status as "Earned Leave" | "Casual Leave"} isEdited={record.isEdited} />
+                          ) : (
+                            getStatusBadge(record.status, record.isHalfDay, record.isLate)
+                          )}
                         </td>
                       </tr>
                     ))
