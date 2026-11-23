@@ -166,3 +166,46 @@ export function isWeekOffForRule(
 export function legacyIsImmigration(role?: string | null, designation?: string | null): boolean {
   return role === "IMMIGRATION" || designation === "Immigration HR";
 }
+
+function parseTimeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * True once more than HALF of the shift's own duration has elapsed since
+ * its most recently started occurrence — used to disable the Clock In
+ * button (and, with no check-in by then, let the day count as an
+ * unexcused absence via the existing "no record / no leave / not a
+ * Week Off or Holiday" Attendance-LOP and placeholder-display logic,
+ * which already handles the rest with no further change needed).
+ *
+ * One formula for every shift, driven entirely by that shift's own
+ * startTime/shiftEndTime — no per-shift special-casing:
+ *   Night Shift       7:30 PM – 4:30 AM (9h)  -> cutoff 12:00 AM (midnight)
+ *   Immigration Shift 10:00 AM – 6:00 PM (8h) -> cutoff 2:00 PM
+ *   Mid Shift         2:00 PM – 11:00 PM (9h) -> cutoff 6:30 PM
+ *   Evening Shift     4:00 PM – 1:00 AM (9h)  -> cutoff 8:30 PM
+ *
+ * Correct across the midnight boundary (Night Shift, Evening Shift)
+ * because it reasons in "minutes since this shift's most recent start"
+ * rather than a fixed wall-clock hour window, so it never needs a
+ * separate re-enable-at-6-AM special case: once past the cutoff, the
+ * button stays disabled until the shift's own next start time, whichever
+ * calendar day that falls on.
+ */
+export function isPastHalfShiftCutoff(
+  shift: { startTime: string; shiftEndTime: string },
+  hour: number,
+  minute: number
+): boolean {
+  const startMinutes = parseTimeToMinutes(shift.startTime);
+  const endMinutes = parseTimeToMinutes(shift.shiftEndTime);
+  const durationMinutes = endMinutes > startMinutes ? endMinutes - startMinutes : endMinutes + 1440 - startMinutes;
+  const halfDurationMinutes = durationMinutes / 2;
+
+  const nowMinutes = hour * 60 + minute;
+  const minutesSinceLastStart = nowMinutes >= startMinutes ? nowMinutes - startMinutes : nowMinutes + 1440 - startMinutes;
+
+  return minutesSinceLastStart >= halfDurationMinutes;
+}

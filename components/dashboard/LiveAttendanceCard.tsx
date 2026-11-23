@@ -15,7 +15,7 @@ import {
   AttendanceRecord
 } from "@/lib/attendance";
 import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
-import { getShifts, isWeekOffForShift, type Shift } from "@/lib/shifts";
+import { getShifts, isWeekOffForShift, isPastHalfShiftCutoff, type Shift } from "@/lib/shifts";
 
 export default function LiveAttendanceCard() {
   const { profile } = useAuth();
@@ -179,17 +179,40 @@ export default function LiveAttendanceCard() {
 
   const alreadyCheckedOut = attendanceRecord?.status === "Present";
 
-  const isTooLateToClockIn = !isCheckedIn && !alreadyCheckedOut && !!currentTime && (() => {
-    const p = istParts(currentTime);
-    const hour = Number(p.hour);
-    return hour >= 0 && hour < 6;
-  })();
-
   // Only shown for shifts whose week-off actually changes the rules
   // (Immigration today) — Night Shift and Mid Shift never showed this
   // badge before shift_id existed either, so that's preserved exactly by
   // gating on weekOffAffectsRules rather than hardcoding a role check.
   const userShift = shifts.find((s) => s.id === profile?.shiftId);
+
+  // Disables Clock In once more than half this employee's own shift has
+  // elapsed since it started — e.g. Immigration Shift (10 AM-6 PM) cuts
+  // off at 2 PM, Night Shift (7:30 PM-4:30 AM) at midnight. Computed
+  // per-shift via isPastHalfShiftCutoff (lib/attendanceRules.ts) instead
+  // of the previous hardcoded "midnight-6 AM for everyone" rule, which
+  // only ever matched Night Shift and left the other three shifts with no
+  // real late cutoff at all. A day that passes this point with no
+  // check-in needs no further handling here: it already displays as
+  // "Absent" on both the employee's and HR's Attendance screens, and
+  // already counts as Attendance LOP at payroll time, via the existing
+  // "no attendance row / no leave / not a Week Off or Holiday" logic
+  // (lib/attendance.ts's getUserAttendanceForMonth,
+  // HRAttendanceDashboard.tsx's placeholder builder, and
+  // lib/payroll.ts's calculateEmployeeLopAndLeaves).
+  //
+  // Falls back to the old universal midnight-6 AM rule only if this
+  // employee somehow has no matching shift row (should not happen after
+  // the migration 35 backfill), so a missing join never silently disables
+  // nothing at all.
+  const isTooLateToClockIn = !isCheckedIn && !alreadyCheckedOut && !!currentTime && (() => {
+    const p = istParts(currentTime);
+    const hour = Number(p.hour);
+    const minute = Number(p.minute);
+    if (userShift) {
+      return isPastHalfShiftCutoff(userShift, hour, minute);
+    }
+    return hour >= 0 && hour < 6;
+  })();
 
   // "19:30:00" -> "7:30 PM"
   const formatShiftTime = (time: string) => {
@@ -364,6 +387,7 @@ export default function LiveAttendanceCard() {
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">10:15 AM IST</span>.</li>
                         <li>Clocking in after 10:15 AM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                        <li>Clock In is <span className="font-semibold text-slate-800">disabled after 2:00 PM</span>. You will be marked Absent for the day.</li>
                         <li>Sunday and the last Saturday of the month are recognized as <span className="font-semibold text-slate-800">Week Offs</span>.</li>
                       </ul>
                     </div>
@@ -383,6 +407,7 @@ export default function LiveAttendanceCard() {
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">2:15 PM IST</span>.</li>
                         <li>Clocking in after 2:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                        <li>Clock In is <span className="font-semibold text-slate-800">disabled after 6:30 PM</span>. You will be marked Absent for the day.</li>
                       </ul>
                     </div>
 
@@ -401,6 +426,7 @@ export default function LiveAttendanceCard() {
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">4:15 PM IST</span>.</li>
                         <li>Clocking in after 4:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
+                        <li>Clock In is <span className="font-semibold text-slate-800">disabled after 8:30 PM</span>. You will be marked Absent for the day.</li>
                       </ul>
                     </div>
 

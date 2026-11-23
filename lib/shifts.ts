@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
-import { isWeekOffForRule, legacyIsImmigration } from "./attendanceRules";
+import { isWeekOffForRule, legacyIsImmigration, isPastHalfShiftCutoff } from "./attendanceRules";
 
-export { legacyIsImmigration };
+export { legacyIsImmigration, isPastHalfShiftCutoff };
 
 /**
  * Mirrors the `shifts` table (migration 00000000000035). This is the single
