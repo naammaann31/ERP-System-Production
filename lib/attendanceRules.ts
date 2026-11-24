@@ -173,39 +173,37 @@ function parseTimeToMinutes(time: string): number {
 }
 
 /**
- * True once more than HALF of the shift's own duration has elapsed since
- * its most recently started occurrence — used to disable the Clock In
- * button (and, with no check-in by then, let the day count as an
- * unexcused absence via the existing "no record / no leave / not a
- * Week Off or Holiday" Attendance-LOP and placeholder-display logic,
- * which already handles the rest with no further change needed).
+ * True once the current time is outside the allowed Clock In window:
+ * Window opens `earlyGraceMinutes` (default 15) before the official shift start,
+ * and closes at the exact half-shift cutoff mark.
  *
- * One formula for every shift, driven entirely by that shift's own
+ * One unified formula for every shift, driven entirely by that shift's own
  * startTime/shiftEndTime — no per-shift special-casing:
- *   Night Shift       7:30 PM – 4:30 AM (9h)  -> cutoff 12:00 AM (midnight)
- *   Immigration Shift 10:00 AM – 6:00 PM (8h) -> cutoff 2:00 PM
- *   Mid Shift         2:00 PM – 11:00 PM (9h) -> cutoff 6:30 PM
- *   Evening Shift     4:00 PM – 1:00 AM (9h)  -> cutoff 8:30 PM
+ *   Night Shift       7:30 PM – 4:30 AM (9h)  -> opens 7:15 PM, cutoff 12:00 AM (midnight)
+ *   Immigration Shift 10:00 AM – 6:00 PM (8h) -> opens 9:45 AM, cutoff 2:00 PM
+ *   Mid Shift         2:00 PM – 11:00 PM (9h) -> opens 1:45 PM, cutoff 6:30 PM
+ *   Evening Shift     4:00 PM – 1:00 AM (9h)  -> opens 3:45 PM, cutoff 8:30 PM
  *
- * Correct across the midnight boundary (Night Shift, Evening Shift)
- * because it reasons in "minutes since this shift's most recent start"
- * rather than a fixed wall-clock hour window, so it never needs a
- * separate re-enable-at-6-AM special case: once past the cutoff, the
- * button stays disabled until the shift's own next start time, whichever
- * calendar day that falls on.
+ * Correct across the midnight boundary (Night Shift, Evening Shift).
+ * Once past the half-shift cutoff, the button stays disabled until the
+ * next shift's early grace window opens, whichever calendar day that falls on.
  */
 export function isPastHalfShiftCutoff(
   shift: { startTime: string; shiftEndTime: string },
   hour: number,
-  minute: number
+  minute: number,
+  earlyGraceMinutes: number = 15
 ): boolean {
   const startMinutes = parseTimeToMinutes(shift.startTime);
   const endMinutes = parseTimeToMinutes(shift.shiftEndTime);
   const durationMinutes = endMinutes > startMinutes ? endMinutes - startMinutes : endMinutes + 1440 - startMinutes;
   const halfDurationMinutes = durationMinutes / 2;
 
-  const nowMinutes = hour * 60 + minute;
-  const minutesSinceLastStart = nowMinutes >= startMinutes ? nowMinutes - startMinutes : nowMinutes + 1440 - startMinutes;
+  const windowStart = (startMinutes - earlyGraceMinutes + 1440) % 1440;
+  const allowedDuration = earlyGraceMinutes + halfDurationMinutes;
 
-  return minutesSinceLastStart >= halfDurationMinutes;
+  const nowMinutes = hour * 60 + minute;
+  const minutesSinceWindowStart = nowMinutes >= windowStart ? nowMinutes - windowStart : nowMinutes + 1440 - windowStart;
+
+  return minutesSinceWindowStart >= allowedDuration;
 }

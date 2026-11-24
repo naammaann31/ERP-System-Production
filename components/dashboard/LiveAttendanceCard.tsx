@@ -15,7 +15,8 @@ import {
   AttendanceRecord
 } from "@/lib/attendance";
 import { useTodayAttendance } from "@/components/dashboard/TodayAttendanceProvider";
-import { getShifts, isWeekOffForShift, isPastHalfShiftCutoff, type Shift } from "@/lib/shifts";
+import { getShifts, isWeekOffForShift, type Shift } from "@/lib/shifts";
+import { isPastHalfShiftCutoff } from "@/lib/attendanceRules";
 
 export default function LiveAttendanceCard() {
   const { profile } = useAuth();
@@ -187,7 +188,8 @@ export default function LiveAttendanceCard() {
 
   // Disables Clock In once more than half this employee's own shift has
   // elapsed since it started — e.g. Immigration Shift (10 AM-6 PM) cuts
-  // off at 2 PM, Night Shift (7:30 PM-4:30 AM) at midnight. Computed
+  // off at 2 PM, Night Shift (7:30 PM-4:30 AM) at midnight. Clock In
+  // window opens 15 minutes before official shift start time. Computed
   // per-shift via isPastHalfShiftCutoff (lib/attendanceRules.ts) instead
   // of the previous hardcoded "midnight-6 AM for everyone" rule, which
   // only ever matched Night Shift and left the other three shifts with no
@@ -385,6 +387,7 @@ export default function LiveAttendanceCard() {
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Clock In opens at <span className="font-semibold text-slate-800">9:45 AM IST</span> (15 minutes before shift).</li>
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">10:15 AM IST</span>.</li>
                         <li>Clocking in after 10:15 AM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
                         <li>Clock In is <span className="font-semibold text-slate-800">disabled after 2:00 PM</span>. You will be marked Absent for the day.</li>
@@ -405,6 +408,7 @@ export default function LiveAttendanceCard() {
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Clock In opens at <span className="font-semibold text-slate-800">1:45 PM IST</span> (15 minutes before shift).</li>
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">2:15 PM IST</span>.</li>
                         <li>Clocking in after 2:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
                         <li>Clock In is <span className="font-semibold text-slate-800">disabled after 6:30 PM</span>. You will be marked Absent for the day.</li>
@@ -424,6 +428,7 @@ export default function LiveAttendanceCard() {
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Clock In opens at <span className="font-semibold text-slate-800">3:45 PM IST</span> (15 minutes before shift).</li>
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">4:15 PM IST</span>.</li>
                         <li>Clocking in after 4:15 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
                         <li>Clock In is <span className="font-semibold text-slate-800">disabled after 8:30 PM</span>. You will be marked Absent for the day.</li>
@@ -443,6 +448,7 @@ export default function LiveAttendanceCard() {
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Clock In Policy</h3>
                       <ul className="mt-2 space-y-1 pl-4 list-disc marker:text-slate-300">
+                        <li>Clock In opens at <span className="font-semibold text-slate-800">7:15 PM IST</span> (15 minutes before shift).</li>
                         <li>Standard shift starts before <span className="font-semibold text-slate-800">7:45 PM IST</span>.</li>
                         <li>Clocking in after 7:45 PM triggers a <span className="font-semibold text-red-500">Late Comer & Half Day Penalty</span>.</li>
                         <li>Clock In is <span className="font-semibold text-slate-800">disabled after 11:59 PM</span>. You will automatically be marked Absent.</li>
