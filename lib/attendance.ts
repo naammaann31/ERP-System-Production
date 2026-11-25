@@ -384,30 +384,46 @@ export const checkOut = async (docId: string, workingSeconds: number) => {
 export const getTodayAttendance = async (userId: string) => {
   const supabase = createClient();
   const dateStr = getLocalDateString();
-  
-  // Fetch the most recent attendance record for the user
-  const { data } = await supabase
+
+  // Two explicit, unambiguous questions instead of one "most recent row by
+  // date" query. The old single query assumed every attendance row was
+  // dated today or earlier - true until the Attendance<->Leave sync
+  // (migration 52's linkApprovedLeaveToAttendance) started writing real
+  // rows for FUTURE approved-leave dates. Once a row can be dated after
+  // today, "take the single newest-dated row" can return a future leave
+  // placeholder instead of an active session or today's own row, and the
+  // old code had no way to recover from that (confirmed root cause of a
+  // real incident: an employee genuinely checked in for today was shown
+  // "Awaiting Clock In" because her own later-dated Casual Leave rows
+  // sorted as more recent).
+
+  // 1. Is there an active session right now, regardless of which day it
+  // started? (A Night Shift check-in can be dated yesterday and still be
+  // the correct answer today.) at most one row can ever have this status,
+  // so this is never ambiguous no matter how many future-dated rows exist.
+  const { data: activeSession, error: activeErr } = await supabase
     .from("attendance")
     .select("*")
     .eq("user_id", userId)
-    .order("date", { ascending: false })
-    .limit(1)
+    .eq("status", "Checked In")
     .maybeSingle();
+  if (activeErr) throw activeErr;
+  if (activeSession) return fromRow(activeSession);
 
-  if (!data) return null;
+  // 2. No active session - does TODAY's own date already have a row
+  // (clocked in and out already, marked Absent, on an approved leave for
+  // today, etc.)? Matched by exact date, never by "most recent", so a
+  // future-dated row can never be picked up in its place.
+  const { data: todayRow, error: todayErr } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("date", dateStr)
+    .maybeSingle();
+  if (todayErr) throw todayErr;
+  if (todayRow) return fromRow(todayRow);
 
-  // 1. If the most recent shift is still active, return it (even if it started yesterday)
-  if (data.status === "Checked In") {
-    return fromRow(data);
-  }
-
-  // 2. If the shift is completed/closed, we only return it if it belongs to TODAY's date.
-  // This prevents clocking in multiple times on the same calendar day, while
-  // freeing up the 'Clock In' button for today if yesterday's shift is closed.
-  if (data.date === dateStr) {
-    return fromRow(data);
-  }
-
+  // 3. Neither exists - today hasn't been touched yet.
   return null;
 };
 

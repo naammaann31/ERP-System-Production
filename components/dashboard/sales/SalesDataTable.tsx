@@ -28,14 +28,27 @@ function isPrivilegedProfile(profile: any): boolean {
   return false;
 }
 
+interface SalesDataTableProps {
+  // When set (the employee-profile page's embedded "Sales Leads by
+  // <name>" section), the table is pinned to this one employee's own
+  // leads regardless of the viewer's own privilege level — a privileged
+  // viewer (Admin/Sales Team-Lead/Manager) would otherwise see EVERY
+  // employee's leads here, which is wrong for a single-employee view.
+  // The "Add Data" and "Generate Report" controls are also hidden in this
+  // mode since both always act on the logged-in viewer's own id, not the
+  // employee being viewed.
+  filterByUid?: string;
+}
+
 // Bulk Excel import still stays Team-Lead/Manager/Admin/HR-only (Master
 // Data). A regular employee may manually add ONE self-sourced lead at a
 // time here though (e.g. a referral they personally found) - always
 // auto-assigned to themselves, never left unassigned or handed to someone
 // else (see migration 48 / sales_leads_insert's RLS).
-export default function SalesDataTable() {
+export default function SalesDataTable({ filterByUid }: SalesDataTableProps = {}) {
   const { profile } = useAuth();
   const isPrivileged = isPrivilegedProfile(profile);
+  const showOwnerColumn = isPrivileged && !filterByUid;
 
   const [rows, setRows] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -87,9 +100,10 @@ export default function SalesDataTable() {
     const supabase = createClient();
     const uid = profile.uid;
 
+    const scopeUid = filterByUid || uid;
     const countFor = async (status?: string) => {
       let q = supabase.from("sales_leads").select("id", { count: "exact" }).limit(1);
-      if (!isPrivileged) q = q.eq("assigned_to", uid);
+      if (filterByUid || !isPrivileged) q = q.eq("assigned_to", scopeUid);
       if (status) q = q.eq("status", status);
       const { count, error } = await q;
       if (error) console.error("Failed to load sales stats:", error);
@@ -103,7 +117,7 @@ export default function SalesDataTable() {
       countFor("Follow up requested"),
     ]);
     setStats({ total, interested, meetingScheduled: meeting, needsFollowUp: followUp });
-  }, [profile?.uid, isPrivileged]);
+  }, [profile?.uid, isPrivileged, filterByUid]);
 
   const loadCustomColumns = useCallback(async () => {
     const supabase = createClient();
@@ -120,8 +134,8 @@ export default function SalesDataTable() {
         .from("sales_leads")
         .select(isPrivileged ? "*, assigned_profile:profiles!sales_leads_assigned_to_fkey(full_name)" : "*", { count: "exact" });
 
-      if (!isPrivileged) {
-        query = query.eq("assigned_to", profile.uid);
+      if (filterByUid || !isPrivileged) {
+        query = query.eq("assigned_to", filterByUid || profile.uid);
       }
       if (debouncedSearch) {
         const pattern = buildSearchPattern(debouncedSearch);
@@ -155,14 +169,14 @@ export default function SalesDataTable() {
       setLoading(false);
       setLoadingMore(false);
     },
-    [profile?.uid, isPrivileged, debouncedSearch, entryDateFrom, entryDateTo, statusDateFrom, statusDateTo, visaFilter, statusFilter, dateSortField, dateSortDir, offset]
+    [profile?.uid, isPrivileged, filterByUid, debouncedSearch, entryDateFrom, entryDateTo, statusDateFrom, statusDateTo, visaFilter, statusFilter, dateSortField, dateSortDir, offset]
   );
 
   useEffect(() => {
     fetchPage(true);
     loadCustomColumns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.uid, isPrivileged, debouncedSearch, entryDateFrom, entryDateTo, statusDateFrom, statusDateTo, visaFilter, statusFilter, dateSortField, dateSortDir]);
+  }, [profile?.uid, isPrivileged, filterByUid, debouncedSearch, entryDateFrom, entryDateTo, statusDateFrom, statusDateTo, visaFilter, statusFilter, dateSortField, dateSortDir]);
 
   useEffect(() => {
     loadStats();
@@ -391,7 +405,7 @@ export default function SalesDataTable() {
           />
         </div>
         <div className="flex-1" />
-        {!isPrivileged && (
+        {!isPrivileged && !filterByUid && (
           <button
             onClick={() => setIsAddingNew((v) => !v)}
             className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${isAddingNew ? "bg-slate-200 text-slate-700" : "bg-slate-900 text-white hover:bg-slate-800"}`}
@@ -399,9 +413,11 @@ export default function SalesDataTable() {
             <FilePlus2 className="h-4 w-4" /> {isAddingNew ? "Cancel Adding" : "Add Data"}
           </button>
         )}
-        <button onClick={() => setReportModalOpen(true)} className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors">
-          <FileSpreadsheet className="h-4 w-4" /> Generate Report
-        </button>
+        {!filterByUid && (
+          <button onClick={() => setReportModalOpen(true)} className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors">
+            <FileSpreadsheet className="h-4 w-4" /> Generate Report
+          </button>
+        )}
       </div>
 
       {/* Date filters + sort */}
@@ -516,7 +532,7 @@ export default function SalesDataTable() {
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Assigned On</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Entry Date</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Last Status Date</th>
-              {isPrivileged && <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Owner</th>}
+              {showOwnerColumn && <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Owner</th>}
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap">Name</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap min-w-[200px]">Email</th>
               <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wide whitespace-nowrap min-w-[150px]">Mobile</th>
@@ -653,7 +669,7 @@ export default function SalesDataTable() {
                       )}
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap text-slate-400">{formatDate(row.status_updated_work_date)}</td>
-                    {isPrivileged && (
+                    {showOwnerColumn && (
                       <td className="px-5 py-3 whitespace-nowrap">
                         {row.assigned_profile?.full_name ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">{row.assigned_profile.full_name}</span>
